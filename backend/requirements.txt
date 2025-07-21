@@ -1,7 +1,14 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+requests>=2.19.1,<2.30
+python-dotenv==1.0.0
+pyrebase4==4.7.1
 firebase-admin==6.2.0
+python-multipart==0.0.6
+openai==1.97.0
 pytest==7.4.4
 httpx==0.24.1
 coverage==7.4.4
 pytest-asyncio==0.23.6
+setuptools
+sse-starlette==1.8.2
