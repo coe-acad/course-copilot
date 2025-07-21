@@ -31,6 +31,20 @@ class Settings:
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: Optional[str] = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET: Optional[str] = os.getenv("GOOGLE_CLIENT_SECRET")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "firebase_config.json")
+
+    # Firebase Client SDK
+    FIREBASE_API_KEY: Optional[str] = os.getenv("FIREBASE_API_KEY")
+    FIREBASE_AUTH_DOMAIN: Optional[str] = os.getenv("FIREBASE_AUTH_DOMAIN")
+    FIREBASE_STORAGE_BUCKET: str = os.getenv("FIREBASE_STORAGE_BUCKET", "creator-co-pilot.appspot.com")
+    FIREBASE_MESSAGING_SENDER_ID: Optional[str] = os.getenv("FIREBASE_MESSAGING_SENDER_ID")
+    FIREBASE_APP_ID: Optional[str] = os.getenv("FIREBASE_APP_ID")
+    DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
+    
     @classmethod
     def validate(cls) -> None:
         """Validate required settings"""

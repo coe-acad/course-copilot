@@ -1,58 +1,38 @@
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
-from dotenv import load_dotenv
 import logging
+from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 firebase_config = {
-    "apiKey": os.getenv("FIREBASE_API_KEY"),
-    "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-    "projectId": os.getenv("FIREBASE_PROJECT_ID"),
-    "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
-    "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
-    "appId": os.getenv("FIREBASE_APP_ID"),
-    "databaseURL": os.getenv("databaseURL")
+    "apiKey": settings.FIREBASE_API_KEY,
+    "authDomain": settings.FIREBASE_AUTH_DOMAIN,
+    "projectId": settings.FIREBASE_PROJECT_ID,
+    "storageBucket": settings.FIREBASE_STORAGE_BUCKET,
+    "messagingSenderId": settings.FIREBASE_MESSAGING_SENDER_ID,
+    "appId": settings.FIREBASE_APP_ID,
+    "databaseURL": settings.DATABASE_URL
 }
-
-# Check if all required Firebase environment variables are set
-required_firebase_vars = [
-    "FIREBASE_PROJECT_ID",
-    "FIREBASE_PRIVATE_KEY",
-    "FIREBASE_CLIENT_EMAIL"
-]
-
-if not all(os.getenv(var) for var in required_firebase_vars):
-    missing = [var for var in required_firebase_vars if not os.getenv(var)]
-    logger.error(f"Missing required Firebase environment variables: {', '.join(missing)}")
-    raise ValueError(f"Missing required Firebase environment variables: {', '.join(missing)}")
-
-# Use environment variables for credentials
-logger.info("Using Firebase credentials from environment variables.")
-private_key = os.getenv("FIREBASE_PRIVATE_KEY")
-if private_key:
-    private_key = private_key.replace("\\n", "\n")
 
 cred = credentials.Certificate({
     "type": "service_account",
-    "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-    "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
-    "private_key": private_key,
-    "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
-    "client_id": os.getenv("FIREBASE_CLIENT_ID"),
-    "auth_uri": os.getenv("FIREBASE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
-    "token_uri": os.getenv("FIREBASE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
-    "auth_provider_x509_cert_url": os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
-    "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
+    "project_id": settings.FIREBASE_PROJECT_ID,
+    "private_key_id": settings.FIREBASE_PRIVATE_KEY_ID,
+    "private_key": settings.FIREBASE_PRIVATE_KEY.replace("\\n", "\n") if settings.FIREBASE_PRIVATE_KEY else None,
+    "client_email": settings.FIREBASE_CLIENT_EMAIL,
+    "client_id": settings.FIREBASE_CLIENT_ID,
+    "auth_uri": settings.FIREBASE_AUTH_URI,
+    "token_uri": settings.FIREBASE_TOKEN_URI,
+    "auth_provider_x509_cert_url": settings.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
+    "client_x509_cert_url": settings.FIREBASE_CLIENT_X509_CERT_URL
 })
 
 if not firebase_admin._apps:
     try:
         firebase_admin.initialize_app(cred, {
-            'storageBucket': os.getenv("FIREBASE_STORAGE_BUCKET", 'creator-co-pilot.appspot.com')
+            'storageBucket': settings.FIREBASE_STORAGE_BUCKET
         })
     except Exception as e:
         logger.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")

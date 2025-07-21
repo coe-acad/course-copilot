@@ -1,20 +1,16 @@
 from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
-from dotenv import load_dotenv
 from urllib.parse import quote
 from typing import Optional
-import os
 import requests
 import pyrebase
 from firebase_admin import auth
 import logging
 from ..config.firebase import firebase_config, db
+from ..config.settings import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 # Initialize pyrebase
 try:
@@ -24,10 +20,10 @@ except Exception as e:
     raise ValueError(f"Failed to initialize pyrebase: {str(e)}")
 
 # Google OAuth configuration
-CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
-FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY")
+CLIENT_ID = settings.GOOGLE_CLIENT_ID
+CLIENT_SECRET = settings.GOOGLE_CLIENT_SECRET
+REDIRECT_URI = settings.GOOGLE_REDIRECT_URI
+FIREBASE_API_KEY = settings.FIREBASE_API_KEY
 
 # Check if required environment variables are set
 if not CLIENT_ID or not CLIENT_SECRET or not FIREBASE_API_KEY:

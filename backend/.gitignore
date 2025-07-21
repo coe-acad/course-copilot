@@ -10,8 +10,6 @@ env/
 # Environment variables and secrets
 .env
 .env.*
-backend\.env
-firebase_config.json
 # VS Code settings
 .vscode/
 # OS files

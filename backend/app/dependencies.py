@@ -2,12 +2,12 @@ import firebase_admin
 from firebase_admin import auth, credentials
 from fastapi import Depends, HTTPException, status, Request
 from functools import lru_cache
-import os
+from .config.settings import settings
 
 @lru_cache()
 def get_firebase_app():
     # Use GOOGLE_APPLICATION_CREDENTIALS env var or path to service account key
-    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "firebase_config.json")
+    cred_path = settings.GOOGLE_APPLICATION_CREDENTIALS
     if not firebase_admin._apps:
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
