@@ -1,7 +1,7 @@
-from backend.utils.openai_client import client
-from backend.utils.storage_course import storage_service
-from backend.utils.exceptions import CourseNotFoundError, ResourceNotFoundError, ResourceAlreadyCheckedOutError, ResourceAlreadyCheckedInError, OpenAIError
-from backend.config.settings import settings
+from .openai_client import client
+from .storage_course import storage_service
+from .exceptions import CourseNotFoundError, ResourceNotFoundError, ResourceAlreadyCheckedOutError, ResourceAlreadyCheckedInError, OpenAIError
+from ..config.settings import settings
 from uuid import uuid4
 import logging
 from typing import List, Tuple, Optional, AsyncGenerator
@@ -10,7 +10,7 @@ import time
 import asyncio
 from datetime import datetime
 # OpenAI tool types - using dict approach for compatibility
-from backend.config.firebase import db
+from ..config.firebase import db
 import os
 import shutil
 from pathlib import Path

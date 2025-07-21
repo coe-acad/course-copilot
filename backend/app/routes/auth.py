@@ -8,7 +8,7 @@ import requests
 import pyrebase
 from firebase_admin import auth
 import logging
-from backend.config.firebase import firebase_config, db
+from ..config.firebase import firebase_config, db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

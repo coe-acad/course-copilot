@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
-from backend.utils.storage_course import storage_service
-from backend.utils import openai_service
-from backend.utils.exceptions import handle_course_error, CourseNotFoundError
+from ..utils.storage_course import storage_service
+from ..utils import openai_service
+from ..utils.exceptions import handle_course_error, CourseNotFoundError
 from firebase_admin import auth as admin_auth
 import logging
 

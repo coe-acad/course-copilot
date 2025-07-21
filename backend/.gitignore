@@ -1,1 +1,23 @@
-**/__pycache__
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+# Environment variables and secrets
+.env
+.env.*
+backend\.env
+firebase_config.json
+# VS Code settings
+.vscode/
+# OS files
+.DS_Store
+Thumbs.db
+# Test and coverage outputs
+.pytest_cache/
+.coverage
+.cache

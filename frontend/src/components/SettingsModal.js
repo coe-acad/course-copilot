@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { ModalBase } from "./Modal";
-import { saveCourseSettings } from "../services/course";
 
 const settingsModalStyle = {
   minWidth: 340,
@@ -45,22 +44,15 @@ export default function SettingsModal({ open, onClose, onSave }) {
     setArr(arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]);
   };
 
-  const handleSave = async () => {
-    const courseId = localStorage.getItem("currentCourseId");
-    const payload = {
-      course_level: selectedLevels,
-      study_area: selectedAreas[0] || "",
-      pedagogical_components: selectedPedagogical,
-      use_reference_material_only: useReferenceOnly,
-      ask_clarifying_questions: askClarifying,
-    };
-    try {
-      await saveCourseSettings(courseId, payload);
-    } catch (err) {
-      // Optionally handle error
-      console.error("Failed to save settings", err);
-    }
-    onSave && onSave(payload);
+  const handleSave = () => {
+    // backend integration: save settings to backend
+    onSave && onSave({
+      levels: selectedLevels,
+      areas: selectedAreas,
+      pedagogical: selectedPedagogical,
+      useReferenceOnly,
+      askClarifying
+    });
     onClose();
   };
 

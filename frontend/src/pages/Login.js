@@ -1,10 +1,7 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { auth } from "../services/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import axios from "axios";
+import { login, startGoogleLogin } from "../services/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,52 +11,48 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Check for error messages from URL parameters (Google OAuth errors)
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    
     try {
-      // Firebase email/password login
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const idToken = await userCredential.user.getIdToken();
-      // Send ID token to backend for verification
-      const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
-      const response = await axios.get(
-        `${API_BASE}/auth/me`,
-        { headers: { Authorization: `Bearer ${idToken}` } }
-      );
-      // Store user info and token
-      localStorage.setItem("user", JSON.stringify(response.data.user));
-      localStorage.setItem("token", idToken);
-      localStorage.setItem("userId", response.data.user.uid || response.data.user.user_id || "");
-      navigate("/courses");
-    } catch (err) {
-      setError(err.message || err.detail || "Login failed");
+      // Real authentication API call
+      const result = await login(email, password);
+      
+      if (result.success) {
+        // Login successful - navigate to courses
+        navigate("/courses");
+      } else {
+        // Login failed - show error message
+        setError(result.error || "Login failed. Please check your credentials.");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleLogin = () => {
     setLoading(true);
-    setError("");
     try {
-      const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
-      const idToken = await userCredential.user.getIdToken();
-      const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
-      const response = await axios.get(
-        `${API_BASE}/auth/me`,
-        { headers: { Authorization: `Bearer ${idToken}` } }
-      );
-      localStorage.setItem("user", JSON.stringify(response.data.user));
-      localStorage.setItem("token", idToken);
-      localStorage.setItem("userId", response.data.user.uid || response.data.user.user_id || "");
-      navigate("/courses");
-    } catch (err) {
-      setError(err.message || err.detail || "Google sign-in failed");
-    } finally {
+      // Start Google OAuth flow
+      startGoogleLogin();
+    } catch (error) {
+      console.error("Google login error:", error);
+      setError("Google login failed. Please try again.");
       setLoading(false);
     }
   };
@@ -95,7 +88,7 @@ export default function Login() {
               marginBottom: 24
             }}
             disabled={loading}
-            onClick={handleGoogleSignIn}
+            onClick={handleGoogleLogin}
           >
             <svg width="20" height="20" viewBox="0 0 48 48" style={{ marginRight: 8 }}><g><path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C36.68 2.36 30.74 0 24 0 14.82 0 6.71 5.1 2.69 12.44l8.01 6.22C12.6 13.13 17.88 9.5 24 9.5z"/><path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.6C43.93 37.13 46.1 31.36 46.1 24.55z"/><path fill="#FBBC05" d="M10.7 28.66c-1.01-2.99-1.01-6.33 0-9.32l-8.01-6.22C.68 17.1 0 20.47 0 24c0 3.53.68 6.9 2.69 10.88l8.01-6.22z"/><path fill="#EA4335" d="M24 48c6.48 0 11.92-2.15 15.89-5.86l-7.19-5.6c-2.01 1.35-4.6 2.16-8.7 2.16-6.12 0-11.4-3.63-13.3-8.88l-8.01 6.22C6.71 42.9 14.82 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></g></svg>
             Sign in with Google
@@ -145,7 +138,7 @@ export default function Login() {
                 </label>
                 <Link to="/forgot-password" style={{ color: "#2563eb", fontSize: 14, textDecoration: "none", fontWeight: 400 }}>Forgot password?</Link>
               </div>
-              {error && <div style={{ color: "red", marginBottom: 8 }}>{error}</div>}
+              {error && <div style={{ color: "red", marginBottom: 8, fontSize: 14 }}>{error}</div>}
               <button
                 type="submit"
                 disabled={loading}

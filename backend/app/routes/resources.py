@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query
 from pydantic import BaseModel
 from typing import List, Optional
-from backend.utils.storage_course import storage_service
-from backend.utils import openai_service
-from backend.utils.exceptions import handle_course_error
+from ..utils.storage_course import storage_service
+from ..utils import openai_service
+from ..utils.exceptions import handle_course_error
 import logging
 from firebase_admin import auth as admin_auth
-from backend.utils.openai_service import add_all_files_to_assistant
+from ..utils.openai_service import add_all_files_to_assistant
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

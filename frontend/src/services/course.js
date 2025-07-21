@@ -1,52 +1,95 @@
-import axios from 'axios';
+// Course service for API calls to backend
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:8000/api';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+// Helper to get the Firebase token from localStorage
+function getAuthToken() {
+  return localStorage.getItem('authToken');
+}
 
-function getToken() {
-  return localStorage.getItem('token');
+// Helper function to make authenticated API calls
+async function apiCall(endpoint, options = {}) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+
+  const url = `${API_BASE}${endpoint}`;
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export async function fetchCourses() {
-  const res = await axios.get(`${API_BASE}/courses`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
-  return res.data;
+  try {
+    const courses = await apiCall('/courses');
+    return courses;
+  } catch (error) {
+    console.error('Failed to fetch courses:', error);
+    throw error;
+  }
 }
 
 export async function createCourse({ name, description, year, level }) {
-  const res = await axios.post(`${API_BASE}/courses`, { name, description, year, level }, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`
-    }
-  });
-  return res.data;
+  try {
+    const courseData = await apiCall('/courses', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        name, 
+        description, 
+        year: year || 2024, 
+        level: level || "Beginner" 
+      }),
+    });
+    return courseData;
+  } catch (error) {
+    console.error('Failed to create course:', error);
+    throw error;
+  }
+}
+
+export async function updateCourse(courseId, { name, description, archived }) {
+  try {
+    const courseData = await apiCall(`/courses/${courseId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description, archived }),
+    });
+    return courseData;
+  } catch (error) {
+    console.error('Failed to update course:', error);
+    throw error;
+  }
 }
 
 export async function deleteCourse(courseId) {
-  const res = await axios.delete(`${API_BASE}/courses/${courseId}`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
-  return res.data;
+  try {
+    const result = await apiCall(`/courses/${courseId}`, {
+      method: 'DELETE',
+    });
+    return result;
+  } catch (error) {
+    console.error('Failed to delete course:', error);
+    throw error;
+  }
 }
 
 export async function getCourse(courseId) {
-  const res = await axios.get(`${API_BASE}/courses/${courseId}`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
-  return res.data;
-}
-
-export async function saveCourseSettings(courseId, settings) {
-  const res = await axios.put(`${API_BASE}/courses/${courseId}/settings`, settings, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
-  return res.data;
-}
-
-export async function getCourseSettings(courseId) {
-  const res = await axios.get(`${API_BASE}/courses/${courseId}/settings`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
-  return res.data;
+  try {
+    const course = await apiCall(`/courses/${courseId}`);
+    return course;
+  } catch (error) {
+    console.error('Failed to fetch course:', error);
+    throw error;
+  }
 } 

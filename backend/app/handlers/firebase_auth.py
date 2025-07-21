@@ -1,4 +1,4 @@
-from backend.config.firebase import db, firebase_config
+from ..config.firebase import db, firebase_config
 from firebase_admin import auth as admin_auth
 import pyrebase
 import uuid

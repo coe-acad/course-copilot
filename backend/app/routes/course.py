@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.utils.storage_course import storage_service
-from backend.utils import openai_service
-from backend.utils.exceptions import handle_course_error
+from ..utils.storage_course import storage_service
+from ..utils import openai_service
+from ..utils.exceptions import handle_course_error
 from firebase_admin import auth
 import logging
 

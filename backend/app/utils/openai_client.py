@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from backend.config.settings import settings
+from ..config.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
