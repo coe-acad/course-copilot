@@ -1,10 +1,11 @@
+from ast import parse
 import json
-from pybars3 import Compiler
+from jinja2 import Template
 import os
 
 class PromptParser:
     def __init__(self):
-        self.compiler = Compiler()
+        pass  # Removed Compiler, not needed with Jinja2
 
     def _load_template_json(self, template_file_path):
         if not os.path.exists(template_file_path):
@@ -37,8 +38,5 @@ class PromptParser:
             for variable_name, variable_value in input_variables.items()
             if variable_name in required_vars or variable_name in optional_vars
         }
-        template = self.compiler.compile(prompt_template)
-        return ''.join(template(context))
-
-    def render_get_prompt(self, template_file_path, input_variables):
-        return ""
+        template = Template(prompt_template)
+        return template.render(**context)
