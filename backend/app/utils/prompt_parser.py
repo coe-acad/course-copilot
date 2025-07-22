@@ -39,3 +39,6 @@ class PromptParser:
         }
         template = self.compiler.compile(prompt_template)
         return ''.join(template(context))
+
+    def render_get_prompt(self, template_file_path, input_variables):
+        return ""
