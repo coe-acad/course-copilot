@@ -1,12 +1,13 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional
-from ..utils.storage_course import storage_service
-from ..utils import openai_service
+from ..services import openai_service
+from ..services.storage_course import storage_service
+from ..services.openai_service import add_all_files_to_assistant
 from ..utils.exceptions import handle_course_error
 import logging
 from firebase_admin import auth as admin_auth
-from ..utils.openai_service import add_all_files_to_assistant
+from ..utils.verify_token import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,17 +34,8 @@ class ResourceCreateRequest(BaseModel):
     title: str
     url: str
 
-def verify_token(token: str) -> str:
-    try:
-        decoded_token = admin_auth.verify_id_token(token.replace("Bearer ", ""))
-        return decoded_token['uid']
-    except Exception as e:
-        logger.error(f"Token verification failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
 @router.post("/courses/{course_id}/resources", response_model=ResourceListResponse)
-async def upload_resources(course_id: str, files: List[UploadFile] = File(...), authorization: str = Header(...), thread_id: str = Query(None)):
-    user_id = verify_token(authorization)
+async def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -67,8 +59,7 @@ async def upload_resources(course_id: str, files: List[UploadFile] = File(...), 
         raise handle_course_error(e)
 
 @router.post("/courses/{course_id}/resources/url", response_model=ResourceResponse)
-async def create_url_resource(course_id: str, request: ResourceCreateRequest, authorization: str = Header(...), thread_id: str = Query(None)):
-    user_id = verify_token(authorization)
+async def create_url_resource(course_id: str, request: ResourceCreateRequest, user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
         resource = await openai_service.create_resource(course_id, request.title, request.url, user_id, thread_id=thread_id)
         return resource
@@ -77,8 +68,7 @@ async def create_url_resource(course_id: str, request: ResourceCreateRequest, au
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/resources", response_model=ResourceListResponse)
-async def list_resources(course_id: str, authorization: str = Header(...), thread_id: str = Query(None)):
-    user_id = verify_token(authorization)
+async def list_resources(course_id: str, user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
         # Only pass thread_id if it's explicitly provided, otherwise get global resources
         if thread_id:
@@ -101,8 +91,7 @@ async def list_resources(course_id: str, authorization: str = Header(...), threa
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}/resources/{file_id}/checkout", response_model=ResourceResponse)
-async def checkout_resource(course_id: str, file_id: str, request: ResourceCheckoutRequest, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def checkout_resource(course_id: str, file_id: str, request: ResourceCheckoutRequest, user_id: str = Depends(verify_token)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -114,8 +103,7 @@ async def checkout_resource(course_id: str, file_id: str, request: ResourceCheck
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}/resources/{file_id}/checkin", response_model=ResourceResponse)
-async def checkin_resource(course_id: str, file_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def checkin_resource(course_id: str, file_id: str, user_id: str = Depends(verify_token)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -127,8 +115,7 @@ async def checkin_resource(course_id: str, file_id: str, authorization: str = He
         raise handle_course_error(e)
 
 @router.delete("/courses/{course_id}/resources", response_model=DeleteResponse)
-async def delete_resources(course_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def delete_resources(course_id: str, user_id: str = Depends(verify_token)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -140,8 +127,7 @@ async def delete_resources(course_id: str, authorization: str = Header(...)):
         raise handle_course_error(e)
 
 @router.delete("/courses/{course_id}/resources/{file_id}", response_model=DeleteResponse)
-async def delete_resource(course_id: str, file_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def delete_resource(course_id: str, file_id: str, user_id: str = Depends(verify_token)):
     try:
         result = await openai_service.delete_single_resource(course_id, file_id, user_id)
         return DeleteResponse(message=result["message"])
@@ -150,11 +136,10 @@ async def delete_resource(course_id: str, file_id: str, authorization: str = Hea
         raise handle_course_error(e)
 
 @router.post("/courses/{course_id}/assistant/fix-files")
-async def fix_incompatible_files(course_id: str, authorization: str = Header(...)):
+async def fix_incompatible_files(course_id: str, user_id: str = Depends(verify_token)):
     """
     Fix incompatible files by re-uploading them with proper extensions.
     """
-    user_id = verify_token(authorization)
     try:
         handled_file_ids = openai_service._handle_missing_files(course_id, user_id)
         return {"message": f"Handled {len(handled_file_ids)} files", "handled_file_ids": handled_file_ids}
@@ -163,11 +148,10 @@ async def fix_incompatible_files(course_id: str, authorization: str = Header(...
         raise handle_course_error(e)
 
 @router.post("/courses/{course_id}/assistant/resources")
-async def add_all_files_to_assistant_route(course_id: str, authorization: str = Header(...), thread_id: str = Query(...)):
+async def add_all_files_to_assistant_route(course_id: str, user_id: str = Depends(verify_token), thread_id: str = Query(...)):
     """
     Add all resources (regardless of status) to the assistant's file search (vector store).
     """
-    user_id = verify_token(authorization)
     try:
         result = await add_all_files_to_assistant(course_id, user_id, thread_id)
         return result
@@ -176,8 +160,7 @@ async def add_all_files_to_assistant_route(course_id: str, authorization: str = 
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/brainstorm/{thread_id}/messages", response_model=ResourceListResponse)
-async def list_brainstorm_messages(course_id: str, thread_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def list_brainstorm_messages(course_id: str, thread_id: str, user_id: str = Depends(verify_token)):
     try:
         resources = storage_service.get_brainstorm_messages(course_id, thread_id, user_id)
         return ResourceListResponse(
@@ -195,8 +178,7 @@ async def list_brainstorm_messages(course_id: str, thread_id: str, authorization
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/brainstorm/{thread_id}/resources", response_model=ResourceListResponse)
-async def list_brainstorm_resources(course_id: str, thread_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def list_brainstorm_resources(course_id: str, thread_id: str, user_id: str = Depends(verify_token)):
     try:
         resources = storage_service.get_brainstorm_resources(course_id, thread_id, user_id)
         return ResourceListResponse(

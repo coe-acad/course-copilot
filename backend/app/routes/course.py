@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from ..utils.storage_course import storage_service
-from ..utils import openai_service
+from ..services.storage_course import storage_service
+from ..services import openai_service
 from ..utils.exceptions import handle_course_error
 from firebase_admin import auth
 import logging
+from ..utils.verify_token import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,17 +29,8 @@ class CourseSettingsRequest(BaseModel):
     use_reference_material_only: bool
     ask_clarifying_questions: bool
 
-def verify_token(token: str) -> str:
-    try:
-        decoded_token = auth.verify_id_token(token.replace("Bearer ", ""))
-        return decoded_token["uid"]
-    except Exception as e:
-        logger.error(f"Token verification failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
 @router.get("/courses")
-async def get_user_courses(authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def get_user_courses(user_id: str = Depends(verify_token)):
     try:
         courses = storage_service.get_user_courses(user_id)
         # Map 'name' to 'title' for frontend compatibility
@@ -52,8 +44,7 @@ async def get_user_courses(authorization: str = Header(...)):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @router.post("/courses")
-async def create_course(request: CourseCreateRequest, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
     try:
         # Provide default values if not supplied
         year = request.year if request.year is not None else 2024
@@ -85,8 +76,7 @@ async def create_course(request: CourseCreateRequest, authorization: str = Heade
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}")
-async def update_course(course_id: str, request: CourseUpdateRequest, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def update_course(course_id: str, request: CourseUpdateRequest, user_id: str = Depends(verify_token)):
     try:
         course = await openai_service.update_course(
             course_id, request.name, request.description, request.archived, user_id
@@ -98,8 +88,7 @@ async def update_course(course_id: str, request: CourseUpdateRequest, authorizat
         raise handle_course_error(e)
 
 @router.delete("/courses/{course_id}")
-async def delete_course(course_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
     try:
         await openai_service.delete_course(course_id, user_id)
         logger.info(f"Deleted course {course_id} for user {user_id}")
@@ -109,8 +98,7 @@ async def delete_course(course_id: str, authorization: str = Header(...)):
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}/settings")
-async def update_course_settings(course_id: str, request: CourseSettingsRequest, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def update_course_settings(course_id: str, request: CourseSettingsRequest, user_id: str = Depends(verify_token)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -124,8 +112,7 @@ async def update_course_settings(course_id: str, request: CourseSettingsRequest,
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/settings")
-async def get_course_settings(course_id: str, authorization: str = Header(...)):
-    user_id = verify_token(authorization)
+async def get_course_settings(course_id: str, user_id: str = Depends(verify_token)):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:

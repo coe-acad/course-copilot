@@ -2,7 +2,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import logging
-from .settings import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 

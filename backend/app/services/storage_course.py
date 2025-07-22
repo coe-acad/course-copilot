@@ -1,4 +1,4 @@
-from ..config.firebase import db
+from ..services.firebase import db
 import logging
 from typing import Dict, Optional, List
 from datetime import datetime

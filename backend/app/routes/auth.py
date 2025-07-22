@@ -6,7 +6,7 @@ import requests
 import pyrebase
 from firebase_admin import auth
 import logging
-from ..config.firebase import firebase_config, db
+from ..services.firebase import firebase_config, db
 from ..config.settings import settings
 
 router = APIRouter()

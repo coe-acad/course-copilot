@@ -1,15 +1,16 @@
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, HTTPException, Header, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
-from ..utils.storage_course import storage_service
-from ..utils import openai_service
+from ..services.storage_course import storage_service
+from ..services import openai_service
 from ..utils.exceptions import handle_course_error
 import logging
 from firebase_admin import auth as admin_auth
 import uuid
 from datetime import datetime
 import json
+from ..utils.verify_token import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,20 +41,11 @@ class CreateThreadResponse(BaseModel):
 class CourseOutcomesMessageRequest(BaseModel):
     message: str
 
-def verify_token(token: str) -> str:
-    try:
-        decoded_token = admin_auth.verify_id_token(token.replace("Bearer ", ""))
-        return decoded_token['uid']
-    except Exception as e:
-        logger.error(f"Token verification failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
 @router.post("/courses/{course_id}/{asset}/create-thread", response_model=CreateThreadResponse)
-async def create_asset_thread(course_id: str, authorization: str = Header(...)):
+async def create_asset_thread(course_id: str, user_id: str = Depends(verify_token)):
     """
     Always create a new course outcomes thread (like brainstorm).
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -101,11 +93,10 @@ async def create_asset_thread(course_id: str, authorization: str = Header(...)):
         raise handle_course_error(e)
 
 @router.post("/courses/{course_id}/course-outcomes/start", response_model=CourseOutcomesResponse)
-async def start_course_outcomes(course_id: str, request: CourseOutcomesRequest, authorization: str = Header(...)):
+async def start_course_outcomes(course_id: str, request: CourseOutcomesRequest, user_id: str = Depends(verify_token)):
     """
     Start a course outcomes generation session with user inputs.
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -202,12 +193,11 @@ async def send_course_outcomes_message(
     course_id: str, 
     thread_id: str, 
     request: CourseOutcomesMessageRequest,
-    authorization: str = Header(...)
+    user_id: str = Depends(verify_token)
 ):
     """
     Send a message in the course outcomes thread.
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -235,12 +225,11 @@ async def send_course_outcomes_message_stream(
     course_id: str, 
     thread_id: str, 
     request: CourseOutcomesMessageRequest,
-    authorization: str = Header(...)
+    user_id: str = Depends(verify_token)
 ):
     """
     Send a message in the course outcomes thread and stream the response token by token.
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -273,12 +262,11 @@ async def send_course_outcomes_message_stream(
 async def get_course_outcomes_messages(
     course_id: str, 
     thread_id: str, 
-    authorization: str = Header(...)
+    user_id: str = Depends(verify_token)
 ):
     """
     Get all messages from a course outcomes thread.
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -301,11 +289,10 @@ async def get_course_outcomes_messages(
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/course-outcomes/threads")
-async def list_course_outcomes_threads(course_id: str, authorization: str = Header(...)):
+async def list_course_outcomes_threads(course_id: str, user_id: str = Depends(verify_token)):
     """
     List all course outcomes threads for a course.
     """
-    user_id = verify_token(authorization)
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:

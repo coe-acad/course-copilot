@@ -15,12 +15,15 @@ function handleAxiosError(error) {
 
 export async function createBrainstormThread(courseId) {
   try {
-    const res = await axios.post(`${API_BASE}/courses/${courseId}/brainstorm/threads`, {}, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getToken()}`
+    const res = await axios.post(
+      `${API_BASE}/courses/${courseId}/brainstorm/threads`,
+      undefined, // No body
+      {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
       }
-    });
+    );
     return res.data;
   } catch (error) {
     handleAxiosError(error);

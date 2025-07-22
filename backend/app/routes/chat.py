@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
-from ..utils.storage_course import storage_service
-from ..utils import openai_service
+from ..services.storage_course import storage_service
+from ..services import openai_service
 from ..utils.exceptions import handle_course_error, CourseNotFoundError
-from firebase_admin import auth as admin_auth
+from firebase_admin import auth as auth
 import logging
+from ..utils.verify_token import verify_token
+import requests
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,15 +28,6 @@ class MessagesResponse(BaseModel):
 
 class BrainstormRequest(BaseModel):
     message: str
-
-# Dependency for token verification
-def verify_token(authorization: str = Header(...)) -> str:
-    try:
-        decoded_token = admin_auth.verify_id_token(authorization.replace("Bearer ", ""))
-        return decoded_token['uid']
-    except Exception as e:
-        logger.error(f"Token verification failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 # --- Chat Endpoints ---
 
@@ -134,7 +127,11 @@ async def send_chat_message_stream(
 # --- Brainstorm Endpoints ---
 
 @router.post("/courses/{course_id}/brainstorm/threads", response_model=ThreadResponse)
-async def create_brainstorm_thread(course_id: str, user_id: str = Depends(verify_token)):
+async def create_brainstorm_thread(course_id: str, user_id: str = Depends(verify_token), request: Request = None):
+    # Debug: print the request body to see if anything is being sent
+    if request is not None:
+        body = await request.body()
+        logger.info(f"[DEBUG] Brainstorm thread creation request body: {body}")
     """
     Always create a new brainstorm thread for a course
     """
