@@ -3,12 +3,12 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
-import Studio from "./pages/Studio";
 import Courses from "./pages/Courses";
 import { FilesProvider } from "./context/FilesContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 import ForgotPassword from "./pages/ForgotPassword";
+import AssetStudio from './pages/AssetStudio';
 
 function App() {
   return (
@@ -19,7 +19,7 @@ function App() {
             <Route path="/" element={<Navigate to="/login" />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/studio/:option" element={<Studio />} />
+            <Route path="/studio/:feature" element={<AssetStudio />} />
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/register" element={<Register />} />
