@@ -18,6 +18,7 @@ from io import BytesIO
 import json
 import re
 from openai import AssistantEventHandler
+from openai import AsyncOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -1160,33 +1161,105 @@ async def attach_all_files_to_thread(course_id: str, user_id: str, thread_id: st
         logger.warning("[ASSET INIT] No compatible files found to add to assistant")
     return {"added_file_ids": all_file_ids}
 
-async def add_all_files_to_assistant(course_id: str, user_id: str, thread_id: str):
-    """
-    Add ALL resources (regardless of status) to the assistant's file search and attach to the thread.
-    """
+def add_files_to_assistant_vector_store(course_id: str, user_id: str, resources: list):
+    if not course_id or not user_id:
+        raise ValueError("course_id and user_id must not be empty")
+    if not resources:
+        logger.info("[ALL FILES] No new resources to add to assistant's vector store")
+        return {"added_file_ids": []}
+
     course = storage_service.get_course(course_id, user_id)
     if not course:
         raise CourseNotFoundError(f"Course {course_id} not found")
-    # Gather all resources
-    course_resources = storage_service.get_resources(course_id, user_id=user_id)
-    asset_resources = storage_service.get_resources(course_id, thread_id=thread_id, user_id=user_id)
-    all_resources = course_resources + asset_resources
-    all_file_ids = [
-        r.get("openai_file_id")
-        for r in all_resources
-        if r.get("openai_file_id")
-    ]
-    logger.info(f"[ALL FILES] Adding these files to assistant's file search: {all_file_ids}")
-    compatible_files = _check_file_compatibility(all_file_ids)
-    if compatible_files:
-        logger.info(f"[ALL FILES] Adding compatible files to assistant: {compatible_files}")
-        _add_files_to_assistant(course["assistant_id"], compatible_files)
-        logger.info(f"[ALL FILES] Attaching compatible files to thread {thread_id}: {compatible_files}")
-        _attach_files_to_thread(thread_id, compatible_files)
-        logger.info(f"[ALL FILES] Added {len(compatible_files)} compatible files to assistant and attached to thread")
+
+    client = OpenAI()
+    assistant_id = course["assistant_id"]
+
+    # Get existing vector store for the assistant
+    assistant = client.beta.assistants.retrieve(assistant_id=assistant_id)
+    existing_vector_store_ids = (
+        assistant.tool_resources.file_search.vector_store_ids
+        if assistant.tool_resources.file_search
+        else []
+    )
+    if not existing_vector_store_ids:
+        vector_store = client.vector_stores.create(name=f"Course_{assistant_id}_files")
+        vector_store_id = vector_store.id
+        update_assistant = True
     else:
-        logger.warning("[ALL FILES] No compatible files found to add to assistant")
-    return {"added_file_ids": all_file_ids}
+        vector_store_id = existing_vector_store_ids[0]
+        vector_store = client.vector_stores.retrieve(vector_store_id=vector_store_id)
+        update_assistant = False
+
+    # Only use the just-uploaded resources
+    file_paths = [r.get("local_path") for r in resources if r.get("local_path")]
+    file_streams = []
+    for path in file_paths:
+        try:
+            file_streams.append(open(path, "rb"))
+        except FileNotFoundError:
+            logger.warning(f"File not found, skipping: {path}")
+
+    if not file_streams:
+        logger.info("[ALL FILES] No new files to add to assistant's vector store")
+        return {"added_file_ids": []}
+
+    file_batch = client.vector_stores.file_batches.upload_and_poll(
+        vector_store_id=vector_store_id,
+        files=file_streams
+    )
+
+    for f in file_streams:
+        f.close()
+
+    if update_assistant:
+        client.beta.assistants.update(
+            assistant_id=assistant_id,
+            tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
+            tools=[{"type": "file_search"}]
+        )
+
+    logger.info(f"[ALL FILES] Added {len(file_paths)} new files to vector store for assistant {assistant_id}")
+    return {"added_file_ids": file_paths}
+
+async def _get_or_create_vector_store(client, assistant_id):
+    """
+    Retrieve or create a vector store for the assistant.
+    """
+    # Check if assistant already has a vector store
+    assistant = await client.beta.assistants.retrieve(assistant_id)
+    if hasattr(assistant.tool_resources, 'file_search') and assistant.tool_resources.file_search and assistant.tool_resources.file_search.vector_store_ids:
+        vector_store_id = assistant.tool_resources.file_search.vector_store_ids[0]
+        return await client.vector_stores.retrieve(vector_store_id)
+
+    # Create a new vector store
+    vector_store = await client.vector_stores.create(name=f"Course_{assistant_id}_files")
+    return vector_store
+
+async def _add_files_to_vector_store(client, vector_store_id, file_ids):
+    """
+    Add files to the specified vector store.
+    """
+    await client.beta.vector_stores.file_batches.create(
+        vector_store_id=vector_store_id,
+        file_ids=file_ids
+    )
+    logger.info(f"Added {len(file_ids)} files to vector store {vector_store_id}")
+
+async def _update_assistant_with_vector_store(client, assistant_id, vector_store_id):
+    """
+    Update the assistant to use the vector store for file search.
+    """
+    await client.beta.assistants.update(
+        assistant_id=assistant_id,
+        tool_resources={
+            "file_search": {
+                "vector_store_ids": [vector_store_id]
+            }
+        },
+        tools=[{"type": "file_search"}]  # Enable file_search tool
+    )
+    logger.info(f"Updated assistant {assistant_id} to use vector store {vector_store_id}")
 
 async def delete_resources(course_id: str, assistant_id: str, user_id: str):
     """
@@ -1436,6 +1509,3 @@ def _generate_brainstorm_system_prompt(checked_in_files, checked_out_files, sett
     prompt = f"""{settings_section}Please assist instructors at a liberal STEM university, focusing on project-based learning, by providing brainstorming help and answering questions related to their courses, also known as \"sprints.\"\n\nUniversity Context:\n- Each sprint is 13 days long, with 6 hours of learning per day.\n- Formative assessments include activities (40 marks), quizzes (30 marks), peer evaluation (15 marks), and viva (15 marks).\n- Summative assessments consist of a project (50 marks) and an assessment of essential concepts (an exam worth 50 marks).\n\nYour Role:\n- Engage with users by answering questions and providing brainstorming support.\n- Proactively ask clarifying questions when necessary.\n- Use available reference documents for accurate and relevant assistance.\n\n# Steps\n- Collaborate with instructors to develop ideas and solutions tailored to their courses. Maintain alignment with the University Context.\n- Use provided reference documents to ensure accurate recommendations.\n- Handle file access requests appropriately based on file status.\n\n# Output Format\nProvide responses in a conversational format, using clear and concise language. Include questions and suggestions as needed to guide the user effectively.\n\n# File Access Rules\n- Only use files that are currently checked in and available\n- When asked about checked-out files, inform the user they need to check them in first\n- Focus on available resources and suggest alternatives when needed\n\n# Notes\nEnsure that your assistance aligns with the university's project-based learning model and supports the instructors' goals in both teaching and assessments.\n\nAVAILABLE REFERENCE DOCUMENTS: {file_names}{checked_out_section}"""
     logger.info(f"[SYSTEM PROMPT GENERATED]:\n{prompt}")
     return prompt
-
-# Ensure this function is accessible as an attribute
-add_all_files_to_assistant = add_all_files_to_assistant

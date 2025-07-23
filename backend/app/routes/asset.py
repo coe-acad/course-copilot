@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 import logging
+from ..services.storage_course import storage_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,6 +20,12 @@ async def create_asset(course_id: str, asset_name: str, request: AssetRequest):
     Create an asset by sending the constructed prompt (for the given asset_name) to a new OpenAI chat thread.
     """
     try:
+        # Get the course and assistant_id
+        course = storage_service.get_course(course_id)
+        if not course or "assistant_id" not in course:
+            raise HTTPException(status_code=404, detail="Course or assistant not found")
+        assistant_id = course["assistant_id"]
+
         # Construct the prompt using PromptParser
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_name, request.input_variables)
@@ -37,7 +44,7 @@ async def create_asset(course_id: str, asset_name: str, request: AssetRequest):
         # Run the assistant to get a response
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=None  # If you have a default assistant, set its ID here
+            assistant_id=assistant_id  # Use the course's assistant_id here
         )
 
         # Wait for the run to complete (polling)

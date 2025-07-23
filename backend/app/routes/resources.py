@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from ..services import openai_service
 from ..services.storage_course import storage_service
-from ..services.openai_service import add_all_files_to_assistant
+from ..services.openai_service import add_files_to_assistant_vector_store
 from ..utils.exceptions import handle_course_error
 import logging
 from firebase_admin import auth as admin_auth
@@ -40,19 +40,8 @@ async def upload_resources(course_id: str, files: List[UploadFile] = File(...), 
         course = storage_service.get_course(course_id, user_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
-        
-        # Upload resources with thread_id if provided (asset-level upload)
         resources = await openai_service.upload_resources(course_id, course["assistant_id"], files, user_id, thread_id=thread_id)
-        
-        # If this is an asset-level upload, automatically add checked-in files to the thread
-        if thread_id:
-            logger.info(f"Asset-level upload detected for thread {thread_id}, adding files to thread")
-            try:
-                await openai_service.attach_all_files_to_thread(course_id, user_id, thread_id)
-                logger.info(f"Successfully added files to thread {thread_id}")
-            except Exception as e:
-                logger.warning(f"Failed to add files to thread {thread_id}: {str(e)}")
-        
+        openai_service.add_files_to_assistant_vector_store(course_id, user_id, resources)
         return ResourceListResponse(courseId=course_id, resources=resources)
     except Exception as e:
         logger.error(f"Error uploading resources: {str(e)}")

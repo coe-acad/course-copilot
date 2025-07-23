@@ -19,3 +19,5 @@ Thumbs.db
 .pytest_cache/
 .coverage
 .cache
+
+local_storage
