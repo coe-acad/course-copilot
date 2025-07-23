@@ -9,108 +9,6 @@ import SettingsModal from "../components/SettingsModal";
 import { uploadCourseResources, addAllFilesToAssistant } from "../services/resources";
 import { createBrainstormThread } from "../services/brainstorm";
 
-function TopRow({ onAddContentClick, onSettingsClick }) {
-  const courseTitle = localStorage.getItem("currentCourseTitle") || "Course Title";
-  const navigate = useNavigate();
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: "100%" }}>
-      <div>
-        <button
-          style={{
-            background: "#fff",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: "7px 18px",
-            fontWeight: 500,
-            fontSize: 15,
-            color: "#222",
-            cursor: "pointer",
-            marginBottom: 18,
-            boxShadow: "0 1px 2px #0001"
-          }}
-          onClick={() => navigate("/courses")}
-        >
-          Back to Courses
-        </button>
-        <div style={{ fontWeight: 700, fontSize: 32, marginTop: 0 }}>{courseTitle}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, justifyContent: "flex-end" }}>
-        {/* Toggle button group */}
-        <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#f5f8ff", borderRadius: 8, border: "1px solid #e0e7ef", overflow: "hidden", height: 38, marginRight: 10 }}>
-          <button
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
-              height: 38,
-              cursor: "pointer",
-              outline: "none",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
-            }}
-          >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>▦</span>
-          </button>
-          <button
-            style={{
-              background: "#fff",
-              color: "#222",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
-              height: 38,
-              cursor: "pointer",
-              outline: "none",
-              borderLeft: "1px solid #e0e7ef",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
-            }}
-          >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>≡</span>
-          </button>
-        </div>
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "#fff",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#222",
-            cursor: "pointer",
-            marginRight: 2
-          }}
-          onClick={onSettingsClick}
-        >
-          Settings
-        </button>
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "none",
-            background: "#2563eb",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#fff",
-            cursor: "pointer"
-          }}
-        >
-          Export to LMS
-        </button>
-      </div>
-    </div>
-  );
-}
 
 
 const curriculumOptions = [
@@ -153,6 +51,7 @@ export default function Dashboard() {
   // const [showAddResourceModal, setShowAddResourceModal] = useState(false);
   // const [selectedResourceOption, setSelectedResourceOption] = useState(0); // 0: Upload, 1: Discover
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isGridView, setIsGridView] = useState(true);
   const navigate = useNavigate();
   // const { addFiles } = useFilesContext();
   const [resourceError, setResourceError] = useState("");
@@ -236,15 +135,45 @@ export default function Dashboard() {
   //   setUploadingFiles([]);
   // };
 
+  // Handler functions
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+  const handleSettings = () => setShowSettingsModal(true);
+  const handleExport = () => alert("Export to LMS coming soon!");
+  const handleGridView = () => setIsGridView(true);
+  const handleListView = () => setIsGridView(false);
+
   return (
     <div style={{ minHeight: "100vh", height: "100vh", background: "#fafbfc", display: "flex", flexDirection: "column" }}>
-      <Header />
-      <TopRow onSettingsClick={() => setShowSettingsModal(true)} />
-      <div className="main-layout" style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1, minHeight: 0, height: "100%", padding: "0 5vw" }}>
+      <Header
+        title="Creators Copilot"
+        onLogout={handleLogout}
+        onSettings={handleSettings}
+        onExport={handleExport}
+        onGridView={handleGridView}
+        onListView={handleListView}
+        isGridView={isGridView}
+      />
+      {/* Breadcrumb Navigation */}
+      <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: "100%", display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500, color: '#222' }}>
+        <span
+          style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => navigate('/courses')}
+        >
+          Courses
+        </span>
+        <span style={{ color: '#888', fontSize: 18, margin: '0 6px' }}>{'>'}</span>
+        <span style={{ fontWeight: 700, color: '#111', fontSize: 22 }}>
+          {localStorage.getItem("currentCourseTitle") || "Course Title"}
+        </span>
+      </div>
+      <div className="main-layout" style={{ display: "flex", gap: 24, alignItems: "stretch", flex: 1, minHeight: 0, height: "100%", padding: "0 5vw" }}>
         {/* Main Content: 4 cards inside a scrollable card container */}
         <div style={{ flex: 2, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
           <div style={{ background: "rgb(250, 251, 252)", borderRadius: 16, boxShadow: "none", padding: 0, height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, padding: "32px 24px 32px 24px" }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, padding: "24px 24px 32px 24px" }}>
           <SectionCard
             title="Curriculum"
             buttonLabel="Create"
@@ -291,7 +220,7 @@ export default function Dashboard() {
           </div>
         </div>
         {/* Sidebar */}
-        <div className="sidebar" style={{ flex: 1, minWidth: 280, height: "100%" }}>
+        <div className="sidebar" style={{ flex: 1, minWidth: 280, height: "100%", display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', marginTop: 24 }}>
           <Sidebar ref={sidebarRef} onAddContentClick={() => setShowAddResourceModal(true)} />
           {/* Removed Knowledge Base/resources section as requested */}
         </div>

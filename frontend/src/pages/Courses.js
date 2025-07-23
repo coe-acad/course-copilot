@@ -65,106 +65,127 @@ export default function Courses() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column", height: '100vh', overflow: 'hidden' }}>
       {/* Header Bar */}
-      <div style={{ height: 40, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ background: "#2563eb", color: "#fff", borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16, marginRight: 8 }}>
+      <div style={{
+        height: 64,
+        minHeight: 64,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "1px solid #e5eaf2",
+        padding: "0 32px",
+        position: 'sticky',
+        top: 0,
+        background: '#fff',
+        zIndex: 10,
+        boxShadow: '0 2px 12px #2563eb0a',
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ background: "#2563eb", color: "#fff", borderRadius: 12, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 22, marginRight: 14, boxShadow: '0 2px 8px #2563eb22' }}>
             C
           </div>
-          <span style={{ fontWeight: 500, fontSize: 15, color: "#222" }}>Creators Copilot</span>
+          <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>Creators Copilot</span>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "#222", fontWeight: 500, fontSize: 15, cursor: "pointer", padding: 0 }}
-        >
-          <FaUserCircle style={{ fontSize: 22, color: "#2563eb" }} /> Logout
-        </button>
-      </div>
-      {/* Courses List or Centered Create Button */}
-      {loading ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>Loading...</div>
-      ) : courses.length === 0 ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <button
-            style={{ padding: "10px 22px", borderRadius: 6, border: "none", background: "#1680ea", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}
             onClick={handleCreate}
+            style={{
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 26px',
+              fontWeight: 600,
+              fontSize: 16,
+              boxShadow: '0 2px 8px #2563eb22',
+              cursor: 'pointer',
+              transition: 'background 0.2s, box-shadow 0.2s',
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.background = '#174ea6';
+              e.currentTarget.style.boxShadow = '0 4px 16px #2563eb33';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.background = '#2563eb';
+              e.currentTarget.style.boxShadow = '0 2px 8px #2563eb22';
+            }}
           >
-            Create Course
+            Add Course
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", color: "#222", fontWeight: 500, fontSize: 16, cursor: "pointer", padding: 0 }}
+          >
+            <FaUserCircle style={{ fontSize: 26, color: "#2563eb" }} /> Logout
           </button>
         </div>
-      ) : (
-        <div
-          style={{
-            flex: 1,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '4px 24px',
-            padding: '40px 5vw',
-            alignItems: 'stretch',
-          }}
-        >
-          {courses.map((course, idx) => (
-            <div
-              key={course.id || idx}
-              style={{
-                background: '#f5f7fa',
-                borderRadius: 12,
-                boxShadow: '0 1px 4px #0001',
-                padding: '16px 24px',
-                minWidth: 180,
-                minHeight: 96,
-                height: 96,
-                fontWeight: 600,
-                fontSize: 18,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'box-shadow 0.15s',
-                border: '2px solid transparent',
-              }}
-              onClick={() => {
-                localStorage.setItem('currentCourseId', course.id || course.courseId);
-                localStorage.setItem('currentCourseTitle', course.name || course.title);
-                navigate('/dashboard');
-              }}
-              onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px #2563eb22'}
-              onMouseOut={e => e.currentTarget.style.boxShadow = '0 1px 4px #0001'}
+      </div>
+      {/* Scrollable Courses List Grid */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {loading ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>Loading...</div>
+        ) : courses.length === 0 ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button
+              style={{ padding: "10px 22px", borderRadius: 6, border: "none", background: "#1680ea", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}
+              onClick={handleCreate}
             >
-              {course.name || course.title}
-            </div>
-          ))}
-          {/* Persistent Create Course Card */}
-          <div
-            key="create-course-card"
-            style={{
-              background: '#eaf1fb',
-              borderRadius: 12,
-              boxShadow: '0 1px 4px #0001',
-              padding: '16px 24px',
-              minWidth: 180,
-              minHeight: 96,
-              height: 96,
-              fontWeight: 600,
-              fontSize: 38,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#2563eb',
-              border: '2px dashed #2563eb',
-              transition: 'box-shadow 0.15s, border 0.15s',
-            }}
-            onClick={handleCreate}
-            onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px #2563eb22'}
-            onMouseOut={e => e.currentTarget.style.boxShadow = '0 1px 4px #0001'}
-            title="Create a new course"
-          >
-            <span style={{ fontSize: 48, fontWeight: 400, lineHeight: 1 }}>+</span>
+              Create Course
+            </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '32px',
+              padding: '48px 4vw',
+              alignItems: 'stretch',
+              maxWidth: '1040px',
+              margin: '0 auto',
+            }}
+          >
+            {courses.map((course, idx) => (
+              <div
+                key={course.id || idx}
+                style={{
+                  background: '#fff',
+                  borderRadius: 18,
+                  boxShadow: '0 4px 24px #2563eb11',
+                  padding: '28px 18px',
+                  minHeight: 120,
+                  fontWeight: 600,
+                  fontSize: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'box-shadow 0.2s, transform 0.2s',
+                  border: '1.5px solid #e3e8f0',
+                  margin: 0,
+                }}
+                onClick={() => {
+                  localStorage.setItem('currentCourseId', course.id || course.courseId);
+                  localStorage.setItem('currentCourseTitle', course.name || course.title);
+                  navigate('/dashboard');
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.boxShadow = '0 8px 32px #2563eb22';
+                  e.currentTarget.style.transform = 'scale(1.04)';
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.boxShadow = '0 4px 24px #2563eb11';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                {course.name || course.title}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <Modal open={showModal} onClose={handleClose} modalStyle={{ minWidth: 0, maxWidth: 600, width: '100%', borderRadius: 12 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 24, marginBottom: 24 }}>Create Course</div>
