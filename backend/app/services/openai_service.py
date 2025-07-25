@@ -1,3 +1,4 @@
+from backend.app.utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from .storage_course import storage_service
 from ..utils.exceptions import CourseNotFoundError, ResourceNotFoundError, ResourceAlreadyCheckedOutError, ResourceAlreadyCheckedInError, OpenAIError
@@ -26,41 +27,29 @@ logger = logging.getLogger(__name__)
 LOCAL_STORAGE_DIR = Path("local_storage")
 LOCAL_STORAGE_DIR.mkdir(exist_ok=True)
 
-async def create_course_and_assistant(name: str, description: str, year: int, level: str, user_id: str) -> Tuple[str, str]:
+def create_assistant():
     try:
-        course_id = str(uuid4())
-        # Create assistant
+        assistant_prompt = PromptParser.parse_prompt("system/overall_context.json")
         assistant = client.beta.assistants.create(
-            name=name,
-            instructions=f"You are an assistant for the course: {name}. Description: {description}. Year: {year}, Level: {level}. You help students with course-related questions and provide guidance based on the course materials. You have access to course files and can search through them to provide accurate answers.",
+            name="Course Design Assistant",
+            instructions=assistant_prompt,
             model=settings.OPENAI_MODEL,
             tools=[{"type": "file_search"}]
         )
-        # Create thread ONCE for this asset
-        thread = client.beta.threads.create()
-        thread_id = thread.id
-
-        logger.info(f"Created assistant {assistant.id} and thread {thread_id} for course {course_id}")
-        # Store course data
-        course_data = {
-            "name": name,
-            "description": description,
-            "year": year,
-            "level": level,
-            "status": "draft",
-            "assistant_id": assistant.id,
-            "thread_id": thread_id,  # Store thread ID here
-            "resources": {},
-            "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        storage_service.create_course(course_id, course_data)
-        logger.info(f"Created course {course_id} with assistant {assistant.id} and thread {thread_id}")
-        return course_id, assistant.id
+        logger.info(f"Created Course Design Assistant {assistant.id}")
+        return assistant.id
     except Exception as e:
-        logger.error(f"Error creating course and assistant: {str(e)}")
-        raise OpenAIError(f"Failed to create course and assistant: {str(e)}")
+        logger.error(f"Error creating Course Design Assistant: {str(e)}")
+        raise OpenAIError(f"Failed to create Course Design Assistant: {str(e)}")
+
+def create_file(file_name: str, file_content: str):
+    return "to be done"
+
+def create_vector_store(assistant_id: str):
+    return "to be done"
+
+def connect_file_to_vector_store(assistant_id: str, file_id: str):
+    return "to be done"
 
 async def update_course(course_id: str, name: Optional[str], description: Optional[str], archived: Optional[bool], user_id: str) -> dict:
     try:

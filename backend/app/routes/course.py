@@ -7,6 +7,8 @@ from ..utils.exceptions import handle_course_error
 from firebase_admin import auth
 import logging
 from ..utils.verify_token import verify_token
+from ..services.mongo import get_courses_by_user_id
+from ..routes.resources import create_course_description_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -14,8 +16,6 @@ router = APIRouter()
 class CourseCreateRequest(BaseModel):
     name: str
     description: str
-    year: Optional[int] = None
-    level: Optional[str] = None
 
 class CourseUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -30,13 +30,9 @@ class CourseSettingsRequest(BaseModel):
     ask_clarifying_questions: bool
 
 @router.get("/courses")
-async def get_user_courses(user_id: str = Depends(verify_token)):
+def get_courses_for_user(user_id: str = Depends(verify_token)):
     try:
-        courses = storage_service.get_user_courses(user_id)
-        # Map 'name' to 'title' for frontend compatibility
-        for course in courses:
-            if 'name' in course:
-                course['title'] = course['name']
+        courses = get_courses_by_user_id(user_id)
         logger.info(f"Fetched courses for user {user_id}: {len(courses)} courses")
         return courses
     except Exception as e:
@@ -44,33 +40,12 @@ async def get_user_courses(user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @router.post("/courses")
-async def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
+def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
     try:
-        # Provide default values if not supplied
-        year = request.year if request.year is not None else 2024
-        level = request.level if request.level is not None else "Beginner"
-        course_id, assistant_id = await openai_service.create_course_and_assistant(
-            request.name, request.description, year, level, user_id
-        )
-        logger.info(f"Created course {course_id} for user {user_id}")
-        
-        # Get the created course from storage
-        course = storage_service.get_course(course_id, user_id)
-        if not course:
-            raise HTTPException(status_code=500, detail="Failed to retrieve created course")
-        # Map 'name' to 'title' for frontend compatibility
-        course['title'] = course['name']
-        return {
-            "courseId": course_id,
-            "title": course["name"],
-            "description": course["description"],
-            "year": course["year"],
-            "level": course["level"],
-            "status": course["status"],
-            "assistant_id": course["assistant_id"],
-            "created_at": course.get("created_at"),
-            "updated_at": course.get("updated_at")
-        }
+        assistant_id = openai_service.create_assistant()
+        course_id = create_course({"name": request.name, "description": request.description, "user_id": user_id, "assistant_id": assistant_id})
+        create_course_description_file(course_id, user_id)
+        return {"courseId": course_id}
     except Exception as e:
         logger.error(f"Error creating course: {str(e)}")
         raise handle_course_error(e)
