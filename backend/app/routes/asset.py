@@ -56,6 +56,33 @@ async def create_asset(course_id: str, asset_name: str, request: AssetRequest):
             content=prompt
         )
 
+        # If this is a course-outcomes asset, send the default welcome message
+        if asset_name == "course-outcomes":
+            # Gather checked-in files for display
+            course_resources = storage_service.get_resources(course_id, user_id=course.get("user_id"))
+            asset_resources = storage_service.get_resources(course_id, thread_id=thread_id, user_id=course.get("user_id"))
+            all_resources = course_resources + asset_resources
+            checked_in_files = [
+                r.get("title", r.get("fileName", "Unknown file"))
+                for r in all_resources
+                if r.get("status") == "checked_in"
+            ]
+            if checked_in_files:
+                files_text = f"**Checked-in Files:** {', '.join(checked_in_files)} ({len(checked_in_files)} file{'s' if len(checked_in_files) != 1 else ''})"
+            else:
+                files_text = "**Checked-in Files:** No files currently available"
+            course_name = course.get("name", "Unknown Course")
+            welcome_message = f"""✅ Course Outcomes Generator Ready\n\nI'm here to help you create comprehensive, measurable course outcomes for your course.\n\n**Course Name:** {course_name}\n{files_text}\n\nThe system is ready to help you generate course outcomes!\n\nType 'proceed' or ask any questions to get started."""
+            from datetime import datetime
+            from ..services import openai_service
+            await openai_service.save_course_outcomes_message(course_id, thread_id, {
+                "role": "assistant",
+                "content": welcome_message,
+                "timestamp": datetime.utcnow().isoformat(),
+                "user_id": course.get("user_id"),
+                "assistant_id": assistant_id
+            })
+
         # Run the assistant to get a response
         # The thread is linked to the assistant by passing assistant_id here
         run = client.beta.threads.runs.create(
@@ -81,7 +108,6 @@ async def create_asset(course_id: str, asset_name: str, request: AssetRequest):
         if not assistant_message:
             raise Exception("No assistant response found in thread.")
         response_text = "\n".join([c.text.value for c in assistant_message.content if hasattr(c, 'text') and hasattr(c.text, 'value')])
-        print(f"Response text: {response_text}")
         return AssetResponse(response=response_text, thread_id=thread_id)
     except Exception as e:
         logger.error(f"Exception in create_asset for asset '{asset_name}': {e}")

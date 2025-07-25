@@ -16,7 +16,7 @@ function handleAxiosError(error) {
 export async function createBrainstormThread(courseId) {
   try {
     const res = await axios.post(
-      `${API_BASE}/courses/${courseId}/brainstorm/threads`,
+      `${API_BASE}/courses/${courseId}/brainstorm/threads`, 
       undefined, // No body
       {
         headers: {
