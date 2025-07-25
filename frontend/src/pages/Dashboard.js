@@ -6,10 +6,9 @@ import Sidebar from "../components/Sidebar";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 // import { useFilesContext } from "../context/FilesContext";
-import { uploadCourseResources } from "../services/resources";
-// import { createBrainstormThread } from "../services/brainstorm";
-import KnowledgeBaseSelectModal from '../components/KnowledgeBaseSelectModal';
-import { getCourseResources } from "../services/resources";
+import { uploadCourseResources, addAllFilesToAssistant } from "../services/resources";
+import { createBrainstormThread } from "../services/brainstorm";
+import { courseOutcomesService } from '../services/courseOutcomes';
 
 const curriculumOptions = [
   {
@@ -100,9 +99,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleCurriculumCreate = () => setShowCurriculumModal(true);
+  // When opening the curriculum modal, always select the first option by default
+  const handleCurriculumCreate = () => {
+    setSelectedOption(0); // Always select the first option by default
+    setShowCurriculumModal(true);
+  };
   const handleModalClose = () => setShowCurriculumModal(false);
-  // const handleModalCreate = async () => {
+  // const handleModalCreate = async () => { // This function is removed
   //   const url = curriculumOptions[selectedOption].url;
   //   setShowCurriculumModal(false);
   //   navigate(`/studio/${url}`); // Navigate immediately for fast UX
@@ -119,6 +122,28 @@ export default function Dashboard() {
   //       });
   //   }
   // };
+
+  const handleCreate = async () => {
+    const assetName = curriculumOptions[selectedOption]?.url;
+    console.log('handleCreate: selectedOption:', selectedOption, 'assetName:', assetName);
+    if (!assetName) {
+      alert("Please select a valid curriculum component.");
+      return;
+    }
+    setShowCurriculumModal(false);
+    // Navigate immediately to AssetStudio for the selected asset
+    navigate(`/studio/${assetName}`);
+    // Start backend thread creation in the background
+    setTimeout(async () => {
+      try {
+        await courseOutcomesService.createThread(courseId, assetName);
+        // Optionally, trigger a refresh or update state in AssetStudio
+      } catch (error) {
+        // Optionally show an error or toast
+        console.error('Failed to create thread:', error);
+      }
+    }, 0);
+  };
 
   // Add Resource modal with Upload/Discover toggle
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
@@ -224,7 +249,7 @@ export default function Dashboard() {
                   <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, flex: 1 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444', marginLeft: 8 }}>(Based on the Academics term...)</span></h2>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", marginTop: 12 }}>
-                  <button style={{ padding: "8px 22px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer", marginLeft: 12, boxShadow: "0 1px 2px #0001", transition: "background 0.2s" }}>Create Documentation</button>
+                  <button onClick={handleCreate} style={{ padding: "8px 22px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer", marginLeft: 12, boxShadow: "0 1px 2px #0001", transition: "background 0.2s" }}>Create Documentation</button>
                 </div>
               </div>
             </div>
@@ -271,8 +296,7 @@ export default function Dashboard() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
           <button onClick={handleModalClose} style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Cancel</button>
-          <button onClick={() => {setShowCurriculumModal(false);
-        setShowKBModal(true);}} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }} disabled={selectedComponent === null}>Next</button>
+          <button onClick={handleCreate} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Create</button>
         </div>
       </Modal>
       <KnowledgeBaseSelectModal
