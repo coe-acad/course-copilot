@@ -14,14 +14,17 @@ function handleAxiosError(error) {
 }
 
 export const courseOutcomesService = {
-  createThread: async (courseId) => {
+  createThread: async (courseId, assetName, inputVariables = {}) => {
     try {
-      const res = await axios.post(`${API_BASE}/courses/${courseId}/course-outcomes/create-thread`, {}, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
+      const res = await axios.post(`${API_BASE}/courses/${courseId}/assets/${assetName}`,
+        { input_variables: inputVariables }, // Always send this shape
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          }
         }
-      });
+      );
       return res.data;
     } catch (error) {
       handleAxiosError(error);

@@ -8,110 +8,7 @@ import SettingsModal from "../components/SettingsModal";
 // import { useFilesContext } from "../context/FilesContext";
 import { uploadCourseResources, addAllFilesToAssistant } from "../services/resources";
 import { createBrainstormThread } from "../services/brainstorm";
-
-function TopRow({ onAddContentClick, onSettingsClick }) {
-  const courseTitle = localStorage.getItem("currentCourseTitle") || "Course Title";
-  const navigate = useNavigate();
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: "100%" }}>
-      <div>
-        <button
-          style={{
-            background: "#fff",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: "7px 18px",
-            fontWeight: 500,
-            fontSize: 15,
-            color: "#222",
-            cursor: "pointer",
-            marginBottom: 18,
-            boxShadow: "0 1px 2px #0001"
-          }}
-          onClick={() => navigate("/courses")}
-        >
-          Back to Courses
-        </button>
-        <div style={{ fontWeight: 700, fontSize: 32, marginTop: 0 }}>{courseTitle}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, justifyContent: "flex-end" }}>
-        {/* Toggle button group */}
-        <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#f5f8ff", borderRadius: 8, border: "1px solid #e0e7ef", overflow: "hidden", height: 38, marginRight: 10 }}>
-          <button
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
-              height: 38,
-              cursor: "pointer",
-              outline: "none",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
-            }}
-          >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>▦</span>
-          </button>
-          <button
-            style={{
-              background: "#fff",
-              color: "#222",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
-              height: 38,
-              cursor: "pointer",
-              outline: "none",
-              borderLeft: "1px solid #e0e7ef",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
-            }}
-          >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>≡</span>
-          </button>
-        </div>
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "#fff",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#222",
-            cursor: "pointer",
-            marginRight: 2
-          }}
-          onClick={onSettingsClick}
-        >
-          Settings
-        </button>
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "none",
-            background: "#2563eb",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#fff",
-            cursor: "pointer"
-          }}
-        >
-          Export to LMS
-        </button>
-      </div>
-    </div>
-  );
-}
-
+import { courseOutcomesService } from '../services/courseOutcomes';
 
 const curriculumOptions = [
   {
@@ -147,28 +44,40 @@ const curriculumOptions = [
 ];
 
 export default function Dashboard() {
+
+  const [showKBModal, setShowKBModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [allFiles, setAllFiles] = useState([]); // Fetch this from your backend or context
+  
   const [showCurriculumModal, setShowCurriculumModal] = useState(false);
   const [selectedOption, setSelectedOption] = useState(0);
-  // Remove Add Resources modal, go directly to upload modal
-  // const [showAddResourceModal, setShowAddResourceModal] = useState(false);
-  // const [selectedResourceOption, setSelectedResourceOption] = useState(0); // 0: Upload, 1: Discover
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isGridView, setIsGridView] = useState(true);
   const navigate = useNavigate();
-  // const { addFiles } = useFilesContext();
   const [resourceError, setResourceError] = useState("");
-  // Get courseId from localStorage or context (update as needed)
   const courseId = localStorage.getItem("currentCourseId");
   const sidebarRef = useRef();
-
-  // Fetch resources on mount or when courseId changes
   useEffect(() => {
-    if (!courseId) return;
-    // setResourceLoading(true); // This state is removed
-    // getCourseResources(courseId) // This state is removed
-    //   .then(data => setResources(data.resources || [])) // This state is removed
-    //   .catch(() => setResourceError("Failed to fetch resources")) // This state is removed
-    //   .finally(() => setResourceLoading(false)); // This state is removed
-  }, [courseId]);
+    async function fetchFiles() {
+      if (!courseId) return;
+      try {
+        const data = await getCourseResources(courseId);
+        setAllFiles(data.resources || []);
+      } catch (e) {
+        setAllFiles([]);
+      }
+    }
+    if (showKBModal) fetchFiles();
+  }, [showKBModal, courseId]);
+  // Fetch resources on mount or when courseId changes
+  // useEffect(() => {
+  //   if (!courseId) return;
+  //   // setResourceLoading(true); // This state is removed
+  //   // getCourseResources(courseId) // This state is removed
+  //   //   .then(data => setResources(data.resources || [])) // This state is removed
+  //   //   .catch(() => setResourceError("Failed to fetch resources")) // This state is removed
+  //   //   .finally(() => setResourceLoading(false)); // This state is removed
+  // }, [courseId]);
 
   // Handle real file upload to backend
   const handleFilesUpload = async files => {
@@ -190,24 +99,50 @@ export default function Dashboard() {
     }
   };
 
-  const handleCurriculumCreate = () => setShowCurriculumModal(true);
+  // When opening the curriculum modal, always select the first option by default
+  const handleCurriculumCreate = () => {
+    setSelectedOption(0); // Always select the first option by default
+    setShowCurriculumModal(true);
+  };
   const handleModalClose = () => setShowCurriculumModal(false);
-  const handleModalCreate = async () => {
-    const url = curriculumOptions[selectedOption].url;
-    setShowCurriculumModal(false);
-    navigate(`/studio/${url}`); // Navigate immediately for fast UX
-    // Start backend process in the background
-    if (courseId) {
-      createBrainstormThread(courseId)
-        .then(threadResponse => {
-          const threadId = threadResponse.thread_id || threadResponse.id || threadResponse.threadId;
-          return addAllFilesToAssistant(courseId, threadId);
-        })
-        .catch(e => {
-          // Optionally show an error or toast
-          console.error('Failed to add files to assistant:', e);
-        });
+  // const handleModalCreate = async () => { // This function is removed
+  //   const url = curriculumOptions[selectedOption].url;
+  //   setShowCurriculumModal(false);
+  //   navigate(`/studio/${url}`); // Navigate immediately for fast UX
+  //   // Start backend process in the background
+  //   if (courseId) {
+  //     createBrainstormThread(courseId)
+  //       .then(threadResponse => {
+  //         const threadId = threadResponse.thread_id || threadResponse.id || threadResponse.threadId;
+  //         return addAllFilesToAssistant(courseId, threadId);
+  //       })
+  //       .catch(e => {
+  //         // Optionally show an error or toast
+  //         console.error('Failed to add files to assistant:', e);
+  //       });
+  //   }
+  // };
+
+  const handleCreate = async () => {
+    const assetName = curriculumOptions[selectedOption]?.url;
+    console.log('handleCreate: selectedOption:', selectedOption, 'assetName:', assetName);
+    if (!assetName) {
+      alert("Please select a valid curriculum component.");
+      return;
     }
+    setShowCurriculumModal(false);
+    // Navigate immediately to AssetStudio for the selected asset
+    navigate(`/studio/${assetName}`);
+    // Start backend thread creation in the background
+    setTimeout(async () => {
+      try {
+        await courseOutcomesService.createThread(courseId, assetName);
+        // Optionally, trigger a refresh or update state in AssetStudio
+      } catch (error) {
+        // Optionally show an error or toast
+        console.error('Failed to create thread:', error);
+      }
+    }, 0);
   };
 
   // Add Resource modal with Upload/Discover toggle
@@ -236,15 +171,45 @@ export default function Dashboard() {
   //   setUploadingFiles([]);
   // };
 
+  // Handler functions
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+  const handleSettings = () => setShowSettingsModal(true);
+  const handleExport = () => alert("Export to LMS coming soon!");
+  const handleGridView = () => setIsGridView(true);
+  const handleListView = () => setIsGridView(false);
+
   return (
     <div style={{ minHeight: "100vh", height: "100vh", background: "#fafbfc", display: "flex", flexDirection: "column" }}>
-      <Header />
-      <TopRow onSettingsClick={() => setShowSettingsModal(true)} />
-      <div className="main-layout" style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1, minHeight: 0, height: "100%", padding: "0 5vw" }}>
+      <Header
+        title="Creators Copilot"
+        onLogout={handleLogout}
+        onSettings={handleSettings}
+        onExport={handleExport}
+        onGridView={handleGridView}
+        onListView={handleListView}
+        isGridView={isGridView}
+      />
+      {/* Breadcrumb Navigation */}
+      <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: "100%", display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500, color: '#222' }}>
+        <span
+          style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => navigate('/courses')}
+        >
+          Courses
+        </span>
+        <span style={{ color: '#888', fontSize: 18, margin: '0 6px' }}>{'>'}</span>
+        <span style={{ fontWeight: 700, color: '#111', fontSize: 22 }}>
+          {localStorage.getItem("currentCourseTitle") || "Course Title"}
+        </span>
+      </div>
+      <div className="main-layout" style={{ display: "flex", gap: 24, alignItems: "stretch", flex: 1, minHeight: 0, height: "100%", padding: "0 5vw" }}>
         {/* Main Content: 4 cards inside a scrollable card container */}
         <div style={{ flex: 2, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
           <div style={{ background: "rgb(250, 251, 252)", borderRadius: 16, boxShadow: "none", padding: 0, height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, padding: "32px 24px 32px 24px" }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, padding: "24px 24px 32px 24px" }}>
           <SectionCard
             title="Curriculum"
             buttonLabel="Create"
@@ -284,14 +249,14 @@ export default function Dashboard() {
                   <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, flex: 1 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444', marginLeft: 8 }}>(Based on the Academics term...)</span></h2>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", marginTop: 12 }}>
-                  <button style={{ padding: "8px 22px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer", marginLeft: 12, boxShadow: "0 1px 2px #0001", transition: "background 0.2s" }}>Create Documentation</button>
+                  <button onClick={handleCreate} style={{ padding: "8px 22px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer", marginLeft: 12, boxShadow: "0 1px 2px #0001", transition: "background 0.2s" }}>Create Documentation</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
         {/* Sidebar */}
-        <div className="sidebar" style={{ flex: 1, minWidth: 280, height: "100%" }}>
+        <div className="sidebar" style={{ flex: 1, minWidth: 280, height: "100%", display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', marginTop: 24 }}>
           <Sidebar ref={sidebarRef} onAddContentClick={() => setShowAddResourceModal(true)} />
           {/* Removed Knowledge Base/resources section as requested */}
         </div>
@@ -312,15 +277,16 @@ export default function Dashboard() {
               background: selectedOption === i ? "#f0f7ff" : "#fafbfc",
               cursor: "pointer",
               display: "flex",
+              flexWrap: "wrap",
               flexDirection: "column",
-              gap: 4,
+              gap: 10,
               boxShadow: selectedOption === i ? "0 2px 8px #1976d222" : "none"
             }}>
               <input
                 type="radio"
                 name="curriculum-option"
                 checked={selectedOption === i}
-                onChange={() => setSelectedOption(i)}
+                onChange={() => {setSelectedOption(i); setSelectedComponent(opt.url);}}
                 style={{ marginBottom: 6 }}
               />
               <span style={{ fontWeight: 600, fontSize: 15 }}>{opt.label}</span>
@@ -330,9 +296,21 @@ export default function Dashboard() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
           <button onClick={handleModalClose} style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Cancel</button>
-          <button onClick={handleModalCreate} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Create</button>
+          <button onClick={handleCreate} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Create</button>
         </div>
       </Modal>
+      <KnowledgeBaseSelectModal
+      open={showKBModal}
+      onClose={() => setShowKBModal(false)}
+      onGenerate={(selectedFiles) => {
+        setShowKBModal(false);
+        // Navigate to AI Studio with selected component and files
+        navigate(`/studio/${selectedComponent}`, {
+          state: { selectedFiles }
+        });
+      }}
+      files={allFiles}
+    />
       {showAddResourceModal && (
         <Modal open={showAddResourceModal} onClose={handleResourceModalClose} modalStyle={{ minWidth: 600, maxWidth: 700, borderRadius: 16, padding: 0 }}>
           <div style={{ padding: "32px 36px 24px 36px", background: "#fff", borderRadius: 16, minWidth: 500 }}>

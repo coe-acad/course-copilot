@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from .routes import auth, course, resources, chat, course_outcomes
+from .routes import auth, course, resources, chat, course_outcomes, asset
 from .config.settings import settings
 import logging
 
@@ -33,6 +33,7 @@ app.include_router(course.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(course_outcomes.router, prefix="/api")
+app.include_router(asset.router, prefix="/api")
 
 # Add callback route at root level to match Google OAuth redirect
 from .routes.auth import google_callback

@@ -86,7 +86,7 @@ const Sidebar = forwardRef(function Sidebar({ onAddContentClick }, ref) {
     handleMenuClose();
   };
 
-  const sidebarBoxHeight = '60vh';
+  const sidebarBoxHeight = '75vh';
 
   return (
     <div>

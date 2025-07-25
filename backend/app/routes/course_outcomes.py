@@ -45,7 +45,9 @@ class CourseOutcomesMessageRequest(BaseModel):
 @router.post("/courses/{course_id}/{asset}/create-thread", response_model=CreateThreadResponse)
 async def create_asset_thread(course_id: str, user_id: str = Depends(verify_token)):
     """
-    Always create a new course outcomes thread (like brainstorm).
+    Create a new chat thread for the specified asset type (e.g., Course Outcomes) for the given course.
+
+    This endpoint always creates a new thread (similar to the brainstorm feature), associates it with the course, attaches all relevant files, and saves the thread information for future use and interactions.
     """
     try:
         course = storage_service.get_course(course_id, user_id)
