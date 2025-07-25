@@ -6,10 +6,10 @@ import Sidebar from "../components/Sidebar";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 // import { useFilesContext } from "../context/FilesContext";
-import { uploadCourseResources, addAllFilesToAssistant } from "../services/resources";
-import { createBrainstormThread } from "../services/brainstorm";
-
-
+import { uploadCourseResources } from "../services/resources";
+// import { createBrainstormThread } from "../services/brainstorm";
+import KnowledgeBaseSelectModal from '../components/KnowledgeBaseSelectModal';
+import { getCourseResources } from "../services/resources";
 
 const curriculumOptions = [
   {
@@ -45,29 +45,40 @@ const curriculumOptions = [
 ];
 
 export default function Dashboard() {
+
+  const [showKBModal, setShowKBModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [allFiles, setAllFiles] = useState([]); // Fetch this from your backend or context
+  
   const [showCurriculumModal, setShowCurriculumModal] = useState(false);
   const [selectedOption, setSelectedOption] = useState(0);
-  // Remove Add Resources modal, go directly to upload modal
-  // const [showAddResourceModal, setShowAddResourceModal] = useState(false);
-  // const [selectedResourceOption, setSelectedResourceOption] = useState(0); // 0: Upload, 1: Discover
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isGridView, setIsGridView] = useState(true);
   const navigate = useNavigate();
-  // const { addFiles } = useFilesContext();
   const [resourceError, setResourceError] = useState("");
-  // Get courseId from localStorage or context (update as needed)
   const courseId = localStorage.getItem("currentCourseId");
   const sidebarRef = useRef();
-
-  // Fetch resources on mount or when courseId changes
   useEffect(() => {
-    if (!courseId) return;
-    // setResourceLoading(true); // This state is removed
-    // getCourseResources(courseId) // This state is removed
-    //   .then(data => setResources(data.resources || [])) // This state is removed
-    //   .catch(() => setResourceError("Failed to fetch resources")) // This state is removed
-    //   .finally(() => setResourceLoading(false)); // This state is removed
-  }, [courseId]);
+    async function fetchFiles() {
+      if (!courseId) return;
+      try {
+        const data = await getCourseResources(courseId);
+        setAllFiles(data.resources || []);
+      } catch (e) {
+        setAllFiles([]);
+      }
+    }
+    if (showKBModal) fetchFiles();
+  }, [showKBModal, courseId]);
+  // Fetch resources on mount or when courseId changes
+  // useEffect(() => {
+  //   if (!courseId) return;
+  //   // setResourceLoading(true); // This state is removed
+  //   // getCourseResources(courseId) // This state is removed
+  //   //   .then(data => setResources(data.resources || [])) // This state is removed
+  //   //   .catch(() => setResourceError("Failed to fetch resources")) // This state is removed
+  //   //   .finally(() => setResourceLoading(false)); // This state is removed
+  // }, [courseId]);
 
   // Handle real file upload to backend
   const handleFilesUpload = async files => {
@@ -91,23 +102,23 @@ export default function Dashboard() {
 
   const handleCurriculumCreate = () => setShowCurriculumModal(true);
   const handleModalClose = () => setShowCurriculumModal(false);
-  const handleModalCreate = async () => {
-    const url = curriculumOptions[selectedOption].url;
-    setShowCurriculumModal(false);
-    navigate(`/studio/${url}`); // Navigate immediately for fast UX
-    // Start backend process in the background
-    if (courseId) {
-      createBrainstormThread(courseId)
-        .then(threadResponse => {
-          const threadId = threadResponse.thread_id || threadResponse.id || threadResponse.threadId;
-          return addAllFilesToAssistant(courseId, threadId);
-        })
-        .catch(e => {
-          // Optionally show an error or toast
-          console.error('Failed to add files to assistant:', e);
-        });
-    }
-  };
+  // const handleModalCreate = async () => {
+  //   const url = curriculumOptions[selectedOption].url;
+  //   setShowCurriculumModal(false);
+  //   navigate(`/studio/${url}`); // Navigate immediately for fast UX
+  //   // Start backend process in the background
+  //   if (courseId) {
+  //     createBrainstormThread(courseId)
+  //       .then(threadResponse => {
+  //         const threadId = threadResponse.thread_id || threadResponse.id || threadResponse.threadId;
+  //         return addAllFilesToAssistant(courseId, threadId);
+  //       })
+  //       .catch(e => {
+  //         // Optionally show an error or toast
+  //         console.error('Failed to add files to assistant:', e);
+  //       });
+  //   }
+  // };
 
   // Add Resource modal with Upload/Discover toggle
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
@@ -241,15 +252,16 @@ export default function Dashboard() {
               background: selectedOption === i ? "#f0f7ff" : "#fafbfc",
               cursor: "pointer",
               display: "flex",
+              flexWrap: "wrap",
               flexDirection: "column",
-              gap: 4,
+              gap: 10,
               boxShadow: selectedOption === i ? "0 2px 8px #1976d222" : "none"
             }}>
               <input
                 type="radio"
                 name="curriculum-option"
                 checked={selectedOption === i}
-                onChange={() => setSelectedOption(i)}
+                onChange={() => {setSelectedOption(i); setSelectedComponent(opt.url);}}
                 style={{ marginBottom: 6 }}
               />
               <span style={{ fontWeight: 600, fontSize: 15 }}>{opt.label}</span>
@@ -259,9 +271,22 @@ export default function Dashboard() {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
           <button onClick={handleModalClose} style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Cancel</button>
-          <button onClick={handleModalCreate} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }}>Create</button>
+          <button onClick={() => {setShowCurriculumModal(false);
+        setShowKBModal(true);}} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#222", color: "#fff", fontWeight: 500, fontSize: 15, cursor: "pointer" }} disabled={selectedComponent === null}>Next</button>
         </div>
       </Modal>
+      <KnowledgeBaseSelectModal
+      open={showKBModal}
+      onClose={() => setShowKBModal(false)}
+      onGenerate={(selectedFiles) => {
+        setShowKBModal(false);
+        // Navigate to AI Studio with selected component and files
+        navigate(`/studio/${selectedComponent}`, {
+          state: { selectedFiles }
+        });
+      }}
+      files={allFiles}
+    />
       {showAddResourceModal && (
         <Modal open={showAddResourceModal} onClose={handleResourceModalClose} modalStyle={{ minWidth: 600, maxWidth: 700, borderRadius: 16, padding: 0 }}>
           <div style={{ padding: "32px 36px 24px 36px", background: "#fff", borderRadius: 16, minWidth: 500 }}>
