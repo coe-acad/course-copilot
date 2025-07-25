@@ -5,14 +5,18 @@ import os
 
 class PromptParser:
     def __init__(self):
-        pass
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # points to backend/app
 
     def _load_template_json(self, template_file_path):
+        print(f"Trying to load prompt template: {template_file_path}")  # Add this line
         # Given a file path, loads the prompt template from the JSON file.
         if not os.path.exists(template_file_path):
             raise FileNotFoundError(f"Prompt template file not found: {template_file_path}")
         with open(template_file_path, 'r', encoding='utf-8') as file:
             return json.load(file)
+
+    def _get_prompt_path(self, relative_path):
+        return os.path.join(self.base_dir, relative_path)
 
     def render_prompt(self, template_file_path, input_variables):
         # Given a file path and a dict of input variables, substitutes the variables in the prompt and returns the rendered prompt.
@@ -39,7 +43,11 @@ class PromptParser:
         # Combines the required system prompts with the asset-specific prompt to get the full asset prompt.
         # TODO: Here the logic for combining prompts is hard-coded. Needs to be implemented based on pre-defined rules.
         # NOTE: An assumption being made is that system prompt names are unique and will never appear in asset prompts.
-        full_asset_prompt = self.render_prompt("system/overall_context", input_variables) + \
-            "\n\n" + self.render_prompt("system/settings", input_variables) + \
-            "\n\n" + self.render_prompt(f"asset/{asset_name}", input_variables)
+        full_asset_prompt = self.render_prompt(
+            self._get_prompt_path("prompts/system/overall_context.json"), input_variables
+        ) + "\n\n" + self.render_prompt(
+            self._get_prompt_path("prompts/system/settings.json"), input_variables
+        ) + "\n\n" + self.render_prompt(
+            self._get_prompt_path(f"prompts/asset/{asset_name}.json"), input_variables
+        )
         return full_asset_prompt

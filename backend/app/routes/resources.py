@@ -142,7 +142,11 @@ async def add_all_files_to_assistant_route(course_id: str, user_id: str = Depend
     Add all resources (regardless of status) to the assistant's file search (vector store).
     """
     try:
-        result = await add_all_files_to_assistant(course_id, user_id, thread_id)
+        # Fetch all resources for the course and thread
+        course_resources = storage_service.get_resources(course_id, user_id=user_id)
+        asset_resources = storage_service.get_resources(course_id, thread_id=thread_id, user_id=user_id)
+        all_resources = course_resources + asset_resources
+        result = openai_service.add_files_to_assistant_vector_store(course_id, user_id, all_resources)
         return result
     except Exception as e:
         logger.error(f"Error adding files to assistant: {str(e)}")

@@ -77,6 +77,9 @@ export default function AssetStudio() {
   // State for settings modal
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
+  // Add state for input variables to be sent to backend
+  const [inputVariables, setInputVariables] = useState({});
+
   // ... (resource handlers, file upload, etc. remain unchanged) ...
 
   // Fetch resources from backend on mount and after upload
@@ -97,24 +100,23 @@ export default function AssetStudio() {
     setMessages([]);
     async function initThread() {
       try {
-        let thread_id;
-        if (config.createThread) {
-          const thread = await config.createThread(courseId);
-          thread_id = thread.thread_id || thread.id || thread.threadId;
+        let thread_id = threadId; // Use existing threadId if available
+        if (!thread_id && config.createThread) {
+          // Only create a new thread if one does not already exist
+          const thread = await config.createThread(courseId, feature, inputVariables);
+          console.log('Thread creation result:', thread);
+          thread_id = thread?.thread_id || thread?.id || thread?.threadId;
         }
         setThreadId(thread_id);
         if (thread_id) {
-          try {
-            await addAllFilesToAssistant(courseId, thread_id);
-          } catch (e) {
-            console.warn('Failed to link all files to thread:', e);
+          let data;
+          if (config.getMessages) {
+            data = await config.getMessages(courseId, thread_id) || {};
           }
+          setMessages(Array.isArray(data.messages) ? data.messages : []);
+        } else {
+          setChatError('Failed to create or fetch thread. Please try again.');
         }
-        let data;
-        if (config.getMessages) {
-          data = await config.getMessages(courseId, thread_id) || {};
-        }
-        setMessages(Array.isArray(data.messages) ? data.messages : []);
       } catch (err) {
         setChatError(err.message || 'Failed to load thread/messages');
       } finally {
@@ -122,7 +124,7 @@ export default function AssetStudio() {
       }
     }
     initThread();
-  }, [courseId, feature, config]);
+  }, [courseId, feature, config, inputVariables]);
 
   // Send message handler (with streaming)
   const handleSendMessage = async () => {
