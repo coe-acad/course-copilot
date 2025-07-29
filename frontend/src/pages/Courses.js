@@ -1,6 +1,6 @@
 // src/pages/Courses.js
 import React from "react";
-import CoursesLayout from "../components/CoursesLayout";
+import CoursesLayout from "../layouts/CoursesLayout";
 import CourseModal from "../components/CourseModal";
 import { useCourses } from "../hooks/useCourses";
 

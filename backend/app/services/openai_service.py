@@ -43,15 +43,16 @@ def create_assistant():
         logger.error(f"Error creating Course Design Assistant: {str(e)}")
         raise OpenAIError(f"Failed to create Course Design Assistant: {str(e)}")
 
-def create_file(file_path: str):
+# Updated create_file that accepts a file-like object
+def create_file(file_obj):
     try:
-        with open(file_path, "rb") as f:
-            openai_file = client.files.create(file=f, purpose="assistants")
-        logger.info(f"Uploaded file for vector store: {file_path} -> {openai_file.id}")
+        openai_file = client.files.create(file=file_obj, purpose="assistants")
+        logger.info(f"Uploaded file for vector store: {file_obj.name} -> {openai_file.id}")
         return openai_file.id
     except Exception as e:
-        logger.error(f"Error uploading file for vector store {file_path}: {str(e)}")
-        raise OpenAIError(f"Failed to upload file for vector store: {str(e)}")
+        logger.error(f"Error uploading file {file_obj.name}: {str(e)}")
+        raise OpenAIError(f"Failed to upload file: {str(e)}")
+
 
 def create_vector_store(assistant_id: str):
     try:
@@ -428,52 +429,25 @@ async def start_free_chat_thread(course_id: str, user_id: str) -> str:
     return thread_id
 
 # --- Resource Upload/Check-in/Check-out ---
-def upload_resources(course_id: str, assistant_id: str, vector_store_id: str, files: List[UploadFile], user_id: str) -> list:
-    course = get_course(course_id, user_id)
-    if not course:
-        raise CourseNotFoundError(f"Course {course_id} not found")
-
-    resources = []
+def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: List[UploadFile]):
 
     for file in files:
-        file_id = str(uuid4())
         try:
-            # Save file locally
-            local_path = _upload_file_to_local(file, course_id, file_id)
-
-            # Upload to OpenAI
-            openai_file_id = create_file(local_path)
+            file.file.name = file.filename  # ✅ This is key
+            openai_file_id = create_file(file.file)
 
             # Connect file to vector store
-            connect_file_to_vector_store(vector_store_id, openai_file_id)
+            batch_id=connect_file_to_vector_store(vector_store_id, openai_file_id)
 
-            resource = {
-                "title": file.filename,
-                "status": "checked_out",
-                "checkedOutBy": user_id,
-                "openai_file_id": openai_file_id,
-                "local_path": local_path,
-                "file_size": file.size,
-                "content_type": file.content_type,
-                "created_at": datetime.utcnow().isoformat()
-            }
-
-            storage_service.create_resource(course_id, file_id, resource)
-            logger.info(f"Uploaded and connected file: {file.filename}, ID: {file_id}, OpenAI file: {openai_file_id}, Local path: {local_path}")
-
-            resources.append({
-                "fileId": file_id,
-                "fileName": file.filename,
-                "status": "checked_out",
-                "checkedOutBy": user_id,
-                "local_path": local_path
-            })
+            logger.info(f"Connected file {file.filename} to vector store {vector_store_id}")
+            logger.info(f"Created resource {file.filename} in MongoDB")
+            logger.info(f"Batch ID: {batch_id}")
 
         except Exception as e:
             logger.error(f"Error processing file {file.filename}: {str(e)}")
             continue
 
-    return resources
+    return "Resources uploaded successfully"
 
 
 async def checkin_resource(course_id: str, assistant_id: str, file_id: str, user_id: str) -> dict:
@@ -1227,39 +1201,6 @@ def add_files_to_assistant_vector_store(course_id: str, user_id: str, resources:
     logger.info(f"[ALL FILES] Added {len(file_paths)} new files to vector store for assistant {assistant_id}")
     return {"added_file_ids": file_paths}
 
-async def delete_resources(course_id: str, assistant_id: str, user_id: str):
-    """
-    Delete all resources for a course, remove their OpenAI files from the assistant and OpenAI storage, 
-    clear them from storage_service, and clean up local files.
-    """
-    course = storage_service.get_course(course_id, user_id)
-    if not course:
-        raise CourseNotFoundError(f"Course {course_id} not found")
-    
-    resources = storage_service.get_resources(course_id, user_id)
-    openai_file_ids = [r.get("openai_file_id") for r in resources if r.get("openai_file_id")]
-    
-    # Remove files from assistant
-    if openai_file_ids:
-        # Remove all files from assistant
-        client.beta.assistants.update(
-            assistant_id=assistant_id
-        )
-        # Delete files from OpenAI storage
-        for file_id in openai_file_ids:
-            try:
-                client.files.delete(file_id)
-            except Exception as e:
-                logger.warning(f"Failed to delete OpenAI file {file_id}: {e}")
-    
-    # Clean up local files
-    for resource in resources:
-        local_path = resource.get("local_path", "")
-        _delete_file_from_local(local_path)
-    
-    # Delete all resources from storage
-    storage_service.delete_all_resources(course_id)
-    logger.info(f"Deleted all resources for course {course_id}")
 
 async def delete_single_resource(course_id: str, file_id: str, user_id: str):
     """

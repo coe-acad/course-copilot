@@ -1,157 +1,148 @@
 import React, { useState } from "react";
-import { ModalBase } from "./Modal";
-import { saveCourseSettings } from "../services/course";
+import Modal from "./Modal";
+import { FaWrench } from "react-icons/fa";
 
-const settingsModalStyle = {
-  minWidth: 340,
-  maxWidth: 420,
-  width: "100%",
-  minHeight: 320,
-  maxHeight: 520,
-  height: "auto",
-  padding: "20px 16px 24px 16px",
-  borderRadius: 14,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "center",
-};
-
-const courseLevels = ["Year 1", "Year 2", "Year 3", "Year 4"];
-const studyAreas = [
-  "AI & Decentralised Technologies",
-  "Life Sciences",
-  "Energy Sciences",
-  "eMobility",
-  "Climate Change",
-  "Connected Intelligence"
+// Dummy tag data (replace with backend data if needed)
+const LEVELS = ["Year 1", "Year 2", "Year 3", "Year 4"];
+const STUDY_AREAS = [
+  "AI & Decentralised Technologies", "Life Sciences", "Energy Sciences", "eMobility",
+  "Climate Change", "Connected Intelligence"
 ];
-const pedagogicalComponents = [
-  "Theory",
-  "Project",
-  "Research",
-  "Laboratory Experiments",
-  "Unplugged Activities",
-  "Programming Activities"
+const PEDAGOGICAL_COMPONENTS = [
+  "Theory", "Project", "Research", "Laboratory Experiments",
+  "Unplugged Activities", "Programming Activities"
 ];
 
 export default function SettingsModal({ open, onClose, onSave }) {
   const [selectedLevels, setSelectedLevels] = useState([]);
-  const [selectedAreas, setSelectedAreas] = useState([]);
+  const [selectedStudyAreas, setSelectedStudyAreas] = useState([]);
   const [selectedPedagogical, setSelectedPedagogical] = useState([]);
   const [useReferenceOnly, setUseReferenceOnly] = useState(false);
-  const [askClarifying, setAskClarifying] = useState(false);
+  const [askClarifyingQuestions, setAskClarifyingQuestions] = useState(false);
 
-  const toggle = (arr, setArr, value) => {
-    setArr(arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]);
+  // Toggle tag selection
+  const toggleTag = (tag, selectedTags, setSelectedTags) => {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
   };
 
-  const handleSave = async () => {
-    const courseId = localStorage.getItem("currentCourseId");
+  const handleSave = () => {
     const payload = {
-      course_level: selectedLevels,
-      study_area: selectedAreas[0] || "",
-      pedagogical_components: selectedPedagogical,
-      use_reference_material_only: useReferenceOnly,
-      ask_clarifying_questions: askClarifying,
+      levels: selectedLevels,
+      studyAreas: selectedStudyAreas,
+      pedagogical: selectedPedagogical,
+      useReferenceOnly,
+      askClarifyingQuestions
     };
-    try {
-      await saveCourseSettings(courseId, payload);
-    } catch (err) {
-      // Optionally handle error
-      console.error("Failed to save settings", err);
-    }
-    onSave && onSave(payload);
-    onClose();
+    console.log("Saving settings:", payload);
+
+    // TODO: Save settings to backend
+    // await saveCourseSettings(courseId, payload);
+    onSave(payload);
   };
 
   return (
-    <ModalBase open={open} onClose={onClose} modalStyle={settingsModalStyle}>
-      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 20 }}>🔧</span> Settings
+    <Modal open={open} onClose={onClose}>
+      <div style={{ fontWeight: 700, fontSize: 22, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <FaWrench /> Settings
       </div>
-      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 12 }}>Course level <span style={{ fontWeight: 400, fontSize: 11 }}>(select all that are applicable)</span></div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {courseLevels.map(level => (
-          <button
-            key={level}
-            onClick={() => toggle(selectedLevels, setSelectedLevels, level)}
-            style={{
-              background: selectedLevels.includes(level) ? "#444" : "#f5f5f5",
-              color: selectedLevels.includes(level) ? "#fff" : "#222",
-              border: "none",
-              borderRadius: 7,
-              padding: "7px 12px",
-              fontWeight: 500,
-              fontSize: 13,
-              cursor: "pointer"
-            }}
-          >
-            {level}
-          </button>
-        ))}
-      </div>
-      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 6 }}>Study area</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {studyAreas.map(area => (
-          <button
-            key={area}
-            onClick={() => toggle(selectedAreas, setSelectedAreas, area)}
-            style={{
-              background: selectedAreas.includes(area) ? "#444" : "#f5f5f5",
-              color: selectedAreas.includes(area) ? "#fff" : "#222",
-              border: "none",
-              borderRadius: 7,
-              padding: "7px 12px",
-              fontWeight: 500,
-              fontSize: 13,
-              cursor: "pointer"
-            }}
-          >
-            {area}
-          </button>
-        ))}
-      </div>
-      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 6 }}>Pedagogical Components <span style={{ fontWeight: 400, fontSize: 11 }}>(select all that are applicable)</span></div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {pedagogicalComponents.map(pc => (
-          <button
-            key={pc}
-            onClick={() => toggle(selectedPedagogical, setSelectedPedagogical, pc)}
-            style={{
-              background: selectedPedagogical.includes(pc) ? "#444" : "#f5f5f5",
-              color: selectedPedagogical.includes(pc) ? "#fff" : "#222",
-              border: "none",
-              borderRadius: 7,
-              padding: "7px 12px",
-              fontWeight: 500,
-              fontSize: 13,
-              cursor: "pointer"
-            }}
-          >
-            {pc}
-          </button>
-        ))}
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
-          <span>Use reference material only</span>
-          <input type="checkbox" checked={useReferenceOnly} onChange={e => setUseReferenceOnly(e.target.checked)} style={{ width: 18, height: 18 }} />
-        </label>
-        <div style={{ color: "#888", fontSize: 11, marginLeft: 2, marginTop: 2, marginBottom: 8 }}>
-          <span style={{ fontSize: 13, marginRight: 4 }}>ℹ️</span> Limits AI-generated responses to the provided course materials and references.
-        </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
-          <span>Ask clarifying questions</span>
-          <input type="checkbox" checked={askClarifying} onChange={e => setAskClarifying(e.target.checked)} style={{ width: 18, height: 18 }} />
-        </label>
-        <div style={{ color: "#888", fontSize: 11, marginLeft: 2, marginTop: 2 }}>
-          <span style={{ fontSize: 13, marginRight: 4 }}>ℹ️</span> Allows AI to ask targeted questions and gather necessary context before generating content.
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Course level <span style={{ fontWeight: 400, fontSize: 13 }}>(select all that are applicable)</span></div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {LEVELS.map(level => (
+            <button key={level}
+              onClick={() => toggleTag(level, selectedLevels, setSelectedLevels)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 16,
+                border: selectedLevels.includes(level) ? "2px solid #2563eb" : "1px solid #ccc",
+                background: selectedLevels.includes(level) ? "#e0edff" : "#fff",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >
+              {level}
+            </button>
+          ))}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
-        <button onClick={onClose} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "#fff", color: "#222", fontWeight: 500, fontSize: 14, cursor: "pointer", boxShadow: "0 1px 4px #0001" }}>Close</button>
-        <button onClick={handleSave} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "#222", color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", boxShadow: "0 1px 4px #0002" }}>Save Changes</button>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Study area</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {STUDY_AREAS.map(area => (
+            <button key={area}
+              onClick={() => toggleTag(area, selectedStudyAreas, setSelectedStudyAreas)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 16,
+                border: selectedStudyAreas.includes(area) ? "2px solid #2563eb" : "1px solid #ccc",
+                background: selectedStudyAreas.includes(area) ? "#e0edff" : "#fff",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >
+              {area}
+            </button>
+          ))}
+        </div>
       </div>
-    </ModalBase>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Pedagogical Components <span style={{ fontWeight: 400, fontSize: 13 }}>(select all that are applicable)</span></div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {PEDAGOGICAL_COMPONENTS.map(comp => (
+            <button key={comp}
+              onClick={() => toggleTag(comp, selectedPedagogical, setSelectedPedagogical)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 16,
+                border: selectedPedagogical.includes(comp) ? "2px solid #2563eb" : "1px solid #ccc",
+                background: selectedPedagogical.includes(comp) ? "#e0edff" : "#fff",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >
+              {comp}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={useReferenceOnly}
+            onChange={() => setUseReferenceOnly(prev => !prev)}
+          />
+          Use reference material only
+        </label>
+        <div style={{ color: "#666", fontSize: 13, marginLeft: 22 }}>
+          Limits AI-generated responses to the provided course materials and references.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={askClarifyingQuestions}
+            onChange={() => setAskClarifyingQuestions(prev => !prev)}
+          />
+          Ask clarifying questions
+        </label>
+        <div style={{ color: "#666", fontSize: 13, marginLeft: 22 }}>
+          Allows AI to ask targeted questions and gather necessary context before generating content.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+        <button onClick={onClose} style={{ padding: "10px 24px", background: "#fff", border: "1px solid #bbb", borderRadius: 8, fontWeight: 500, cursor: "pointer" }}>Close</button>
+        <button onClick={handleSave} style={{ padding: "10px 24px", background: "#222", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Save Changes</button>
+      </div>
+    </Modal>
   );
-} 
+}

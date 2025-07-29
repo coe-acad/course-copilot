@@ -1,33 +1,23 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional
+import logging
+import os
+import io
+from pathlib import Path
 from ..services import openai_service
-from ..services.mongo import get_course, update_course, get_resources_by_course_id, create_resource
-from ..services.storage_course import storage_service
-from ..services.openai_service import create_file, create_vector_store, connect_file_to_vector_store
-from ..services.mongo import get_course, update_course
+from ..services.mongo import get_course, get_resources_by_course_id, create_resource
+from ..services.openai_service import create_file, connect_file_to_vector_store
 from ..utils.exceptions import handle_course_error
 from ..utils.course_pdf_utils import generate_course_pdf
-from ..services.openai_service import connect_file_to_vector_store
-import logging
-from firebase_admin import auth as admin_auth
 from ..utils.verify_token import verify_token
-import os
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Inline models
 class ResourceResponse(BaseModel):
-    fileId: str
-    fileName: str
-    status: str
-    checkedOutBy: Optional[str] = None
-    url: Optional[str] = None
-
-class ResourceCheckoutRequest(BaseModel):
-    userId: str
+    resourceName: str
 
 class ResourceListResponse(BaseModel):
     courseId: str
@@ -36,9 +26,17 @@ class ResourceListResponse(BaseModel):
 class DeleteResponse(BaseModel):
     message: str
 
-class ResourceCreateRequest(BaseModel):
-    title: str
-    url: str
+class ResourceCreateResponse(BaseModel):
+    message: str
+
+def check_course_exists(course_id: str):
+    # check if the course exists
+    # if it exists, return True
+    # if it doesn't exist, raise error
+    course = get_course(course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return True
 
 def create_course_description_file(course_id: str, user_id: str):
     """
@@ -62,13 +60,17 @@ def create_course_description_file(course_id: str, user_id: str):
         pdf_relative_path = "local_storage" + pdf_relative_path
         
         #name of the pdf should be the title
-        title = pdf_relative_path.split("/")[-1].split(".")[0]
+        resource_name = pdf_relative_path.split("/")[-1].split(".")[0] + ".pdf"
 
         # Create resource in MongoDB
-        create_resource(course_id, title, pdf_relative_path)
+        create_resource(course_id, resource_name)
 
-        # Upload the PDF to OpenAI for vector store
-        openai_file_id = create_file(pdf_relative_path)
+        # Upload the PDF to OpenAI (open as binary stream)
+        with open(pdf_path, "rb") as f:
+            content = f.read()
+            file_obj = io.BytesIO(content)
+            file_obj.name = resource_name  # ✅ Required for OpenAI
+            openai_file_id = create_file(file_obj)
         
         # Get vector store for the course
         assistant_id = course.get('assistant_id')
@@ -99,153 +101,43 @@ def create_course_description_file(course_id: str, user_id: str):
         return None
 
 # Keep this route, we add the file to the vector store attached to the Assistant
-@router.post("/courses/{course_id}/resources", response_model=ResourceListResponse)
-async def upload_resources(user_id: str, course_id: str, files: List[UploadFile] = File(...), thread_id: str = Query(None)):
+@router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
+def upload_resources(user_id: str, course_id: str, files: List[UploadFile] = File(...)):
     try:
-        course = get_course(course_id, user_id)
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        resources = await openai_service.upload_resources(course_id, course["assistant_id"], files, user_id, thread_id=thread_id)
-        openai_service.add_files_to_assistant_vector_store(course_id, user_id, resources)
-        return ResourceListResponse(courseId=course_id, resources=resources)
+        check_course_exists(course_id)
+        # if course exists, get the assistant id and vector store id from the course
+        course = get_course(course_id)
+        openai_service.upload_resources(user_id, course_id, course["vector_store_id"], files)
+        # Create resource in MongoDB
+        for file in files:
+            create_resource(course_id, file.filename)
+
+        return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
         logger.error(f"Error uploading resources: {str(e)}")
         raise handle_course_error(e)
 
-# 
-@router.post("/courses/{course_id}/resources/url", response_model=ResourceResponse)
-async def create_url_resource(user_id: str,course_id: str, request: ResourceCreateRequest, thread_id: str = Query(None)):
+@router.get("/courses/{course_id}/resources", response_model=ResourceListResponse) 
+def list_resources(user_id: str, course_id: str):
     try:
-        resource = await openai_service.create_resource(course_id, request.title, request.url, user_id, thread_id=thread_id)
-        return resource
-    except Exception as e:
-        logger.error(f"Error creating URL resource: {str(e)}")
-        raise handle_course_error(e)
-
-@router.get("/courses/{course_id}/resources", response_model=ResourceListResponse)
-async def list_resources(user_id: str, course_id: str):
-    try:
+        check_course_exists(course_id)
         resources = get_resources_by_course_id(course_id)
-        
         return ResourceListResponse(
-            courseId=course_id,
-            resources=[ResourceResponse(
-                fileId=data.get("fileId", ""),
-                fileName=data["title"],
-                status=data["status"],
-                # checkedOutBy=data["checkedOutBy"],
-                url=data.get("url")
-            ) for data in resources]
-        )
+                    courseId=course_id,
+                    resources=[ResourceResponse(
+                        resourceName= data.get("resource_name", "Unknown Name"),
+                    ) for data in resources]
+                )
     except Exception as e:
         logger.error(f"Error listing resources: {str(e)}")
         raise handle_course_error(e)
 
-@router.put("/courses/{course_id}/resources/{file_id}/checkout", response_model=ResourceResponse)
-async def checkout_resource(user_id: str, course_id: str, file_id: str, request: ResourceCheckoutRequest):
-    try:
-        course = storage_service.get_course(course_id, user_id)
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        resource = await openai_service.checkout_resource(course_id, course["assistant_id"], file_id, user_id)
-        return resource
-    except Exception as e:
-        logger.error(f"Error checking out resource: {str(e)}")
-        raise handle_course_error(e)
-
-@router.put("/courses/{course_id}/resources/{file_id}/checkin", response_model=ResourceResponse)
-async def checkin_resource(user_id: str, course_id: str, file_id: str):
-    try:
-        course = storage_service.get_course(course_id, user_id)
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        resource = await openai_service.checkin_resource(course_id, course["assistant_id"], file_id, user_id)
-        return resource
-    except Exception as e:
-        logger.error(f"Error checking in resource: {str(e)}")
-        raise handle_course_error(e)
-
-@router.delete("/courses/{course_id}/resources", response_model=DeleteResponse)
-async def delete_resources(user_id: str, course_id: str):
-    try:
-        course = storage_service.get_course(course_id, user_id)
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        await openai_service.delete_resources(course_id, course["assistant_id"], user_id)
-        return DeleteResponse(message="deleted")
-    except Exception as e:
-        logger.error(f"Error deleting resources: {str(e)}")
-        raise handle_course_error(e)
-
 @router.delete("/courses/{course_id}/resources/{file_id}", response_model=DeleteResponse)
-async def delete_resource(user_id: str,course_id: str, file_id: str):
+def delete_resource(user_id: str,course_id: str, file_id: str):
     try:
-        result = await openai_service.delete_single_resource(course_id, file_id, user_id)
+        check_course_exists(course_id)
+        result = openai_service.delete_single_resource(course_id, file_id, user_id)
         return DeleteResponse(message=result["message"])
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
-        raise handle_course_error(e)
-
-@router.post("/courses/{course_id}/assistant/fix-files")
-async def fix_incompatible_files(user_id: str, course_id: str):
-    """
-    Fix incompatible files by re-uploading them with proper extensions.
-    """
-    try:
-        handled_file_ids = openai_service._handle_missing_files(course_id, user_id)
-        return {"message": f"Handled {len(handled_file_ids)} files", "handled_file_ids": handled_file_ids}
-    except Exception as e:
-        logger.error(f"Error handling files: {str(e)}")
-        raise handle_course_error(e)
-
-@router.post("/courses/{course_id}/assistant/resources")
-async def add_all_files_to_assistant_route(user_id: str,course_id: str, thread_id: str = Query(...)):
-    """
-    Add all resources (regardless of status) to the assistant's file search (vector store).
-    """
-    try:
-        # Fetch all resources for the course and thread
-        course_resources = storage_service.get_resources(course_id, user_id=user_id)
-        asset_resources = storage_service.get_resources(course_id, thread_id=thread_id, user_id=user_id)
-        all_resources = course_resources + asset_resources
-        result = openai_service.add_files_to_assistant_vector_store(course_id, user_id, all_resources)
-        return result
-    except Exception as e:
-        logger.error(f"Error adding files to assistant: {str(e)}")
-        raise handle_course_error(e)
-
-@router.get("/courses/{course_id}/brainstorm/{thread_id}/messages", response_model=ResourceListResponse)
-async def list_brainstorm_messages(user_id: str, course_id: str, thread_id: str):
-    try:
-        resources = storage_service.get_brainstorm_messages(course_id, thread_id, user_id)
-        return ResourceListResponse(
-            courseId=course_id,
-            resources=[ResourceResponse(
-                fileId=data.get("fileId", ""),
-                fileName=data.get("title", ""),
-                status=data.get("status", ""),
-                checkedOutBy=data.get("checkedOutBy", None),
-                url=data.get("url", None)
-            ) for data in resources]
-        )
-    except Exception as e:
-        logger.error(f"Error listing brainstorm messages: {str(e)}")
-        raise handle_course_error(e)
-
-@router.get("/courses/{course_id}/brainstorm/{thread_id}/resources", response_model=ResourceListResponse)
-async def list_brainstorm_resources(user_id: str,course_id: str, thread_id: str):
-    try:
-        resources = storage_service.get_brainstorm_resources(course_id, thread_id, user_id)
-        return ResourceListResponse(
-            courseId=course_id,
-            resources=[ResourceResponse(
-                fileId=data["fileId"],
-                fileName=data["title"],
-                status=data["status"],
-                checkedOutBy=data["checkedOutBy"],
-                url=data.get("url")
-            ) for data in resources]
-        )
-    except Exception as e:
-        logger.error(f"Error listing brainstorm resources: {str(e)}")
         raise handle_course_error(e)
