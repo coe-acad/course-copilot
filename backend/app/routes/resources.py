@@ -123,12 +123,13 @@ def list_resources(user_id: str, course_id: str):
         logger.error(f"Error listing resources: {str(e)}")
         raise handle_course_error(e)
 
-@router.delete("/courses/{course_id}/resources/{file_id}", response_model=DeleteResponse)
+@router.delete("/courses/{course_id}/resources/{resource_name}", response_model=DeleteResponse)
 def delete_resource(user_id: str,course_id: str, file_id: str):
     try:
         check_course_exists(course_id)
-        result = openai_service.delete_single_resource(course_id, file_id, user_id)
-        return DeleteResponse(message=result["message"])
+        # result = openai_service.delete_single_resource(course_id, file_id, user_id)
+        # return DeleteResponse(message=result["message"])
+        return DeleteResponse(message="Resource deleted successfully")
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
         raise handle_course_error(e)

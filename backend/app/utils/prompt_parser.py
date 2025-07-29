@@ -45,8 +45,6 @@ class PromptParser:
         # TODO: Here the logic for combining prompts is hard-coded. Needs to be implemented based on pre-defined rules.
         # NOTE: An assumption being made is that system prompt names are unique and will never appear in asset prompts.
         full_asset_prompt = self.render_prompt(
-            self._get_prompt_path("prompts/system/overall_context.json"), input_variables
-        ) + "\n\n" + self.render_prompt(
             self._get_prompt_path("prompts/system/settings.json"), input_variables
         ) + "\n\n" + self.render_prompt(
             self._get_prompt_path(f"prompts/asset/{asset_name}.json"), input_variables
