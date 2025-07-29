@@ -71,12 +71,10 @@ export default function AssetStudioContent() {
     console.log("Download message:", message);
   };
 
-  const handleSaveToAsset = (message) => {
+  const handleSaveToAsset = async (message) => {
+    // TODO: Send asset message to backend and associate with course/section
     const section = sectionMap[option] || "Other";
     const assetName = optionTitles[option] || option;
-
-    const current = JSON.parse(localStorage.getItem("dashboardAssets") || "{}");
-    const sectionAssets = current[section] || [];
 
     const newAsset = {
       name: assetName,
@@ -84,13 +82,7 @@ export default function AssetStudioContent() {
       timestamp: new Date().toISOString()
     };
 
-    const updated = {
-      ...current,
-      [section]: [...sectionAssets, newAsset]
-    };
-
-    localStorage.setItem("dashboardAssets", JSON.stringify(updated));
-    console.log(`Saved to ${section}:`, newAsset);
+    console.log(`🔄 TODO: Save this asset to backend under section ${section}:`, newAsset);
   };
 
   const handleSaveToResource = (message) => {
@@ -112,7 +104,6 @@ export default function AssetStudioContent() {
         />
       }
     >
-
       <div
         style={{
           background: "#fff",
