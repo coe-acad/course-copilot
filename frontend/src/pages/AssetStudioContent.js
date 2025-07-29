@@ -13,6 +13,15 @@ const optionTitles = {
   "brainstorm": "Brainstorm"
 };
 
+const sectionMap = {
+  "course-outcomes": "Curriculum",
+  "modules-topics": "Curriculum",
+  "concept-map": "Curriculum",
+  "lesson-plans": "Curriculum",
+  "course-notes": "Curriculum",
+  "brainstorm": "Assessments"
+};
+
 export default function AssetStudioContent() {
   const { option } = useParams();
   const location = useLocation();
@@ -32,21 +41,20 @@ export default function AssetStudioContent() {
 
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
-
     const newMsg = { type: "user", text: inputMessage };
-    setChatMessages(prev => [...prev, newMsg]);
+    setChatMessages((prev) => [...prev, newMsg]);
     setInputMessage("");
     setIsLoading(true);
 
     try {
-      // TODO: Call backend chat API
+      // TODO: Replace with backend chat API call
       const botResponse = {
         type: "bot",
         text: "This is a placeholder response from the AI assistant."
       };
-      setChatMessages(prev => [...prev, botResponse]);
+      setChatMessages((prev) => [...prev, botResponse]);
     } catch (err) {
-      console.error("Error:", err);
+      console.error("Chat error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -59,18 +67,34 @@ export default function AssetStudioContent() {
   };
 
   const handleDownload = (message) => {
-    // TODO: Trigger download logic from backend
+    // TODO: Implement backend download
     console.log("Download message:", message);
   };
 
   const handleSaveToAsset = (message) => {
-    // TODO: Send this to backend and push to dashboard asset
-    console.log("Save to Asset:", message);
-    // e.g., save to localStorage or context
+    const section = sectionMap[option] || "Other";
+    const assetName = optionTitles[option] || option;
+
+    const current = JSON.parse(localStorage.getItem("dashboardAssets") || "{}");
+    const sectionAssets = current[section] || [];
+
+    const newAsset = {
+      name: assetName,
+      message: message,
+      timestamp: new Date().toISOString()
+    };
+
+    const updated = {
+      ...current,
+      [section]: [...sectionAssets, newAsset]
+    };
+
+    localStorage.setItem("dashboardAssets", JSON.stringify(updated));
+    console.log(`Saved to ${section}:`, newAsset);
   };
 
   const handleSaveToResource = (message) => {
-    // TODO: Trigger resource save API
+    // TODO: Send resource to backend store
     console.log("Save to Resource:", message);
   };
 
@@ -83,62 +107,94 @@ export default function AssetStudioContent() {
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
-          fileInputRef={{ current: null }} // TODO: hook this to actual file input
-          onFileChange={() => {}} // TODO: hook file upload here
+          fileInputRef={{ current: null }}
+          onFileChange={() => {}}
         />
       }
     >
-      <div style={{ fontSize: 15, marginBottom: 18, color: "#333" }}>
-        <strong>Using references:</strong>{" "}
-        {selectedIds.map((id) => {
-          const match = selectedFiles.find((f) => f.id === id || f.fileName === id);
-          return match?.fileName || match?.title || id;
-        }).join(", ") || "None selected"}
-      </div>
 
-      <div style={{
-        background: "#fff",
-        borderRadius: 12,
-        padding: 24,
-        boxShadow: "0 2px 12px #0001",
-        minHeight: 360,
-        maxHeight: 500,
-        overflowY: "auto",
-        marginBottom: 16
-      }}>
-        {chatMessages.map((msg, i) => (
-          <div key={i} style={{
-            background: msg.type === "user" ? "#e0f2ff" : "#f3f3f3",
-            borderRadius: 8,
-            padding: "8px 12px",
-            margin: "6px 0",
-            textAlign: "left",
-            position: "relative"
-          }}>
-            <div style={{ marginBottom: 6 }}>{msg.text}</div>
-            <div style={{ display: "flex", gap: 10, fontSize: 14 }}>
-              <FaDownload
-                title="Download"
-                style={{ cursor: "pointer" }}
-                onClick={() => handleDownload(msg.text)}
-              />
-              <FaFolderPlus
-                title="Save to Asset"
-                style={{ cursor: "pointer" }}
-                onClick={() => handleSaveToAsset(msg.text)}
-              />
-              <FaSave
-                title="Save to Resource"
-                style={{ cursor: "pointer" }}
-                onClick={() => handleSaveToResource(msg.text)}
-              />
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 16,
+          boxShadow: "0 2px 12px #0001",
+          flex: 1,
+          height: "400px",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column"
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            paddingRight: 8
+          }}
+        >
+          {chatMessages.map((msg, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                justifyContent:
+                  msg.type === "user" ? "flex-end" : "flex-start",
+                marginBottom: 12
+              }}
+            >
+              <div
+                style={{
+                  background:
+                    msg.type === "user" ? "#e0f2ff" : "transparent",
+                  borderRadius: 10,
+                  padding: "10px 12px 26px 12px",
+                  minWidth: msg.type === "user" ? "120px" : "0",
+                  maxWidth: msg.type === "user" ? "60%" : "100%",
+                  position: "relative",
+                  color: "#222",
+                  fontSize: 15,
+                  textAlign: msg.type === "user" ? "right" : "left",
+                  wordBreak: "break-word"
+                }}
+              >
+                <div style={{ marginBottom: 6 }}>{msg.text}</div>
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 6,
+                    right: msg.type === "user" ? 12 : "auto",
+                    left: msg.type === "user" ? "auto" : 12,
+                    display: "flex",
+                    gap: 10,
+                    fontSize: 15,
+                    color: "#888"
+                  }}
+                >
+                  <FaDownload
+                    title="Download"
+                    style={{ cursor: "pointer", opacity: 0.8 }}
+                    onClick={() => handleDownload(msg.text)}
+                  />
+                  <FaFolderPlus
+                    title="Save to Asset"
+                    style={{ cursor: "pointer", opacity: 0.8 }}
+                    onClick={() => handleSaveToAsset(msg.text)}
+                  />
+                  <FaSave
+                    title="Save to Resource"
+                    style={{ cursor: "pointer", opacity: 0.8 }}
+                    onClick={() => handleSaveToResource(msg.text)}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={bottomRef}></div>
+          ))}
+          <div ref={bottomRef}></div>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
         <input
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
@@ -152,15 +208,19 @@ export default function AssetStudioContent() {
             fontSize: 15
           }}
         />
-        <button onClick={handleSend} disabled={isLoading} style={{
-          padding: "10px 18px",
-          borderRadius: 8,
-          background: "#2563eb",
-          color: "#fff",
-          border: "none",
-          fontWeight: 500,
-          cursor: isLoading ? "not-allowed" : "pointer"
-        }}>
+        <button
+          onClick={handleSend}
+          disabled={isLoading}
+          style={{
+            padding: "10px 18px",
+            borderRadius: 8,
+            background: "#2563eb",
+            color: "#fff",
+            border: "none",
+            fontWeight: 500,
+            cursor: isLoading ? "not-allowed" : "pointer"
+          }}
+        >
           {isLoading ? "..." : "Send"}
         </button>
       </div>
