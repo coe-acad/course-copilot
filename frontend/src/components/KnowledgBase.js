@@ -4,12 +4,20 @@ import { FiMoreVertical } from "react-icons/fi";
 export default function KnowledgeBase({
   resources = [],
   fileInputRef,
-  onFileChange
+  onFileChange,
+  showCheckboxes = false, // 🔁 Controls checkbox display
+  selected = [],
+  onSelect = () => {}
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
 
   const toggleMenu = (id) => {
     setMenuOpenId(menuOpenId === id ? null : id);
+  };
+
+  const handleCheckboxToggle = (id) => {
+    if (!onSelect) return;
+    onSelect(id);
   };
 
   return (
@@ -18,7 +26,8 @@ export default function KnowledgeBase({
       borderRadius: 12,
       boxShadow: "0 1px 4px #0001",
       padding: 18,
-      maxHeight: '80vh',
+      minHeight: '60vh',
+      maxHeight: '65vh',
       overflowY: 'auto'
     }}>
       <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
@@ -51,18 +60,20 @@ export default function KnowledgeBase({
         Add Resource
       </button>
 
-      <div style={{ marginBottom: 8 }}>
-        <label style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          fontWeight: 500,
-          fontSize: 14
-        }}>
-          <input type="checkbox" disabled />
-          Select All References
-        </label>
-      </div>
+      {showCheckboxes && (
+        <div style={{ marginBottom: 8 }}>
+          <label style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontWeight: 500,
+            fontSize: 14
+          }}>
+            <input type="checkbox" disabled />
+            Select All References
+          </label>
+        </div>
+      )}
 
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {resources.length === 0 ? (
@@ -86,7 +97,13 @@ export default function KnowledgeBase({
                   fontSize: 15,
                   flex: 1
                 }}>
-                  <input type="checkbox" disabled />
+                  {showCheckboxes && (
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(id)}
+                      onChange={() => handleCheckboxToggle(id)}
+                    />
+                  )}
                   <span>📄</span>
                   <span style={{ flex: 1 }}>{res.fileName || res.title}</span>
                 </label>
@@ -132,7 +149,6 @@ export default function KnowledgeBase({
   );
 }
 
-// Menu item style
 const menuItemStyle = {
   padding: "6px 12px",
   whiteSpace: "nowrap",
