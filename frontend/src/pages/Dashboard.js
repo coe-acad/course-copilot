@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/header/Header";
 import SectionCard from "../components/SectionCard";
-import Sidebar from "../components/Sidebar";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
+import KnowledgeBase from "../components/KnowledgBase";
 
 const curriculumOptions = [
   {
@@ -207,10 +207,16 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-        {/* Sidebar */}
-        <div className="sidebar" style={{ flex: 1, minWidth: 280, height: "100%", display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', marginTop: 24 }}>
-          <Sidebar ref={sidebarRef} onAddContentClick={() => setShowAddResourceModal(true)} />
-          {/* Removed Knowledge Base/resources section as requested */}
+        {/* Knowledge Base Panel (instead of Sidebar) */}
+        <div className="knowledge-base" style={{ flex: 1, minWidth: 280, height: "100%", display: 'flex', flexDirection: 'column', marginTop: 24 }}>
+          <KnowledgeBase
+            resources={allFiles}
+            fileInputRef={{ current: null }} // You can make this a real ref if needed
+            onFileChange={() => {}} // Optional, hook it to your upload
+            showCheckboxes={false}
+            selected={[]}
+            onSelect={() => {}}
+          />
         </div>
       </div>
       <Modal open={showCurriculumModal} onClose={handleModalClose}>
