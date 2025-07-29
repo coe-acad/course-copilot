@@ -30,6 +30,14 @@ async def create_asset(user_id: str, course_id: str, asset_name: str, request: A
         if not course or "assistant_id" not in course:
             raise HTTPException(status_code=404, detail="Course or assistant not found")
         assistant_id = course["assistant_id"]
+        print(assistant_id)
+        vector_store_id = course["vector_store_id"]
+
+        vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
+
+        for file_obj in vs_files.data:
+            file_details = client.files.retrieve(file_obj.id)
+            print(f"File ID: {file_obj.id}, Name: {file_details.filename}, Status: {file_obj.status}")
 
         # Construct the prompt using PromptParser
         parser = PromptParser()
