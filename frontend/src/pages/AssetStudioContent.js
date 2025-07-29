@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
+import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -18,8 +19,7 @@ export default function AssetStudioContent() {
   const [chatMessages, setChatMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFiles, ] = useState(location.state?.selectedFiles || []);
-
+  const [selectedFiles] = useState(location.state?.selectedFiles || []);
   const [selectedIds, setSelectedIds] = useState([]);
   const bottomRef = useRef(null);
   const title = optionTitles[option] || option;
@@ -34,12 +34,12 @@ export default function AssetStudioContent() {
     if (!inputMessage.trim()) return;
 
     const newMsg = { type: "user", text: inputMessage };
-    setChatMessages([...chatMessages, newMsg]);
+    setChatMessages(prev => [...prev, newMsg]);
     setInputMessage("");
     setIsLoading(true);
 
     try {
-      // TODO: send message to backend and get AI response
+      // TODO: Call backend chat API
       const botResponse = {
         type: "bot",
         text: "This is a placeholder response from the AI assistant."
@@ -58,6 +58,22 @@ export default function AssetStudioContent() {
     );
   };
 
+  const handleDownload = (message) => {
+    // TODO: Trigger download logic from backend
+    console.log("Download message:", message);
+  };
+
+  const handleSaveToAsset = (message) => {
+    // TODO: Send this to backend and push to dashboard asset
+    console.log("Save to Asset:", message);
+    // e.g., save to localStorage or context
+  };
+
+  const handleSaveToResource = (message) => {
+    // TODO: Trigger resource save API
+    console.log("Save to Resource:", message);
+  };
+
   return (
     <AssetStudioLayout
       title={title}
@@ -67,8 +83,8 @@ export default function AssetStudioContent() {
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
-          fileInputRef={{ current: null }} // TODO: hook this to actual file upload input
-          onFileChange={() => {}} // TODO: handle upload here
+          fileInputRef={{ current: null }} // TODO: hook this to actual file input
+          onFileChange={() => {}} // TODO: hook file upload here
         />
       }
     >
@@ -96,9 +112,27 @@ export default function AssetStudioContent() {
             borderRadius: 8,
             padding: "8px 12px",
             margin: "6px 0",
-            textAlign: msg.type === "user" ? "right" : "left"
+            textAlign: "left",
+            position: "relative"
           }}>
-            {msg.text}
+            <div style={{ marginBottom: 6 }}>{msg.text}</div>
+            <div style={{ display: "flex", gap: 10, fontSize: 14 }}>
+              <FaDownload
+                title="Download"
+                style={{ cursor: "pointer" }}
+                onClick={() => handleDownload(msg.text)}
+              />
+              <FaFolderPlus
+                title="Save to Asset"
+                style={{ cursor: "pointer" }}
+                onClick={() => handleSaveToAsset(msg.text)}
+              />
+              <FaSave
+                title="Save to Resource"
+                style={{ cursor: "pointer" }}
+                onClick={() => handleSaveToResource(msg.text)}
+              />
+            </div>
           </div>
         ))}
         <div ref={bottomRef}></div>
@@ -110,7 +144,13 @@ export default function AssetStudioContent() {
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="Type your message..."
-          style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", fontSize: 15 }}
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #ccc",
+            fontSize: 15
+          }}
         />
         <button onClick={handleSend} disabled={isLoading} style={{
           padding: "10px 18px",
