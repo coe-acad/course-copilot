@@ -34,6 +34,10 @@ class ResourceCreateRequest(BaseModel):
     title: str
     url: str
 
+def create_course_description_file(course_id: str, user_id: str):
+    # TODO: Create a file with the course description and add it to the Knowledge Base
+    pass
+
 @router.post("/courses/{course_id}/resources", response_model=ResourceListResponse)
 async def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
