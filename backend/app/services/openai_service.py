@@ -20,6 +20,7 @@ import json
 import re
 from openai import AssistantEventHandler
 from openai import AsyncOpenAI, OpenAI
+from ..services.mongo import get_course, update_course, get_resources_by_course_id, create_resource
 
 logger = logging.getLogger(__name__)
 
@@ -427,62 +428,53 @@ async def start_free_chat_thread(course_id: str, user_id: str) -> str:
     return thread_id
 
 # --- Resource Upload/Check-in/Check-out ---
-async def upload_resources(course_id: str, assistant_id: str, files: List[UploadFile], user_id: str, thread_id: Optional[str] = None) -> list:
-    course = storage_service.get_course(course_id, user_id)
+def upload_resources(course_id: str, assistant_id: str, vector_store_id: str, files: List[UploadFile], user_id: str) -> list:
+    course = get_course(course_id, user_id)
     if not course:
         raise CourseNotFoundError(f"Course {course_id} not found")
+
     resources = []
+
     for file in files:
         file_id = str(uuid4())
         try:
-            openai_file_id = _upload_file_to_openai(file)
-        except Exception as e:
-            logger.error(f"Failed to upload file {file.filename} to OpenAI: {str(e)}")
-            continue  # Skip this file, but do not stop the process
-        local_path = _upload_file_to_local(file, course_id, file_id)
-        
-        resource = {
-            "title": file.filename,
-            "status": "checked_out",
-            "checkedOutBy": user_id,
-            "openai_file_id": openai_file_id,
-            "local_path": local_path,
-            "file_size": file.size,
-            "content_type": file.content_type,
-            "created_at": datetime.utcnow().isoformat(),
-            "thread_id": thread_id  # Store thread_id if this is an asset-level upload
-        }
-        
-        # Store resource with thread_id if provided (asset-level)
-        if thread_id:
-            storage_service.create_resource(course_id, file_id, resource, thread_id=thread_id)
-            logger.info(f"Asset-level upload: {file.filename} for thread {thread_id}")
-        else:
+            # Save file locally
+            local_path = _upload_file_to_local(file, course_id, file_id)
+
+            # Upload to OpenAI
+            openai_file_id = create_file(local_path)
+
+            # Connect file to vector store
+            connect_file_to_vector_store(vector_store_id, openai_file_id)
+
+            resource = {
+                "title": file.filename,
+                "status": "checked_out",
+                "checkedOutBy": user_id,
+                "openai_file_id": openai_file_id,
+                "local_path": local_path,
+                "file_size": file.size,
+                "content_type": file.content_type,
+                "created_at": datetime.utcnow().isoformat()
+            }
+
             storage_service.create_resource(course_id, file_id, resource)
-            logger.info(f"Course-level upload: {file.filename}")
-        
-        resources.append({
-            "fileId": file_id,
-            "fileName": file.filename,
-            "status": "checked_out",
-            "checkedOutBy": user_id,
-            "local_path": local_path
-        })
-        logger.info(f"Uploaded file: {file.filename}, ID: {file_id}, OpenAI file: {openai_file_id}, Local path: {local_path}")
-    
-    # Always add all uploaded files to the assistant's file search and attach to thread if present
-    if resources:
-        file_ids = [r["openai_file_id"] for r in resources if r.get("openai_file_id")]
-        if file_ids:
-            try:
-                _add_files_to_assistant(assistant_id, file_ids)
-                if thread_id:
-                    _attach_files_to_thread(thread_id, file_ids)
-                logger.info(f"Added {len(file_ids)} files to assistant {assistant_id} and thread {thread_id if thread_id else '[course-level]'}")
-            except Exception as e:
-                logger.error(f"Error attaching uploaded files: {str(e)}")
-    
+            logger.info(f"Uploaded and connected file: {file.filename}, ID: {file_id}, OpenAI file: {openai_file_id}, Local path: {local_path}")
+
+            resources.append({
+                "fileId": file_id,
+                "fileName": file.filename,
+                "status": "checked_out",
+                "checkedOutBy": user_id,
+                "local_path": local_path
+            })
+
+        except Exception as e:
+            logger.error(f"Error processing file {file.filename}: {str(e)}")
+            continue
+
     return resources
+
 
 async def checkin_resource(course_id: str, assistant_id: str, file_id: str, user_id: str) -> dict:
     course = storage_service.get_course(course_id, user_id)

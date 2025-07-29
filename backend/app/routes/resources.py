@@ -65,7 +65,7 @@ def create_course_description_file(course_id: str, user_id: str):
         title = pdf_relative_path.split("/")[-1].split(".")[0]
 
         # Create resource in MongoDB
-        create_resource(course_id, title, "checked-out", pdf_relative_path)
+        create_resource(course_id, title, pdf_relative_path)
 
         # Upload the PDF to OpenAI for vector store
         openai_file_id = create_file(pdf_relative_path)
