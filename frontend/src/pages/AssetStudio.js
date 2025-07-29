@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useFilesContext } from "../context/FilesContext";
 import AddReferencesModal from "../components/AddReferencesModal";
-import { getCourseResources, uploadCourseResources, checkinResource, checkoutResource, addAllFilesToAssistant } from "../services/resources";
+import { getCourseResources, uploadCourseResources, checkinResource, checkoutResource } from "../services/resources";
 import SettingsModal from "../components/SettingsModal";
 import ReactMarkdown from 'react-markdown';
 import { createPDFBlob, createPDFBlobForUpload } from '../utils/pdfGenerator';
@@ -78,9 +78,7 @@ export default function AssetStudio() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Add state for input variables to be sent to backend
-  const [inputVariables, setInputVariables] = useState({});
-
-  // ... (resource handlers, file upload, etc. remain unchanged) ...
+  const [inputVariables, ] = useState({});
 
   // Fetch resources from backend on mount and after upload
   useEffect(() => {
@@ -223,50 +221,6 @@ export default function AssetStudio() {
       .finally(() => setResourceLoading(false));
   }, [courseId]);
 
-  // Fetch or create thread and load messages on mount or when option changes
-//   useEffect(() => {
-//     if (!courseId) return;
-//     setChatLoading(true);
-//     setChatError("");
-//     setMessages([]);
-    
-//     async function initThread() {
-//       try {
-//         let thread_id;
-//         // Always create thread through backend to ensure consistency
-//         if (option === 'brainstorm') {
-//           const thread = await createBrainstormThread(courseId);
-//           thread_id = thread.thread_id || thread.id || thread.threadId;
-//         } else if (option === 'course-outcomes') {
-//           const thread = await courseOutcomesService.createThread(courseId);
-//           thread_id = thread.thread_id || thread.id || thread.threadId;
-//         }
-//         setThreadId(thread_id);
-//         // Ensure all files are linked to the thread (production ready)
-//         if (thread_id) {
-//           try {
-//             await addAllFilesToAssistant(courseId, thread_id);
-//           } catch (e) {
-//             console.warn('Failed to link all files to thread:', e);
-//           }
-//         }
-//         // Load messages for the thread
-//         let data;
-//         if (option === 'brainstorm') {
-//           data = await getBrainstormMessages(courseId, thread_id);
-//         } else if (option === 'course-outcomes') {
-//           data = await courseOutcomesService.getMessages(courseId, thread_id);
-//         }
-//         setMessages(data.messages || []);
-//       } catch (err) {
-//         setChatError(err.message || 'Failed to load thread/messages');
-//       } finally {
-//         setChatLoading(false);
-//       }
-//     }
-//     initThread();
-//     // eslint-disable-next-line
-//   }, [courseId, option]);
 
   // Handle file upload to backend in the modal
   const handleModalFileUpload = async (files) => {
