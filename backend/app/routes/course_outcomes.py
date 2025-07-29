@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 import json
 from ..utils.verify_token import verify_token
+from ..utils.prompt_parser import PromptParser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -144,6 +145,17 @@ async def start_course_outcomes(course_id: str, request: CourseOutcomesRequest, 
             for r in all_resources
             if r["status"] == "checked_in"
         ]
+
+        # --- TEST: Print the final prompt using PromptParser ---
+        try:
+            parser = PromptParser()
+            final_prompt = parser.get_asset_prompt("course_outcomes", course_id, user_id)
+            print("--- GENERATED PROMPT ---")
+            print(final_prompt)
+            print("------------------------")
+        except Exception as e:
+            print(f"--- ERROR in PromptParser: {e} ---")
+        # --- END TEST ---
         
         # Generate the system prompt with actual course name and checked-in files
         system_prompt = _generate_course_outcomes_system_prompt(

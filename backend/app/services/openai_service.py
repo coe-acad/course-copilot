@@ -1,4 +1,4 @@
-from backend.app.utils.prompt_parser import PromptParser
+from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from .storage_course import storage_service
 from ..utils.exceptions import CourseNotFoundError, ResourceNotFoundError, ResourceAlreadyCheckedOutError, ResourceAlreadyCheckedInError, OpenAIError
@@ -29,7 +29,7 @@ LOCAL_STORAGE_DIR.mkdir(exist_ok=True)
 
 def create_assistant():
     try:
-        assistant_prompt = PromptParser.parse_prompt("system/overall_context.json")
+        assistant_prompt = PromptParser().render_prompt("app/prompts/system/overall_context.json" , {})
         assistant = client.beta.assistants.create(
             name="Course Design Assistant",
             instructions=assistant_prompt,
@@ -42,14 +42,38 @@ def create_assistant():
         logger.error(f"Error creating Course Design Assistant: {str(e)}")
         raise OpenAIError(f"Failed to create Course Design Assistant: {str(e)}")
 
-def create_file(file_name: str, file_content: str):
-    return "to be done"
+def create_file(file_path: str):
+    try:
+        with open(file_path, "rb") as f:
+            openai_file = client.files.create(file=f, purpose="assistants")
+        logger.info(f"Uploaded file for vector store: {file_path} -> {openai_file.id}")
+        return openai_file.id
+    except Exception as e:
+        logger.error(f"Error uploading file for vector store {file_path}: {str(e)}")
+        raise OpenAIError(f"Failed to upload file for vector store: {str(e)}")
 
 def create_vector_store(assistant_id: str):
-    return "to be done"
+    try:
+        vector_store = client.vector_stores.create(name=f"Course_{assistant_id}_files")
+        logger.info(f"Created vector store {vector_store.id} for assistant {assistant_id}")
+        return vector_store.id
+    except Exception as e:
+        logger.error(f"Error creating vector store for assistant {assistant_id}: {str(e)}")
+        raise OpenAIError(f"Failed to create vector store: {str(e)}")
 
-def connect_file_to_vector_store(assistant_id: str, file_id: str):
-    return "to be done"
+def connect_file_to_vector_store(vector_store_id: str, file_id: str):
+    import time
+    try:
+        batch_add = client.vector_stores.file_batches.create(
+            vector_store_id=vector_store_id,
+            file_ids=[file_id]
+        )
+        time.sleep(1)
+        logger.info(f"Connected file {file_id} to vector store {vector_store_id}, status: {batch_add.status}")
+        return batch_add.id
+    except Exception as e:
+        logger.error(f"Error connecting file {file_id} to vector store {vector_store_id}: {str(e)}")
+        raise OpenAIError(f"Failed to connect file to vector store: {str(e)}")
 
 async def update_course(course_id: str, name: Optional[str], description: Optional[str], archived: Optional[bool], user_id: str) -> dict:
     try:
@@ -1210,45 +1234,6 @@ def add_files_to_assistant_vector_store(course_id: str, user_id: str, resources:
 
     logger.info(f"[ALL FILES] Added {len(file_paths)} new files to vector store for assistant {assistant_id}")
     return {"added_file_ids": file_paths}
-
-async def _get_or_create_vector_store(client, assistant_id):
-    """
-    Retrieve or create a vector store for the assistant.
-    """
-    # Check if assistant already has a vector store
-    assistant = await client.beta.assistants.retrieve(assistant_id)
-    if hasattr(assistant.tool_resources, 'file_search') and assistant.tool_resources.file_search and assistant.tool_resources.file_search.vector_store_ids:
-        vector_store_id = assistant.tool_resources.file_search.vector_store_ids[0]
-        return await client.vector_stores.retrieve(vector_store_id)
-
-    # Create a new vector store
-    vector_store = await client.vector_stores.create(name=f"Course_{assistant_id}_files")
-    return vector_store
-
-async def _add_files_to_vector_store(client, vector_store_id, file_ids):
-    """
-    Add files to the specified vector store.
-    """
-    await client.beta.vector_stores.file_batches.create(
-        vector_store_id=vector_store_id,
-        file_ids=file_ids
-    )
-    logger.info(f"Added {len(file_ids)} files to vector store {vector_store_id}")
-
-async def _update_assistant_with_vector_store(client, assistant_id, vector_store_id):
-    """
-    Update the assistant to use the vector store for file search.
-    """
-    await client.beta.assistants.update(
-        assistant_id=assistant_id,
-        tool_resources={
-            "file_search": {
-                "vector_store_ids": [vector_store_id]
-            }
-        },
-        tools=[{"type": "file_search"}]  # Enable file_search tool
-    )
-    logger.info(f"Updated assistant {assistant_id} to use vector store {vector_store_id}")
 
 async def delete_resources(course_id: str, assistant_id: str, user_id: str):
     """

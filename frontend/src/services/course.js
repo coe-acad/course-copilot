@@ -13,8 +13,8 @@ export async function fetchCourses() {
   return res.data;
 }
 
-export async function createCourse({ name, description, year, level }) {
-  const res = await axios.post(`${API_BASE}/courses`, { name, description, year, level }, {
+export async function createCourse({ name, description}) {
+  const res = await axios.post(`${API_BASE}/courses`, { name, description}, {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`

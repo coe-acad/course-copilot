@@ -2,6 +2,7 @@ from ast import parse
 import json
 from jinja2 import Template
 import os
+from ..services.storage_course import storage_service
 
 class PromptParser:
     def __init__(self):
