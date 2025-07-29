@@ -307,12 +307,12 @@ export default function AssetStudioContent() {
                           code: ({node, ...props}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}} {...props} />,
                           pre: ({node, ...props}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}} {...props} />,
                           blockquote: ({node, ...props}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}} {...props} />,
-                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd"}} {...props} />,
+                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}} {...props} />,
                           thead: ({node, ...props}) => <thead style={{backgroundColor: "#f5f5f5"}} {...props} />,
                           tbody: ({node, ...props}) => <tbody {...props} />,
                           tr: ({node, ...props}) => <tr style={{borderBottom: "1px solid #ddd"}} {...props} />,
-                          th: ({node, ...props}) => <th style={{padding: "8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5"}} {...props} />,
-                          td: ({node, ...props}) => <td style={{padding: "8px", textAlign: "left", border: "1px solid #ddd"}} {...props} />
+                          th: ({node, ...props}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}} {...props} />,
+                          td: ({node, ...props}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}} {...props} />
                         }}
                       >
                         {msg.text}
@@ -431,30 +431,11 @@ export default function AssetStudioContent() {
                   padding: "10px 12px",
                   borderRadius: 6,
                   border: "1px solid #ccc",
-                  fontSize: 14
+                  fontSize: 14,
+                  boxSizing: "border-box"
                 }}
                 placeholder="Enter asset name..."
               />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
-                Preview:
-              </label>
-              <div
-                style={{
-                  background: "#f5f5f5",
-                  padding: 12,
-                  borderRadius: 6,
-                  maxHeight: "120px",
-                  overflowY: "auto",
-                  fontSize: 14,
-                  lineHeight: 1.4
-                }}
-              >
-                {saveModalMessage.substring(0, 200)}
-                {saveModalMessage.length > 200 && "..."}
-              </div>
             </div>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
