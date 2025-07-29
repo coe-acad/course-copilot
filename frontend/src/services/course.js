@@ -6,15 +6,15 @@ function getToken() {
   return localStorage.getItem('token');
 }
 
-export async function fetchCourses() {
-  const res = await axios.get(`${API_BASE}/courses`, {
+export async function fetchCourses(user_id = 123) {
+  const res = await axios.get(`${API_BASE}/courses?user_id=${user_id}`, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;
 }
 
-export async function createCourse({ name, description}) {
-  const res = await axios.post(`${API_BASE}/courses`, { name, description}, {
+export async function createCourse({name, description, user_id = 123}) {
+  const res = await axios.post(`${API_BASE}/courses?user_id=${user_id}`, {name, description}, {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`
@@ -37,15 +37,15 @@ export async function getCourse(courseId) {
   return res.data;
 }
 
-export async function saveCourseSettings(courseId, settings) {
-  const res = await axios.put(`${API_BASE}/courses/${courseId}/settings`, settings, {
+export async function saveCourseSettings(courseId, settings, user_id = 123) {
+  const res = await axios.put(`${API_BASE}/courses/${courseId}/settings?user_id=${user_id}`, settings, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;
 }
 
-export async function getCourseSettings(courseId) {
-  const res = await axios.get(`${API_BASE}/courses/${courseId}/settings`, {
+export async function getCourseSettings(courseId, user_id = 123) {
+  const res = await axios.get(`${API_BASE}/courses/${courseId}/settings?user_id=${user_id}`, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;

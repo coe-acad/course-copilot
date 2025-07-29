@@ -19,7 +19,6 @@ class ResourceResponse(BaseModel):
     resourceName: str
 
 class ResourceListResponse(BaseModel):
-    courseId: str
     resources: List[ResourceResponse]
 
 class DeleteResponse(BaseModel):
@@ -121,12 +120,11 @@ def list_resources(user_id: str, course_id: str):
     try:
         check_course_exists(course_id)
         resources = get_resources_by_course_id(course_id)
-        return ResourceListResponse(
-                    courseId=course_id,
-                    resources=[ResourceResponse(
-                        resourceName= data.get("resource_name", "Unknown Name"),
-                    ) for data in resources]
-                )
+        resource_list = [
+            ResourceResponse(resourceName=data.get("resource_name", "Unknown Name"))
+            for data in resources
+        ]
+        return ResourceListResponse(resources=resource_list)
     except Exception as e:
         logger.error(f"Error listing resources: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

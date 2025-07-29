@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { FaWrench } from "react-icons/fa";
+import { saveCourseSettings, getCourseSettings } from "../services/course";
 
 // Dummy tag data (replace with backend data if needed)
 const LEVELS = ["Year 1", "Year 2", "Year 3", "Year 4"];
@@ -17,8 +18,40 @@ export default function SettingsModal({ open, onClose, onSave }) {
   const [selectedLevels, setSelectedLevels] = useState([]);
   const [selectedStudyAreas, setSelectedStudyAreas] = useState([]);
   const [selectedPedagogical, setSelectedPedagogical] = useState([]);
-  const [useReferenceOnly, setUseReferenceOnly] = useState(false);
   const [askClarifyingQuestions, setAskClarifyingQuestions] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Get courseId from localStorage
+  const courseId = localStorage.getItem("currentCourseId");
+
+  // Load saved settings when modal opens
+  useEffect(() => {
+    if (open && courseId) {
+      loadSavedSettings();
+    }
+  }, [open, courseId]);
+
+  const loadSavedSettings = async () => {
+    if (!courseId) return;
+    
+    setLoading(true);
+    try {
+      const savedSettings = await getCourseSettings(courseId);
+      console.log("Loaded saved settings:", savedSettings);
+      
+      // Map backend field names to component state
+      if (savedSettings) {
+        setSelectedLevels(savedSettings.course_level || []);
+        setSelectedStudyAreas(savedSettings.study_area || []);
+        setSelectedPedagogical(savedSettings.pedagogical_components || []);
+        setAskClarifyingQuestions(savedSettings.ask_clarifying_questions || false);
+      }
+    } catch (error) {
+      console.error("Error loading saved settings:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Toggle tag selection
   const toggleTag = (tag, selectedTags, setSelectedTags) => {
@@ -27,19 +60,30 @@ export default function SettingsModal({ open, onClose, onSave }) {
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!courseId) {
+      console.error("No courseId found in localStorage");
+      return;
+    }
+
     const payload = {
-      levels: selectedLevels,
-      studyAreas: selectedStudyAreas,
-      pedagogical: selectedPedagogical,
-      useReferenceOnly,
-      askClarifyingQuestions
+      course_level: selectedLevels,
+      study_area: selectedStudyAreas,
+      pedagogical_components: selectedPedagogical,
+      ask_clarifying_questions: askClarifyingQuestions
     };
     console.log("Saving settings:", payload);
-
-    // TODO: Save settings to backend
-    // await saveCourseSettings(courseId, payload);
-    onSave(payload);
+    try {
+      await saveCourseSettings(courseId, payload);
+      if (onSave) {
+        // UNDERSTAND: Why? How? What is onSave in previous and next line?
+        onSave(payload);
+      }
+      onClose(); // Close the modal after successful save
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      // You might want to show an error message to the user here
+    }
   };
 
   return (
@@ -108,20 +152,6 @@ export default function SettingsModal({ open, onClose, onSave }) {
               {comp}
             </button>
           ))}
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={useReferenceOnly}
-            onChange={() => setUseReferenceOnly(prev => !prev)}
-          />
-          Use reference material only
-        </label>
-        <div style={{ color: "#666", fontSize: 13, marginLeft: 22 }}>
-          Limits AI-generated responses to the provided course materials and references.
         </div>
       </div>
 

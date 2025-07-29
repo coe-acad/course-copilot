@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from ..services import openai_service
 from firebase_admin import auth
@@ -18,23 +18,27 @@ class CourseCreateRequest(BaseModel):
     description: str
 
 class CourseSettingsRequest(BaseModel):
-    course_level: str
-    study_area: str
+    course_level: list[str]
+    study_area: list[str]   
     pedagogical_components: list[str]
     ask_clarifying_questions: bool
 
-@router.get("/courses")
+class CourseResponse(BaseModel):
+    name: str
+    id: str
+
+@router.get("/courses", response_model=list[CourseResponse])
 def get_courses(user_id: str):
     logger.info(f"Fetching courses for user {user_id}")
     try:
         courses = get_courses_by_user_id(user_id)
         logger.info(f"Fetched courses for user {user_id}: {len(courses)} courses")
-        return courses
+        return [CourseResponse(name = course["name"], id = course["_id"]) for course in courses]
     except Exception as e:
         logger.error(f"Error fetching courses for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
-@router.post("/courses")
+@router.post("/courses", response_model=CourseResponse)
 def create_course(user_id: str, request: CourseCreateRequest):
     try:
         assistant_id = openai_service.create_assistant()
@@ -57,7 +61,7 @@ def create_course(user_id: str, request: CourseCreateRequest):
             "vector_store_id": vector_store_id
         })
         create_course_description_file(course_id, user_id)
-        return {"courseId": course_id}
+        return CourseResponse(name = request.name, id = course_id)
     except Exception as e:
         logger.error(f"Error creating course: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -73,7 +77,7 @@ async def delete_course(course_id: str, user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/courses/{course_id}/settings")
-def update_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
+def save_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
     try:
         course = get_course(course_id)
         if not course:

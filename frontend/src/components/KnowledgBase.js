@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { FiMoreVertical } from "react-icons/fi";
+import { deleteResource, uploadCourseResources } from "../services/resources";
 
 export default function KnowledgeBase({
   resources = [],
@@ -7,7 +8,8 @@ export default function KnowledgeBase({
   onFileChange,
   showCheckboxes = false, // 🔁 Controls checkbox display
   selected = [],
-  onSelect = () => {}
+  onSelect = () => {},
+  onDelete = () => {} // Callback to refresh resources after deletion
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
 
@@ -18,6 +20,31 @@ export default function KnowledgeBase({
   const handleCheckboxToggle = (id) => {
     if (!onSelect) return;
     onSelect(id);
+  };
+
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+
+      // Call the upload API
+      await uploadCourseResources(courseId, files);
+      
+      // Clear the file input
+      event.target.value = '';
+      
+      // Call the onFileChange callback to refresh the resources list
+      if (onFileChange) {
+        onFileChange(event);
+      }
+      
+      console.log(`Successfully uploaded ${files.length} file(s)`);
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      alert(`Failed to upload files: ${error.message}`);
+    }
   };
 
   return (
@@ -40,7 +67,7 @@ export default function KnowledgeBase({
         ref={fileInputRef}
         style={{ display: "none" }}
         multiple
-        onChange={onFileChange}
+        onChange={handleFileUpload}
       />
 
       <button
@@ -80,7 +107,7 @@ export default function KnowledgeBase({
           <li style={{ color: '#888' }}>No resources uploaded yet.</li>
         ) : (
           resources.map((res, i) => {
-            const id = res.id || res.fileName || i;
+            const id = res.id || res.resourceName || res.fileName || i;
             return (
               <li key={id} style={{
                 display: "flex",
@@ -105,7 +132,7 @@ export default function KnowledgeBase({
                     />
                   )}
                   <span>📄</span>
-                  <span style={{ flex: 1 }}>{res.fileName || res.title}</span>
+                  <span style={{ flex: 1 }}>{res.resourceName || res.fileName || res.title}</span>
                 </label>
 
                 {/* Three-dot menu */}
@@ -126,14 +153,15 @@ export default function KnowledgeBase({
                       padding: "6px 0",
                       width: 120,
                       zIndex: 10,
-                      fontSize: 14
+                      fontSize: 14,
+                      listStyleType: "none"
                     }}>
-                      <li style={menuItemStyle}>
+                      {/* <li style={menuItemStyle}>
                         <a href={res.url} target="_blank" rel="noopener noreferrer" style={linkStyle}>View</a>
                       </li>
                       <li style={menuItemStyle}>
                         <a href={res.url} download style={linkStyle}>Download</a>
-                      </li>
+                      </li> */}
                       <li style={{ ...menuItemStyle, color: "#d32f2f", cursor: "not-allowed" }}>
                         Delete
                       </li>

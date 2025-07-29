@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import CoursesLayout from "../layouts/CoursesLayout";
 import CourseModal from "../components/CourseModal";
 import { useCourses } from "../hooks/useCourses";
+import { fetchCourses, createCourse,  deleteCourse } from "../services/course";
 
 export default function Courses() {
   const {
@@ -18,9 +19,16 @@ export default function Courses() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // TODO: Replace localStorage with backend course fetch
-    const stored = JSON.parse(localStorage.getItem("createdCourses") || "[]");
-    setSavedCourses(stored);
+    async function loadCourses() {
+      try {
+        const coursesFromAPI = await fetchCourses();
+        setSavedCourses(coursesFromAPI);
+      } catch (err) {
+        console.error("Failed to fetch courses:", err);
+      }
+    }
+  
+    loadCourses();
   }, [showModal]);
 
   const renderCourseCard = (course, index) => (
@@ -28,7 +36,7 @@ export default function Courses() {
       key={index}
       onClick={() => {
         // TODO: Replace localStorage with backend context/auth storage
-        localStorage.setItem("currentCourseTitle", course.title);
+        localStorage.setItem("currentCourseTitle", course.name);
         localStorage.setItem("currentCourseId", course.id || `course-${index}`);
         navigate("/dashboard");
       }}
@@ -51,7 +59,7 @@ export default function Courses() {
       onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
       onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
     >
-      {course.title}
+      {course.name}
     </div>
   );
 
@@ -79,21 +87,19 @@ export default function Courses() {
         setCourseName={setCourseName}
         courseDesc={courseDesc}
         setCourseDesc={setCourseDesc}
-        onSubmit={() => {
-          const prev = JSON.parse(localStorage.getItem("createdCourses") || "[]");
-          const newCourse = {
-            id: Date.now().toString(),
-            title: courseName,
-            desc: courseDesc
-          };
-          const updated = [...prev, newCourse];
-          localStorage.setItem("createdCourses", JSON.stringify(updated));
-
-          localStorage.setItem("currentCourseTitle", newCourse.title);
-          localStorage.setItem("currentCourseId", newCourse.id);
-
-          setShowModal(false);
-          navigate("/dashboard");
+        onSubmit={async () => {
+          try {
+            const newCourse = await createCourse({
+              name: courseName,
+              description: courseDesc
+            });
+            setShowModal(false);
+            localStorage.setItem("currentCourseTitle", newCourse.name);
+            localStorage.setItem("currentCourseId", newCourse.id);
+            navigate("/dashboard");
+          } catch (err) {
+            console.error("Error creating course:", err);
+          }
         }}
         loading={loading}
         error={error}

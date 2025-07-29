@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/header/Header";
 import SectionCard from "../components/SectionCard";
@@ -6,25 +6,47 @@ import KnowledgeBase from "../components/KnowledgBase";
 import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
-
+import { getAllResources } from "../services/resources";
 import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
-  const [allFiles] = useState([
-    { id: '1', fileName: 'Syllabus.pdf' },
-    { id: '2', fileName: 'IntroLecture.pptx' },
-    { id: '3', fileName: 'ReadingList.docx' }
-  ]);
   const [showCurriculumModal, setShowCurriculumModal] = useState(false);
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
   const [selectedOption, setSelectedOption] = useState(0);
   const [selectedAssessmentOption, setSelectedAssessmentOption] = useState(0);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isGridView, setIsGridView] = useState(true);
+  const [resources, setResources] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(true);
   const navigate = useNavigate();
+
+  // Fetch resources on component mount
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        setLoadingResources(true);
+        const data = await getAllResources();
+        // Transform the resources to match the expected format
+        const transformedResources = (data.resources || []).map(resource => ({
+          id: resource.resourceName,
+          fileName: resource.resourceName,
+          title: resource.resourceName,
+          url: `#${resource.resourceName}` // Placeholder URL
+        }));
+        setResources(transformedResources);
+      } catch (error) {
+        console.error('Error fetching resources:', error);
+        setResources([]);
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    fetchResources();
+  }, []);
 
   const handleCurriculumCreate = () => {
     setSelectedOption(0);
@@ -92,7 +114,7 @@ export default function Dashboard() {
         {/* Right Knowledge Base Panel */}
         <div style={{ flex: 1, marginTop: 24 }}>
           <KnowledgeBase
-            resources={allFiles}
+            resources={loadingResources ? [] : resources}
             fileInputRef={{ current: null }}
             onFileChange={() => {}}
             showCheckboxes={false}
@@ -133,7 +155,7 @@ export default function Dashboard() {
             state: { selectedFiles }
           });
         }}
-        files={allFiles}
+        files={loadingResources ? [] : resources}
       />
 
       <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />

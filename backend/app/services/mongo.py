@@ -20,12 +20,18 @@ def add_to_collection(collection_name: str, data: dict):
 
 def get_one_from_collection(collection_name: str, query: dict):
     collection = db[collection_name]
-    return collection.find_one(query)
+    doc = collection.find_one(query)
+    if doc and '_id' in doc:
+        doc['_id'] = str(doc['_id'])
+    return doc
 
 def get_many_from_collection(collection_name: str, query: dict):
     docs = []
     collection = db[collection_name]
     for doc in collection.find(query):
+        # Convert ObjectId to string for JSON serialization
+        if '_id' in doc:
+            doc['_id'] = str(doc['_id'])
         docs.append(doc)
     return docs
 

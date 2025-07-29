@@ -18,6 +18,7 @@ class AssetRequest(BaseModel):
 
 class AssetResponse(BaseModel):
     response: str
+    thread_id: str
 
 class AssetCreateResponse(BaseModel):
     message: str
@@ -143,8 +144,6 @@ def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id
     except Exception as e:
         logger.error(f"Exception in continue_asset for asset '{asset_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
-
-
 
 @router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
 def save_asset(user_id: str, course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest):

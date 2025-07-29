@@ -3,6 +3,10 @@ import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
+import { getAllResources } from "../services/resources";
+import { assetService } from "../services/asset";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -30,17 +34,11 @@ const sectionMap = {
 };
 
 export default function AssetStudioContent() {
-  const { option } = useParams();
+  const params = useParams();
+  const option = params.feature;
   const location = useLocation();
   const bottomRef = useRef(null);
   const title = optionTitles[option] || option;
-
-  // ✅ All mock files
-  const allMockFiles = [
-    { id: '1', fileName: 'Syllabus.pdf' },
-    { id: '2', fileName: 'IntroLecture.pptx' },
-    { id: '3', fileName: 'ReadingList.docx' }
-  ];
 
   // ✅ Pre-select only those passed from Dashboard
   const selectedFiles = location.state?.selectedFiles || [];
@@ -50,12 +48,75 @@ export default function AssetStudioContent() {
   const [chatMessages, setChatMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [resources, setResources] = useState([]);
+  const [resourcesLoading, setResourcesLoading] = useState(true);
+  const [threadId, setThreadId] = useState(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveModalMessage, setSaveModalMessage] = useState("");
+  const [assetName, setAssetName] = useState("");
 
   useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
+
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        setResourcesLoading(true);
+        const resourcesData = await getAllResources();
+        setResources(resourcesData.resources);
+      } catch (error) {
+        console.error("Error fetching resources:", error);
+        setResources([]);
+      } finally {
+        setResourcesLoading(false);
+      }
+    };
+
+    fetchResources();
+  }, []);
+
+  // Create initial AI message when component loads
+  useEffect(() => {
+    const createInitialMessage = async () => {
+      try {
+        setIsLoading(true);
+        const courseId = localStorage.getItem('currentCourseId');
+        if (!courseId) {
+          console.error('No course ID found');
+          return;
+        }
+
+        // Create asset chat with all available files (or empty array if no files)
+        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
+
+        // Create asset chat with available files
+        const response = await assetService.createAssetChat(courseId, option, fileNames);
+        console.log("Response:", response);
+        
+        if (response && response.response) {
+          setChatMessages([{
+            type: "bot",
+            text: response.response
+          }]);
+          setThreadId(response.thread_id);
+          console.log("Thread ID:", response.thread_id);
+        }
+      } catch (error) {
+        console.error("Error creating initial message:", error);
+        // Don't show any error message to user - just log it
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Only create initial message if resources are loaded and we haven't created one yet
+    if (resources.length > 0 && chatMessages.length === 0) {
+      createInitialMessage();
+    }
+  }, [resources, option, chatMessages.length]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
@@ -71,14 +132,42 @@ export default function AssetStudioContent() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with backend chat API call
-      const botResponse = {
-        type: "bot",
-        text: "This is a placeholder response from the AI assistant."
-      };
-      setChatMessages((prev) => [...prev, botResponse]);
+      if (!threadId) {
+        throw new Error("No active chat thread");
+      }
+
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) {
+        throw new Error("No course ID found");
+      }
+
+      console.log("Sending chat message:", {
+        courseId,
+        assetName: option,
+        threadId,
+        userPrompt: inputMessage
+      });
+
+      // Continue the conversation with the backend
+      const response = await assetService.continueAssetChat(courseId, option, threadId, inputMessage);
+      
+      console.log("Backend response:", response);
+      
+      if (response && response.response) {
+        const botResponse = {
+          type: "bot",
+          text: response.response
+        };
+        setChatMessages((prev) => [...prev, botResponse]);
+      }
     } catch (err) {
       console.error("Chat error:", err);
+      console.error("Error details:", err.message);
+      const errorResponse = {
+        type: "bot",
+        text: "Sorry, I encountered an error. Please try again."
+      };
+      setChatMessages((prev) => [...prev, errorResponse]);
     } finally {
       setIsLoading(false);
     }
@@ -89,17 +178,38 @@ export default function AssetStudioContent() {
     console.log("Download message:", message);
   };
 
-  const handleSaveToAsset = async (message) => {
-    const section = sectionMap[option] || "Other";
-    const assetName = optionTitles[option] || option;
+  const handleSaveToAsset = (message) => {
+    setSaveModalMessage(message);
+    setAssetName("");
+    setShowSaveModal(true);
+  };
 
-    const newAsset = {
-      name: assetName,
-      message: message,
-      timestamp: new Date().toISOString()
-    };
+  const handleSaveAssetConfirm = async () => {
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) {
+        console.error('No course ID found');
+        return;
+      }
 
-    console.log(`🔄 TODO: Save this asset to backend under section ${section}:`, newAsset);
+      const assetType = option;
+
+      await assetService.saveAsset(courseId, assetName, assetType, saveModalMessage);
+      console.log(`✅ Asset "${assetName}" saved successfully!`);
+      
+      // Close modal and reset
+      setShowSaveModal(false);
+      setSaveModalMessage("");
+      setAssetName("");
+    } catch (error) {
+      console.error("Error saving asset:", error);
+    }
+  };
+
+  const handleSaveAssetCancel = () => {
+    setShowSaveModal(false);
+    setSaveModalMessage("");
+    setAssetName("");
   };
 
   const handleSaveToResource = (message) => {
@@ -107,17 +217,22 @@ export default function AssetStudioContent() {
     console.log("Save to Resource:", message);
   };
 
+  const handleFileUpload = () => {
+    // For mock data, we'll just log the upload
+    console.log("File upload triggered - in real implementation this would refresh from API");
+  };
+
   return (
     <AssetStudioLayout
       title={title}
       rightPanel={
         <KnowledgeBase
-          resources={allMockFiles}
+          resources={resources}
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
           fileInputRef={{ current: null }}
-          onFileChange={() => {}}
+          onFileChange={handleFileUpload}
         />
       }
     >
@@ -165,7 +280,48 @@ export default function AssetStudioContent() {
                   wordBreak: "break-word"
                 }}
               >
-                <div style={{ marginBottom: 6 }}>{msg.text}</div>
+                <div 
+                  style={{ 
+                    marginBottom: 6,
+                    lineHeight: "1.5"
+                  }}
+                >
+                  {msg.type === "bot" ? (
+                    <div style={{ 
+                      fontSize: "15px",
+                      lineHeight: "1.6",
+                      color: "#222"
+                    }}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({node, ...props}) => <h1 style={{fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
+                          h2: ({node, ...props}) => <h2 style={{fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
+                          h3: ({node, ...props}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
+                          p: ({node, ...props}) => <p style={{margin: "8px 0", color: "#222"}} {...props} />,
+                          ul: ({node, ...props}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props} />,
+                          ol: ({node, ...props}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props} />,
+                          li: ({node, ...props}) => <li style={{margin: "4px 0", color: "#222"}} {...props} />,
+                          strong: ({node, ...props}) => <strong style={{fontWeight: "bold", color: "#222"}} {...props} />,
+                          em: ({node, ...props}) => <em style={{fontStyle: "italic", color: "#222"}} {...props} />,
+                          code: ({node, ...props}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}} {...props} />,
+                          pre: ({node, ...props}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}} {...props} />,
+                          blockquote: ({node, ...props}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}} {...props} />,
+                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd"}} {...props} />,
+                          thead: ({node, ...props}) => <thead style={{backgroundColor: "#f5f5f5"}} {...props} />,
+                          tbody: ({node, ...props}) => <tbody {...props} />,
+                          tr: ({node, ...props}) => <tr style={{borderBottom: "1px solid #ddd"}} {...props} />,
+                          th: ({node, ...props}) => <th style={{padding: "8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5"}} {...props} />,
+                          td: ({node, ...props}) => <td style={{padding: "8px", textAlign: "left", border: "1px solid #ddd"}} {...props} />
+                        }}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div style={{ color: "#222" }}>{msg.text}</div>
+                  )}
+                </div>
                 <div
                   style={{
                     position: "absolute",
@@ -231,6 +387,110 @@ export default function AssetStudioContent() {
           {isLoading ? "..." : "Send"}
         </button>
       </div>
+
+      {/* Save Asset Modal */}
+      {showSaveModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              width: "400px",
+              maxWidth: "90vw",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)"
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px 0", fontSize: 18, fontWeight: 600 }}>
+              Save Asset
+            </h3>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                Asset Name:
+              </label>
+              <input
+                type="text"
+                value={assetName}
+                onChange={(e) => setAssetName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontSize: 14
+                }}
+                placeholder="Enter asset name..."
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                Preview:
+              </label>
+              <div
+                style={{
+                  background: "#f5f5f5",
+                  padding: 12,
+                  borderRadius: 6,
+                  maxHeight: "120px",
+                  overflowY: "auto",
+                  fontSize: 14,
+                  lineHeight: 1.4
+                }}
+              >
+                {saveModalMessage.substring(0, 200)}
+                {saveModalMessage.length > 200 && "..."}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={handleSaveAssetCancel}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 14
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAssetConfirm}
+                disabled={!assetName.trim()}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: assetName.trim() ? "#2563eb" : "#ccc",
+                  color: "#fff",
+                  cursor: assetName.trim() ? "pointer" : "not-allowed",
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                Save Asset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AssetStudioLayout>
   );
 }

@@ -33,7 +33,7 @@ export default function DashboardLayout({ state }) {
           <SectionCard title="Curriculum" buttonLabel="Create" onButtonClick={state.handleCurriculumCreate} />
           <SectionCard title="Assessments" buttonLabel="Create" onButtonClick={state.handleAssessmentsCreate} />
           <SectionCard title="Evaluation" buttonLabel="Start Evaluation" />
-          <KnowledgeBase />
+          <KnowledgeBase onFileChange={() => {}} />
         </div>
         <div style={{ flex: 1 }}>
           <Sidebar ref={state.sidebarRef} onAddContentClick={() => state.setShowAddResourceModal(true)} />
