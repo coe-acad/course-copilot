@@ -32,7 +32,7 @@ class CourseSettingsRequest(BaseModel):
     use_reference_material_only: bool
     ask_clarifying_questions: bool
 
-@router.get("/courses?user_id={user_id}")
+@router.get("/courses")
 def get_courses_for_user(user_id: str = Depends(verify_token)):
     try:
         courses = get_courses_by_user_id(user_id)
