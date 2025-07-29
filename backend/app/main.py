@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from .routes import auth, course, resources, chat, course_outcomes, asset
 from .config.settings import settings
+from .routes.auth import google_callback
 import logging
+import uvicorn
 
 # Configure logging
 logging.basicConfig(
@@ -36,12 +38,11 @@ app.include_router(course_outcomes.router, prefix="/api")
 app.include_router(asset.router, prefix="/api")
 
 # Add callback route at root level to match Google OAuth redirect
-from .routes.auth import google_callback
 app.add_api_route("/callback", google_callback, methods=["GET"])
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Creator Copilot API", "version": "1.0.0"}
+    return {"message": "Welcome to the Course Copilot API", "version": "1.0.0"}
 
 @app.get("/health")
 async def health_check():
@@ -54,8 +55,7 @@ async def health_check():
     }
 
 if __name__ == "__main__":
-    import uvicorn
-    logger.info(f"Starting Creator Copilot API on {settings.API_HOST}:{settings.API_PORT}")
+    logger.info(f"Starting Course Copilot API on {settings.API_HOST}:{settings.API_PORT}")
     uvicorn.run(
         "main:app",
         host=settings.API_HOST,
