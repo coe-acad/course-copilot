@@ -427,7 +427,7 @@ async def start_free_chat_thread(course_id: str, user_id: str) -> str:
     return thread_id
 
 # --- Resource Upload/Check-in/Check-out ---
-async def upload_resources(course_id: str, assistant_id: str, files: List[UploadFile], user_id: str, thread_id: Optional[str] = None) -> list:
+async def upload_resources(course_id: str, assistant_id: str, vector_store_id: str, files: List[UploadFile], user_id: str) -> list:
     course = storage_service.get_course(course_id, user_id)
     if not course:
         raise CourseNotFoundError(f"Course {course_id} not found")
@@ -1235,39 +1235,6 @@ def add_files_to_assistant_vector_store(course_id: str, user_id: str, resources:
     logger.info(f"[ALL FILES] Added {len(file_paths)} new files to vector store for assistant {assistant_id}")
     return {"added_file_ids": file_paths}
 
-async def delete_resources(course_id: str, assistant_id: str, user_id: str):
-    """
-    Delete all resources for a course, remove their OpenAI files from the assistant and OpenAI storage, 
-    clear them from storage_service, and clean up local files.
-    """
-    course = storage_service.get_course(course_id, user_id)
-    if not course:
-        raise CourseNotFoundError(f"Course {course_id} not found")
-    
-    resources = storage_service.get_resources(course_id, user_id)
-    openai_file_ids = [r.get("openai_file_id") for r in resources if r.get("openai_file_id")]
-    
-    # Remove files from assistant
-    if openai_file_ids:
-        # Remove all files from assistant
-        client.beta.assistants.update(
-            assistant_id=assistant_id
-        )
-        # Delete files from OpenAI storage
-        for file_id in openai_file_ids:
-            try:
-                client.files.delete(file_id)
-            except Exception as e:
-                logger.warning(f"Failed to delete OpenAI file {file_id}: {e}")
-    
-    # Clean up local files
-    for resource in resources:
-        local_path = resource.get("local_path", "")
-        _delete_file_from_local(local_path)
-    
-    # Delete all resources from storage
-    storage_service.delete_all_resources(course_id)
-    logger.info(f"Deleted all resources for course {course_id}")
 
 async def delete_single_resource(course_id: str, file_id: str, user_id: str):
     """
