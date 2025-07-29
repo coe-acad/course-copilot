@@ -1,7 +1,7 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
 
-export default function CoursesLayout({ onAddCourse, onLogout, courses, loading }) {
+export default function CoursesLayout({ onAddCourse, onLogout, children }) {
   return (
     <>
       {/* Header Bar */}
@@ -75,48 +75,9 @@ export default function CoursesLayout({ onAddCourse, onLogout, courses, loading 
         </div>
       </div>
 
-      {/* Course Grid */}
+      {/* Dynamic Page Content */}
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {loading ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>Loading...</div>
-        ) : courses.length === 0 ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#666", fontWeight: 500, padding: "1em" }}>
-            No courses available.
-          </div>
-        ) : (
-          <div style={{
-            flex: 1,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '32px',
-            padding: '48px 4vw',
-            alignItems: 'stretch',
-            maxWidth: '1040px',
-            margin: '0 auto'
-          }}>
-            {courses.map((course, idx) => (
-              <div
-                key={idx}
-                style={{
-                  background: '#fff',
-                  borderRadius: 18,
-                  boxShadow: '0 4px 24px #2563eb11',
-                  padding: '28px 18px',
-                  minHeight: 120,
-                  fontWeight: 600,
-                  fontSize: 20,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  border: '1.5px solid #e3e8f0'
-                }}
-              >
-                {course.name || "Course Title"}
-              </div>
-            ))}
-          </div>
-        )}
+        {children}
       </div>
     </>
   );

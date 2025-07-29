@@ -10,7 +10,11 @@ const optionTitles = {
   "lesson-plans": "Lesson Plans",
   "concept-map": "Concept Map",
   "course-notes": "Course Notes",
-  "brainstorm": "Brainstorm"
+  "brainstorm": "Brainstorm",
+  "quiz": "Quiz",
+  "assignment": "Assignment",
+  "viva": "Viva",
+  "sprint-plan": "Sprint Plan"
 };
 
 const sectionMap = {
@@ -19,25 +23,45 @@ const sectionMap = {
   "concept-map": "Curriculum",
   "lesson-plans": "Curriculum",
   "course-notes": "Curriculum",
-  "brainstorm": "Assessments"
+  "brainstorm": "Assessments",
+  "quiz": "Assessments",
+  "assignment": "Assessments",
+  "viva": "Assessments"
 };
 
 export default function AssetStudioContent() {
   const { option } = useParams();
   const location = useLocation();
+  const bottomRef = useRef(null);
+  const title = optionTitles[option] || option;
+
+  // ✅ All mock files
+  const allMockFiles = [
+    { id: '1', fileName: 'Syllabus.pdf' },
+    { id: '2', fileName: 'IntroLecture.pptx' },
+    { id: '3', fileName: 'ReadingList.docx' }
+  ];
+
+  // ✅ Pre-select only those passed from Dashboard
+  const selectedFiles = location.state?.selectedFiles || [];
+  const initialSelectedIds = selectedFiles.map(file => file.id);
+  const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
+
   const [chatMessages, setChatMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFiles] = useState(location.state?.selectedFiles || []);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const bottomRef = useRef(null);
-  const title = optionTitles[option] || option;
 
   useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
+    );
+  };
 
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
@@ -60,23 +84,14 @@ export default function AssetStudioContent() {
     }
   };
 
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
-    );
-  };
-
   const handleDownload = (message) => {
     // TODO: Implement backend download
     console.log("Download message:", message);
   };
 
-  const handleSaveToAsset = (message) => {
+  const handleSaveToAsset = async (message) => {
     const section = sectionMap[option] || "Other";
     const assetName = optionTitles[option] || option;
-
-    const current = JSON.parse(localStorage.getItem("dashboardAssets") || "{}");
-    const sectionAssets = current[section] || [];
 
     const newAsset = {
       name: assetName,
@@ -84,13 +99,7 @@ export default function AssetStudioContent() {
       timestamp: new Date().toISOString()
     };
 
-    const updated = {
-      ...current,
-      [section]: [...sectionAssets, newAsset]
-    };
-
-    localStorage.setItem("dashboardAssets", JSON.stringify(updated));
-    console.log(`Saved to ${section}:`, newAsset);
+    console.log(`🔄 TODO: Save this asset to backend under section ${section}:`, newAsset);
   };
 
   const handleSaveToResource = (message) => {
@@ -103,7 +112,7 @@ export default function AssetStudioContent() {
       title={title}
       rightPanel={
         <KnowledgeBase
-          resources={selectedFiles}
+          resources={allMockFiles}
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
@@ -112,7 +121,6 @@ export default function AssetStudioContent() {
         />
       }
     >
-
       <div
         style={{
           background: "#fff",
@@ -145,8 +153,7 @@ export default function AssetStudioContent() {
             >
               <div
                 style={{
-                  background:
-                    msg.type === "user" ? "#e0f2ff" : "transparent",
+                  background: msg.type === "user" ? "#e0f2ff" : "transparent",
                   borderRadius: 10,
                   padding: "10px 12px 26px 12px",
                   minWidth: msg.type === "user" ? "120px" : "0",

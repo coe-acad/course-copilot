@@ -10,12 +10,14 @@ from ..services.mongo import get_course, create_asset, get_assets_by_course_id
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+class AssetPromptRequest(BaseModel):
+    user_prompt: str
+
 class AssetRequest(BaseModel):
     file_names: list[str]
 
 class AssetResponse(BaseModel):
     response: str
-    thread_id: str
 
 class AssetCreateResponse(BaseModel):
     message: str
@@ -48,7 +50,7 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
 @router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=AssetResponse)
 async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, request: AssetRequest):
     """
-    Create an asset by sending the constructed prompt (for the given asset_name) to a new OpenAI chat thread.
+    Create an asset chat by sending the constructed prompt (for the given asset_name) to a new OpenAI chat thread.
     """
     try:
         # Get the course and assistant_id
@@ -75,7 +77,7 @@ async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, 
         # Create a new OpenAI thread
         thread = client.beta.threads.create()
         thread_id = thread.id
-
+        print(thread_id)
         # Send the prompt as a message to the thread
         message_response = client.beta.threads.messages.create(
             thread_id=thread_id,
@@ -95,7 +97,7 @@ async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, 
         while run.status != "completed":
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
             print(f"Current run status: {run.status}")
-            await asyncio.sleep(1)
+            asyncio.sleep(1)
             # In a real application, you would introduce a delay here
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
@@ -104,7 +106,44 @@ async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, 
         return AssetResponse(response=response_text, thread_id=thread_id)
     except Exception as e:
         logger.error(f"Exception in create_asset for asset '{asset_type_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) 
+
+@router.put("/courses/{course_id}/asset_chat/{asset_name}", response_model=AssetResponse)
+def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id: str, request: AssetPromptRequest):
+    try:
+        course = get_course(course_id)
+        if not course or "assistant_id" not in course:
+            raise HTTPException(status_code=404, detail="Course or assistant not found")
+        assistant_id = course["assistant_id"]
+
+        # Send the prompt as a message to the thread
+        message_response = client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content= request.user_prompt
+        )
+
+        run = client.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=assistant_id  # Use the course's assistant_id here
+        )
+
+        # Wait for the run to complete (async polling)
+        
+        while run.status != "completed":
+            run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            print(f"Current run status: {run.status}")
+            asyncio.sleep(1)
+            # In a real application, you would introduce a delay here
+
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        response_text= messages.data[0].content[0].text.value
+        print(response_text)
+        return AssetResponse(response=response_text, thread_id=thread_id)
+    except Exception as e:
+        logger.error(f"Exception in continue_asset for asset '{asset_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e)) 
+
 
 
 @router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
