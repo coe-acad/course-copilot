@@ -1,26 +1,52 @@
 import asyncio
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from pymongo import response
+from datetime import datetime
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 import logging
-from ..services.storage_course import storage_service
-from ..utils.input_variables import gather_input_variables
-from ..services.mongo import get_course, get_resources_by_course_id, create_resource
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class AssetRequest(BaseModel):
-    input_variables: dict
+    file_names: list[str]
 
 class AssetResponse(BaseModel):
     response: str
     thread_id: str
 
-@router.post("/courses/{course_id}/assets/{asset_name}", response_model=AssetResponse)
-async def create_asset(user_id: str, course_id: str, asset_name: str, request: AssetRequest):
+class AssetCreateResponse(BaseModel):
+    message: str
+
+class AssetCreateRequest(BaseModel):
+    content: str
+
+class Asset(BaseModel):
+    asset_name: str
+    asset_type: str
+    asset_category: str
+    asset_content: str
+    asset_last_updated_by: str
+    asset_last_updated_at: str
+
+class AssetListResponse(BaseModel):
+    assets: list[Asset]
+
+def construct_input_variables(course: dict, file_names: list[str]) -> dict:
+    input_variables = {
+        "course_name": course.get("name", ""),
+        "course_level": course.get("settings", {}).get("course_level", ""),
+        "study_area": course.get("settings", {}).get("study_area", ""),
+        "pedagogical_components": course.get("settings", {}).get("pedagogical_components", ""),
+        "ask_clarifying_questions": course.get("settings", {}).get("ask_clarifying_questions", ""),
+        "file_names": file_names
+    }
+    return input_variables
+
+@router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=AssetResponse)
+async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, request: AssetRequest):
     """
     Create an asset by sending the constructed prompt (for the given asset_name) to a new OpenAI chat thread.
     """
@@ -39,10 +65,12 @@ async def create_asset(user_id: str, course_id: str, asset_name: str, request: A
             file_details = client.files.retrieve(file_obj.id)
             print(f"File ID: {file_obj.id}, Name: {file_details.filename}, Status: {file_obj.status}")
 
+        # Construct input variables dict using course settings and selected files
+        input_variables = construct_input_variables(course, request.file_names)
         # Construct the prompt using PromptParser
         parser = PromptParser()
-        prompt = parser.get_asset_prompt(asset_name, request.input_variables)
-        logger.info(f"Prompt for asset '{asset_name}': {prompt}")
+        prompt = parser.get_asset_prompt(asset_type_name, input_variables)
+        logger.info(f"Prompt for asset '{asset_type_name}': {prompt}")
 
         # Create a new OpenAI thread
         thread = client.beta.threads.create()
@@ -75,5 +103,23 @@ async def create_asset(user_id: str, course_id: str, asset_name: str, request: A
         print(response_text)
         return AssetResponse(response=response_text, thread_id=thread_id)
     except Exception as e:
-        logger.error(f"Exception in create_asset for asset '{asset_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"Exception in create_asset for asset '{asset_type_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
+def save_asset(user_id: str, course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest):
+    # TODO: Make this a configuration for the app overall, add the remaining categories and asset types here
+    category_map = {
+        "course-outcomes": "curriculum"
+    }
+    asset_category = category_map.get(asset_type)
+    if not asset_category:
+        raise HTTPException(status_code=400, detail=f"Invalid asset type: {asset_type}")
+    create_asset(course_id, asset_name, asset_category, asset_type, request.content, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
+    return AssetCreateResponse(message=f"Asset '{asset_name}' created successfully")
+
+@router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
+def get_assets(user_id: str, course_id: str):
+    assets = get_assets_by_course_id(course_id)
+    return AssetListResponse(assets=assets)

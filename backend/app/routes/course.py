@@ -1,13 +1,10 @@
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from ..services.storage_course import storage_service
 from ..services import openai_service
-from ..utils.exceptions import handle_course_error
 from firebase_admin import auth
 import logging
 from ..utils.verify_token import verify_token
-from ..services.mongo import get_courses_by_user_id, update_course, create_course as mongo_create_course
+from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course
 from ..routes.resources import create_course_description_file
 from app.utils.openai_client import client
 from ..services.openai_service import create_vector_store
@@ -20,20 +17,14 @@ class CourseCreateRequest(BaseModel):
     name: str
     description: str
 
-class CourseUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    archived: Optional[bool] = None
-
 class CourseSettingsRequest(BaseModel):
-    course_level: list[str]
+    course_level: str
     study_area: str
     pedagogical_components: list[str]
-    use_reference_material_only: bool
     ask_clarifying_questions: bool
 
 @router.get("/courses")
-def get_courses_for_user(user_id: str):
+def get_courses(user_id: str):
     logger.info(f"Fetching courses for user {user_id}")
     try:
         courses = get_courses_by_user_id(user_id)
@@ -58,7 +49,7 @@ def create_course(user_id: str, request: CourseCreateRequest):
             }
         )
         # Save the course with the vector store ID
-        course_id = mongo_create_course({
+        course_id = create_course_in_db({
             "name": request.name,
             "description": request.description,
             "user_id": user_id,
@@ -69,19 +60,7 @@ def create_course(user_id: str, request: CourseCreateRequest):
         return {"courseId": course_id}
     except Exception as e:
         logger.error(f"Error creating course: {str(e)}")
-        raise handle_course_error(e)
-
-@router.put("/courses/{course_id}")
-async def update_course(user_id: str, course_id: str, request: CourseUpdateRequest):
-    try:
-        course = await openai_service.update_course(
-            course_id, request.name, request.description, request.archived, user_id
-        )
-        logger.info(f"Updated course {course_id} for user {user_id}")
-        return course
-    except Exception as e:
-        logger.error(f"Error updating course {course_id}: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}")
 async def delete_course(course_id: str, user_id: str):
@@ -91,29 +70,35 @@ async def delete_course(course_id: str, user_id: str):
         return {"message": "Course deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting course {course_id}: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/courses/{course_id}/settings")
-async def update_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
+def update_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
     try:
-        course = storage_service.get_course(course_id, user_id)
+        course = get_course(course_id)
         if not course:
+            # TODO: This error does not propagate to the except block below. It prints empty detail. Check why and fix.
             raise HTTPException(status_code=404, detail="Course not found")
+        # Replace existing settings with new ones. If not present, add them.
+        print(request.dict())
         course["settings"] = request.dict()
-        storage_service.update_course(course_id, course)
+        # Update the course in the database
+        print(course)
+        update_course(course_id, course)
         logger.info(f"Updated settings for course {course_id}")
         return {"message": "Settings updated"}
+
     except Exception as e:
         logger.error(f"Error updating settings for course {course_id}: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/settings")
-async def get_course_settings(user_id: str,course_id: str):
+def get_course_settings(user_id: str,course_id: str):
     try:
-        course = storage_service.get_course(course_id, user_id)
+        course = get_course(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         return course.get("settings", {})
     except Exception as e:
         logger.error(f"Error getting settings for course {course_id}: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))

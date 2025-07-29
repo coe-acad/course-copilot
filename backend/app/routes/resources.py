@@ -8,7 +8,6 @@ from pathlib import Path
 from ..services import openai_service
 from ..services.mongo import get_course, get_resources_by_course_id, create_resource
 from ..services.openai_service import create_file, connect_file_to_vector_store
-from ..utils.exceptions import handle_course_error
 from ..utils.course_pdf_utils import generate_course_pdf
 from ..utils.verify_token import verify_token
 
@@ -115,7 +114,7 @@ def upload_resources(user_id: str, course_id: str, files: List[UploadFile] = Fil
         return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
         logger.error(f"Error uploading resources: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/resources", response_model=ResourceListResponse) 
 def list_resources(user_id: str, course_id: str):
@@ -130,7 +129,7 @@ def list_resources(user_id: str, course_id: str):
                 )
     except Exception as e:
         logger.error(f"Error listing resources: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}/resources/{resource_name}", response_model=DeleteResponse)
 def delete_resource(user_id: str,course_id: str, file_id: str):
@@ -141,4 +140,4 @@ def delete_resource(user_id: str,course_id: str, file_id: str):
         return DeleteResponse(message="Resource deleted successfully")
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
-        raise handle_course_error(e)
+        raise HTTPException(status_code=500, detail=str(e))
