@@ -7,6 +7,7 @@ import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
 import { getAllResources } from "../services/resources";
+import { assetService } from "../services/asset";
 import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
 
@@ -21,6 +22,8 @@ export default function Dashboard() {
   const [isGridView, setIsGridView] = useState(true);
   const [resources, setResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(true);
+  const [assets, setAssets] = useState({ curriculum: [], assessments: [], evaluation: [] });
+  const [loadingAssets, setLoadingAssets] = useState(true);
   const navigate = useNavigate();
 
   // Fetch resources on component mount
@@ -46,6 +49,51 @@ export default function Dashboard() {
     };
 
     fetchResources();
+  }, []);
+
+  // Fetch assets on component mount
+  useEffect(() => {
+    const fetchAssets = async () => {
+      try {
+        setLoadingAssets(true);
+        const courseId = localStorage.getItem('currentCourseId');
+        if (!courseId) {
+          console.error('No current course ID found');
+          return;
+        }
+        
+        const data = await assetService.getAssets(courseId);
+        const assetsList = data.assets || [];
+        
+        // Group assets by category
+        const groupedAssets = {
+          curriculum: [],
+          assessments: [],
+          evaluation: []
+        };
+        
+        assetsList.forEach(asset => {
+          const category = asset.asset_category;
+          if (groupedAssets.hasOwnProperty(category)) {
+            groupedAssets[category].push({
+              name: asset.asset_name,
+              type: asset.asset_type,
+              timestamp: asset.asset_last_updated_at,
+              updatedBy: asset.asset_last_updated_by
+            });
+          }
+        });
+        
+        setAssets(groupedAssets);
+      } catch (error) {
+        console.error('Error fetching assets:', error);
+        setAssets({ curriculum: [], assessments: [], evaluation: [] });
+      } finally {
+        setLoadingAssets(false);
+      }
+    };
+
+    fetchAssets();
   }, []);
 
   const handleCurriculumCreate = () => {
@@ -96,10 +144,24 @@ export default function Dashboard() {
 
       <div style={{ display: "flex", gap: 24, flex: 1, padding: "0 5vw" }}>
         {/* Main Section */}
-        <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 28, padding: "24px 0" }}>
-          <SectionCard title="Curriculum" buttonLabel="Create" onButtonClick={handleCurriculumCreate} />
-          <SectionCard title="Assessments" buttonLabel="Create" onButtonClick={handleAssessmentCreate} />
-          <SectionCard title="Evaluation" buttonLabel="Start Evaluation" />
+        <div style={{ maxWidth: 800, width: "100%", display: "flex", flexDirection: "column", gap: 28, padding: "24px 0" }}>
+          <SectionCard 
+            title="Curriculum" 
+            buttonLabel="Create" 
+            onButtonClick={handleCurriculumCreate}
+            assets={assets.curriculum}
+          />
+          <SectionCard 
+            title="Assessments" 
+            buttonLabel="Create" 
+            onButtonClick={handleAssessmentCreate}
+            assets={assets.assessments}
+          />
+          <SectionCard 
+            title="Evaluation" 
+            buttonLabel="Start Evaluation"
+            assets={assets.evaluation}
+          />
           <div style={{ background: "#fff", borderRadius: 18, padding: 28, boxShadow: "0 4px 24px #0002" }}>
             <h2 style={{ margin: 0 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444' }}>(Based on the Academic term...)</span></h2>
             <button

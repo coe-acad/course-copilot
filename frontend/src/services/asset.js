@@ -14,6 +14,20 @@ function handleAxiosError(error) {
 }
 
 export const assetService = {
+  // Get all assets for a course
+  getAssets: async (courseId, user_id = 123) => {
+    try {
+      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets?user_id=${user_id}`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
+      });
+      return res.data;
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
   // Create initial asset chat with selected files
   createAssetChat: async (courseId, assetTypeName, fileNames, user_id = 123) => {
     try {
