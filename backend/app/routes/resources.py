@@ -38,6 +38,7 @@ def create_course_description_file(course_id: str, user_id: str):
     # TODO: Create a file with the course description and add it to the Knowledge Base
     pass
 
+# Keep this route, we add the file to the vector store attached to the Assistant
 @router.post("/courses/{course_id}/resources", response_model=ResourceListResponse)
 async def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
@@ -51,6 +52,7 @@ async def upload_resources(course_id: str, files: List[UploadFile] = File(...), 
         logger.error(f"Error uploading resources: {str(e)}")
         raise handle_course_error(e)
 
+# 
 @router.post("/courses/{course_id}/resources/url", response_model=ResourceResponse)
 async def create_url_resource(course_id: str, request: ResourceCreateRequest, user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
