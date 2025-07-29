@@ -56,8 +56,8 @@ def delete_course(course_id: str):
     delete_from_collection("courses", {"_id": course_id})
 
 # Resources
-def create_resource(course_id: str, title: str, status: str, url: str):
-    add_to_collection("resources", {"course_id": course_id, "title": title, "status": status, "url": url})
+def create_resource(course_id: str, resource_name: str):
+    add_to_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
 def get_resources_by_course_id(course_id: str):
     return get_many_from_collection("resources", {"course_id": course_id})

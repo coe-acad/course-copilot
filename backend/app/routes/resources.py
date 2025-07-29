@@ -16,11 +16,7 @@ router = APIRouter()
 
 # Inline models
 class ResourceResponse(BaseModel):
-    fileId: str
-    fileName: str
-    status: str
-    checkedOutBy: Optional[str] = None
-    url: Optional[str] = None
+    resourceName: str
 
 class ResourceListResponse(BaseModel):
     courseId: str
@@ -63,10 +59,10 @@ def create_course_description_file(course_id: str, user_id: str):
         pdf_relative_path = "local_storage" + pdf_relative_path
         
         #name of the pdf should be the title
-        title = pdf_relative_path.split("/")[-1].split(".")[0]
+        resource_name = pdf_relative_path.split("/")[-1].split(".")[0] + ".pdf"
 
         # Create resource in MongoDB
-        create_resource(course_id, title, "checked-out", pdf_relative_path)
+        create_resource(course_id, resource_name)
 
         # Upload the PDF to OpenAI for vector store
         openai_file_id = create_file(pdf_relative_path)
@@ -120,9 +116,7 @@ def list_resources(user_id: str, course_id: str):
         return ResourceListResponse(
             courseId=course_id,
             resources=[ResourceResponse(
-                fileId=data.get("fileId", ""),
-                fileName=data["title"],
-                url=data.get("url")
+                fileName=data["resource_name"],
             ) for data in resources]
         )
     except Exception as e:
