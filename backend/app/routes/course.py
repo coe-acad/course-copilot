@@ -7,8 +7,11 @@ from ..utils.exceptions import handle_course_error
 from firebase_admin import auth
 import logging
 from ..utils.verify_token import verify_token
-from ..services.mongo import get_courses_by_user_id
+from ..services.mongo import get_courses_by_user_id, update_course, create_course as mongo_create_course
 from ..routes.resources import create_course_description_file
+from app.utils.openai_client import client
+from ..services.openai_service import create_vector_store
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,7 +46,24 @@ def get_courses_for_user(user_id: str = Depends(verify_token)):
 def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
     try:
         assistant_id = openai_service.create_assistant()
-        course_id = create_course({"name": request.name, "description": request.description, "user_id": user_id, "assistant_id": assistant_id})
+        vector_store_id = create_vector_store(assistant_id)
+        # Link the vector store to the assistant
+        client.beta.assistants.update(
+            assistant_id,
+            tool_resources={
+                "file_search": {
+                    "vector_store_ids": [vector_store_id]
+                }
+            }
+        )
+        # Save the course with the vector store ID
+        course_id = mongo_create_course({
+            "name": request.name,
+            "description": request.description,
+            "user_id": user_id,
+            "assistant_id": assistant_id,
+            "vector_store_id": vector_store_id
+        })
         create_course_description_file(course_id, user_id)
         return {"courseId": course_id}
     except Exception as e:

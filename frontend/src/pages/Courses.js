@@ -48,17 +48,25 @@ export default function Courses() {
     setLoading(true);
     setError("");
     try {
-      await createCourse({ name: courseName, description: courseDesc });
+      const newCourseResponse = await createCourse({ name: courseName, description: courseDesc });
       setShowModal(false);
-      setCourseName("");
-      setCourseDesc("");
-      // Refresh courses
-      const data = await fetchCourses();
-      setCourses(data);
-      // Optionally, navigate to dashboard for the new course
-      navigate("/dashboard");
+      
+      if (newCourseResponse && newCourseResponse.courseId) {
+        localStorage.setItem('currentCourseId', newCourseResponse.courseId);
+        localStorage.setItem('currentCourseTitle', courseName);
+        
+        setCourseName("");
+        setCourseDesc("");
+
+        // Navigate immediately and refresh the course list in the background
+        navigate("/dashboard");
+        fetchCourses().then(setCourses).catch(() => setError("Failed to refresh course list."));
+      } else {
+        throw new Error("Course creation did not return a course ID.");
+      }
+
     } catch (err) {
-      setError("Failed to create course");
+      setError(err.message || "Failed to create course");
     } finally {
       setLoading(false);
     }

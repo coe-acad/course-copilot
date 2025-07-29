@@ -2,12 +2,18 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query, D
 from pydantic import BaseModel
 from typing import List, Optional
 from ..services import openai_service
+from ..services.mongo import get_course, update_course, get_resources_by_course_id, create_resource
 from ..services.storage_course import storage_service
-from ..services.openai_service import add_files_to_assistant_vector_store
+from ..services.openai_service import create_file, create_vector_store, connect_file_to_vector_store
+from ..services.mongo import get_course, update_course
 from ..utils.exceptions import handle_course_error
+from ..utils.course_pdf_utils import generate_course_pdf
+from ..services.openai_service import connect_file_to_vector_store
 import logging
 from firebase_admin import auth as admin_auth
 from ..utils.verify_token import verify_token
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,13 +41,67 @@ class ResourceCreateRequest(BaseModel):
     url: str
 
 def create_course_description_file(course_id: str, user_id: str):
-    # TODO: Create a file with the course description and add it to the Knowledge Base
-    pass
+    """
+    Create a course description file using PDF utility and add it to vector store
+    """
+    try:
+        # Get course information from MongoDB
+        course = get_course(course_id)
+        if not course:
+            logger.error(f"Course not found: {course_id}")
+            return None
+        
+        # Generate PDF using the utility
+        pdf_path = generate_course_pdf(course_id, user_id)
+        if not pdf_path or not os.path.exists(pdf_path):
+            logger.error(f"Failed to generate PDF for course {course_id}")
+            return None
+        
+        # Get relative path starting from 'local_storage'
+        pdf_relative_path = Path(pdf_path).as_posix().split("local_storage", 1)[-1]
+        pdf_relative_path = "local_storage" + pdf_relative_path
+        
+        #name of the pdf should be the title
+        title = pdf_relative_path.split("/")[-1].split(".")[0]
+
+        # Create resource in MongoDB
+        create_resource(course_id, title, "checked-out", pdf_relative_path)
+
+        # Upload the PDF to OpenAI for vector store
+        openai_file_id = create_file(pdf_relative_path)
+        
+        # Get vector store for the course
+        assistant_id = course.get('assistant_id')
+        if not assistant_id:
+            logger.error(f"No assistant ID found for course {course_id}")
+            return None
+        
+        # Check if vector store exists, if not create one
+        vector_store_id = course.get('vector_store_id')
+        if not vector_store_id:
+            logger.error(f"No vector_store_id found for course {course_id}")
+            return None
+        
+        # Connect file to vector store
+        batch_id = connect_file_to_vector_store(vector_store_id, openai_file_id)
+        
+        logger.info(f"Created course description PDF for {course_id}: {openai_file_id}")
+        logger.info(f"Connected to vector store {vector_store_id}, batch: {batch_id}")
+        
+        return {
+            "file_id": openai_file_id,
+            "vector_store_id": vector_store_id,
+            "batch_id": batch_id,
+            "pdf_path": pdf_path
+        }
+    except Exception as e:
+        logger.error(f"Error creating course description file for {course_id}: {str(e)}")
+        return None
 
 @router.post("/courses/{course_id}/resources", response_model=ResourceListResponse)
 async def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token), thread_id: str = Query(None)):
     try:
-        course = storage_service.get_course(course_id, user_id)
+        course = get_course(course_id, user_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         resources = await openai_service.upload_resources(course_id, course["assistant_id"], files, user_id, thread_id=thread_id)
@@ -61,13 +121,9 @@ async def create_url_resource(course_id: str, request: ResourceCreateRequest, us
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/resources", response_model=ResourceListResponse)
-async def list_resources(course_id: str, user_id: str = Depends(verify_token), thread_id: str = Query(None)):
+async def list_resources(course_id: str, user_id: str = Depends(verify_token)):
     try:
-        # Only pass thread_id if it's explicitly provided, otherwise get global resources
-        if thread_id:
-            resources = storage_service.get_resources(course_id, thread_id=thread_id, user_id=user_id)
-        else:
-            resources = storage_service.get_resources(course_id, user_id=user_id)
+        resources = get_resources_by_course_id(course_id)
         
         return ResourceListResponse(
             courseId=course_id,
@@ -75,7 +131,7 @@ async def list_resources(course_id: str, user_id: str = Depends(verify_token), t
                 fileId=data.get("fileId", ""),
                 fileName=data["title"],
                 status=data["status"],
-                checkedOutBy=data["checkedOutBy"],
+                # checkedOutBy=data["checkedOutBy"],
                 url=data.get("url")
             ) for data in resources]
         )

@@ -5,8 +5,9 @@ import SectionCard from "../components/SectionCard";
 import Sidebar from "../components/Sidebar";
 import Modal from "../components/Modal";
 import SettingsModal from "../components/SettingsModal";
+import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 // import { useFilesContext } from "../context/FilesContext";
-import { uploadCourseResources, addAllFilesToAssistant } from "../services/resources";
+import { uploadCourseResources, addAllFilesToAssistant, getCourseResources } from "../services/resources";
 import { createBrainstormThread } from "../services/brainstorm";
 import { courseOutcomesService } from '../services/courseOutcomes';
 
@@ -55,9 +56,10 @@ export default function Dashboard() {
   const [isGridView, setIsGridView] = useState(true);
   const navigate = useNavigate();
   const [resourceError, setResourceError] = useState("");
-  const courseId = localStorage.getItem("currentCourseId");
   const sidebarRef = useRef();
+
   useEffect(() => {
+    const courseId = localStorage.getItem("currentCourseId");
     async function fetchFiles() {
       if (!courseId) return;
       try {
@@ -68,19 +70,11 @@ export default function Dashboard() {
       }
     }
     if (showKBModal) fetchFiles();
-  }, [showKBModal, courseId]);
-  // Fetch resources on mount or when courseId changes
-  // useEffect(() => {
-  //   if (!courseId) return;
-  //   // setResourceLoading(true); // This state is removed
-  //   // getCourseResources(courseId) // This state is removed
-  //   //   .then(data => setResources(data.resources || [])) // This state is removed
-  //   //   .catch(() => setResourceError("Failed to fetch resources")) // This state is removed
-  //   //   .finally(() => setResourceLoading(false)); // This state is removed
-  // }, [courseId]);
+  }, [showKBModal]);
 
   // Handle real file upload to backend
   const handleFilesUpload = async files => {
+    const courseId = localStorage.getItem("currentCourseId");
     if (!courseId) {
       console.error('No courseId set for upload!');
       return;
@@ -105,25 +99,9 @@ export default function Dashboard() {
     setShowCurriculumModal(true);
   };
   const handleModalClose = () => setShowCurriculumModal(false);
-  // const handleModalCreate = async () => { // This function is removed
-  //   const url = curriculumOptions[selectedOption].url;
-  //   setShowCurriculumModal(false);
-  //   navigate(`/studio/${url}`); // Navigate immediately for fast UX
-  //   // Start backend process in the background
-  //   if (courseId) {
-  //     createBrainstormThread(courseId)
-  //       .then(threadResponse => {
-  //         const threadId = threadResponse.thread_id || threadResponse.id || threadResponse.threadId;
-  //         return addAllFilesToAssistant(courseId, threadId);
-  //       })
-  //       .catch(e => {
-  //         // Optionally show an error or toast
-  //         console.error('Failed to add files to assistant:', e);
-  //       });
-  //   }
-  // };
 
   const handleCreate = async () => {
+    const courseId = localStorage.getItem("currentCourseId");
     const assetName = curriculumOptions[selectedOption]?.url;
     console.log('handleCreate: selectedOption:', selectedOption, 'assetName:', assetName);
     if (!assetName) {
@@ -136,8 +114,9 @@ export default function Dashboard() {
     // Start backend thread creation in the background
     setTimeout(async () => {
       try {
-        await courseOutcomesService.createThread(courseId, assetName);
-        // Optionally, trigger a refresh or update state in AssetStudio
+        if (courseId) {
+          await courseOutcomesService.createThread(courseId, assetName);
+        }
       } catch (error) {
         // Optionally show an error or toast
         console.error('Failed to create thread:', error);
@@ -433,6 +412,7 @@ export default function Dashboard() {
                   <button onClick={handleResourceModalClose} style={{ padding: "10px 28px", borderRadius: 8, border: "1px solid #bbb", background: "#fff", fontWeight: 500, fontSize: 16, cursor: isUploading ? "not-allowed" : "pointer" }} disabled={isUploading}>Cancel</button>
                   <button
                     onClick={async () => {
+                      const courseId = localStorage.getItem("currentCourseId");
                       if (pendingFiles.length > 0) {
                         console.log('Starting upload of', pendingFiles.length, 'files');
                         setIsUploading(true);
