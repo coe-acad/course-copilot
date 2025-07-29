@@ -32,8 +32,9 @@ class CourseSettingsRequest(BaseModel):
     use_reference_material_only: bool
     ask_clarifying_questions: bool
 
-@router.get("/courses?user_id={user_id}")
-def get_courses_for_user(user_id: str = Depends(verify_token)):
+@router.get("/courses")
+def get_courses_for_user(user_id: str):
+    logger.info(f"Fetching courses for user {user_id}")
     try:
         courses = get_courses_by_user_id(user_id)
         logger.info(f"Fetched courses for user {user_id}: {len(courses)} courses")
@@ -43,7 +44,7 @@ def get_courses_for_user(user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @router.post("/courses")
-def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
+def create_course(user_id: str, request: CourseCreateRequest):
     try:
         assistant_id = openai_service.create_assistant()
         vector_store_id = create_vector_store(assistant_id)
@@ -71,7 +72,7 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}")
-async def update_course(course_id: str, request: CourseUpdateRequest, user_id: str = Depends(verify_token)):
+async def update_course(user_id: str, course_id: str, request: CourseUpdateRequest):
     try:
         course = await openai_service.update_course(
             course_id, request.name, request.description, request.archived, user_id
@@ -83,7 +84,7 @@ async def update_course(course_id: str, request: CourseUpdateRequest, user_id: s
         raise handle_course_error(e)
 
 @router.delete("/courses/{course_id}")
-async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
+async def delete_course(course_id: str, user_id: str):
     try:
         await openai_service.delete_course(course_id, user_id)
         logger.info(f"Deleted course {course_id} for user {user_id}")
@@ -93,7 +94,7 @@ async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
         raise handle_course_error(e)
 
 @router.put("/courses/{course_id}/settings")
-async def update_course_settings(course_id: str, request: CourseSettingsRequest, user_id: str = Depends(verify_token)):
+async def update_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
@@ -107,7 +108,7 @@ async def update_course_settings(course_id: str, request: CourseSettingsRequest,
         raise handle_course_error(e)
 
 @router.get("/courses/{course_id}/settings")
-async def get_course_settings(course_id: str, user_id: str = Depends(verify_token)):
+async def get_course_settings(user_id: str,course_id: str):
     try:
         course = storage_service.get_course(course_id, user_id)
         if not course:
