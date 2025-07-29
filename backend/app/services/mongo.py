@@ -61,3 +61,4 @@ def create_resource(course_id: str, resource_name: str):
 
 def get_resources_by_course_id(course_id: str):
     return get_many_from_collection("resources", {"course_id": course_id})
+
