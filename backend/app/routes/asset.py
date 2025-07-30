@@ -1,4 +1,6 @@
 import asyncio
+from openai import AssistantEventHandler
+from typing_extensions import override
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
@@ -109,6 +111,16 @@ async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, 
         logger.error(f"Exception in create_asset for asset '{asset_type_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
 
+class AssetChatStreamHandler(AssistantEventHandler):
+    def __init__(self):
+        super().__init__()  # ✅ This is the fix
+        self.response_text = ""
+
+    @override
+    def on_text_delta(self, delta, snapshot):
+        print(delta.value, end="", flush=True)
+        self.response_text += delta.value
+
 @router.put("/courses/{course_id}/asset_chat/{asset_name}", response_model=AssetResponse)
 def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id: str, request: AssetPromptRequest):
     try:
@@ -117,33 +129,27 @@ def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id
             raise HTTPException(status_code=404, detail="Course or assistant not found")
         assistant_id = course["assistant_id"]
 
-        # Send the prompt as a message to the thread
+        # Send user prompt to the thread
         message_response = client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content= request.user_prompt
+            content=request.user_prompt
         )
 
-        run = client.beta.threads.runs.create(
+        # Create and stream the run
+        handler = AssetChatStreamHandler()
+        with client.beta.threads.runs.stream(
             thread_id=thread_id,
-            assistant_id=assistant_id  # Use the course's assistant_id here
-        )
+            assistant_id=assistant_id,
+            event_handler=handler
+        ) as stream:
+            stream.until_done()
 
-        # Wait for the run to complete (async polling)
-        
-        while run.status != "completed":
-            run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-            print(f"Current run status: {run.status}")
-            asyncio.sleep(1)
-            # In a real application, you would introduce a delay here
+        return AssetResponse(response=handler.response_text, thread_id=thread_id)
 
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
-        response_text= messages.data[0].content[0].text.value
-        print(response_text)
-        return AssetResponse(response=response_text, thread_id=thread_id)
     except Exception as e:
         logger.error(f"Exception in continue_asset for asset '{asset_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
 def save_asset(user_id: str, course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest):
