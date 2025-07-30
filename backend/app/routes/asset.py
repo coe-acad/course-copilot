@@ -1,5 +1,6 @@
 import asyncio
 from openai import AssistantEventHandler
+from fastapi.responses import StreamingResponse
 from typing_extensions import override
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -39,6 +40,17 @@ class Asset(BaseModel):
 class AssetListResponse(BaseModel):
     assets: list[Asset]
 
+class AssetChatStreamHandler(AssistantEventHandler):
+    def __init__(self):
+        super().__init__()  # ✅ This is the fix
+        self.response_text = ""
+
+    @override
+    def on_text_delta(self, delta, snapshot):
+        print(delta.value, end="", flush=True)
+        self.response_text += delta.value
+        
+
 def construct_input_variables(course: dict, file_names: list[str]) -> dict:
     input_variables = {
         "course_name": course.get("name", ""),
@@ -52,74 +64,44 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
 
 @router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=AssetResponse)
 async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, request: AssetRequest):
-    """
-    Create an asset chat by sending the constructed prompt (for the given asset_name) to a new OpenAI chat thread.
-    """
     try:
-        # Get the course and assistant_id
         course = get_course(course_id)
         if not course or "assistant_id" not in course:
             raise HTTPException(status_code=404, detail="Course or assistant not found")
+
         assistant_id = course["assistant_id"]
-        print(assistant_id)
-        vector_store_id = course["vector_store_id"]
 
-        vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
-
-        for file_obj in vs_files.data:
-            file_details = client.files.retrieve(file_obj.id)
-            print(f"File ID: {file_obj.id}, Name: {file_details.filename}, Status: {file_obj.status}")
-
-        # Construct input variables dict using course settings and selected files
+        # Prepare prompt
         input_variables = construct_input_variables(course, request.file_names)
-        # Construct the prompt using PromptParser
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
         logger.info(f"Prompt for asset '{asset_type_name}': {prompt}")
 
-        # Create a new OpenAI thread
+        # Create a new thread
         thread = client.beta.threads.create()
         thread_id = thread.id
-        print(thread_id)
-        # Send the prompt as a message to the thread
-        message_response = client.beta.threads.messages.create(
+
+        # Send message to thread
+        client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=prompt
         )
 
-        # Run the assistant to get a response
-        # The thread is linked to the assistant by passing assistant_id here
-        run = client.beta.threads.runs.create(
+        # Stream run
+        handler = AssetChatStreamHandler()
+        with client.beta.threads.runs.stream(
             thread_id=thread_id,
-            assistant_id=assistant_id  # Use the course's assistant_id here
-        )
+            assistant_id=assistant_id,
+            event_handler=handler
+        ) as stream:
+            stream.until_done()
 
-        # Wait for the run to complete (async polling)
-        
-        while run.status != "completed":
-            run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-            print(f"Current run status: {run.status}")
-            asyncio.sleep(1)
-            # In a real application, you would introduce a delay here
+        return AssetResponse(response=handler.response_text, thread_id=thread_id)
 
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
-        response_text= messages.data[0].content[0].text.value
-        print(response_text)
-        return AssetResponse(response=response_text, thread_id=thread_id)
     except Exception as e:
         logger.error(f"Exception in create_asset for asset '{asset_type_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
-
-class AssetChatStreamHandler(AssistantEventHandler):
-    def __init__(self):
-        super().__init__()  # ✅ This is the fix
-        self.response_text = ""
-
-    @override
-    def on_text_delta(self, delta, snapshot):
-        print(delta.value, end="", flush=True)
-        self.response_text += delta.value
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/courses/{course_id}/asset_chat/{asset_name}", response_model=AssetResponse)
 def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id: str, request: AssetPromptRequest):
