@@ -322,34 +322,35 @@ export default function AssetStudioContent() {
                     <div style={{ color: "#222" }}>{msg.text}</div>
                   )}
                 </div>
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 6,
-                    right: msg.type === "user" ? 12 : "auto",
-                    left: msg.type === "user" ? "auto" : 12,
-                    display: "flex",
-                    gap: 10,
-                    fontSize: 15,
-                    color: "#888"
-                  }}
-                >
-                  <FaDownload
-                    title="Download"
-                    style={{ cursor: "pointer", opacity: 0.8 }}
-                    onClick={() => handleDownload(msg.text)}
-                  />
-                  <FaFolderPlus
-                    title="Save to Asset"
-                    style={{ cursor: "pointer", opacity: 0.8 }}
-                    onClick={() => handleSaveToAsset(msg.text)}
-                  />
-                  <FaSave
-                    title="Save to Resource"
-                    style={{ cursor: "pointer", opacity: 0.8 }}
-                    onClick={() => handleSaveToResource(msg.text)}
-                  />
-                </div>
+                {msg.type !== "user" && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 6,
+                  left: 12,
+                  display: "flex",
+                  gap: 10,
+                  fontSize: 15,
+                  color: "#888"
+                }}
+              >
+                <FaDownload
+                  title="Download"
+                  style={{ cursor: "pointer", opacity: 0.8 }}
+                  onClick={() => handleDownload(msg.text)}
+                />
+                <FaFolderPlus
+                  title="Save to Asset"
+                  style={{ cursor: "pointer", opacity: 0.8 }}
+                  onClick={() => handleSaveToAsset(msg.text)}
+                />
+                <FaSave
+                  title="Save to Resource"
+                  style={{ cursor: "pointer", opacity: 0.8 }}
+                  onClick={() => handleSaveToResource(msg.text)}
+                />
+              </div>
+            )}
               </div>
             </div>
           ))}
