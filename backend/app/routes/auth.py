@@ -168,8 +168,7 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
         <body>
             <div class="success">✅ Google Login Successful!</div>
             <div class="info">Welcome, {email}</div>
-            <div class="info">You can now close this tab and return to the Streamlit app.</div>
-            <div class="info">Click "Check Google Login Status" in the Streamlit app to continue.</div>
+            <div class="info">You can now close this tab and return to the Course Copilot app.</div>
         </body>
         </html>
         """
