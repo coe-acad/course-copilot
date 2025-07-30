@@ -81,10 +81,9 @@ class CoursePDFUtils:
             
             # Generate filename if not provided
             if not output_filename:
-                # Clean course name for filename
-                safe_name = "".join(c for c in course_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                safe_name = safe_name.replace(' ', '_')
-                output_filename = f"{safe_name}_course_info.pdf"
+                # Replace spaces with underscores and ensure proper format
+                safe_course_name = course_name.replace(' ', '_')
+                output_filename = f"{safe_course_name}_Description.pdf"
             
             # Ensure filename has .pdf extension
             if not output_filename.lower().endswith('.pdf'):
@@ -155,5 +154,5 @@ class CoursePDFUtils:
 course_pdf_utils = CoursePDFUtils()
 
 # Function to use the utility
-def generate_course_pdf(course_id, filename=None):
-    return course_pdf_utils.create_course_pdf(course_id, filename) 
+def generate_course_pdf(course_id):
+    return course_pdf_utils.create_course_pdf(course_id)

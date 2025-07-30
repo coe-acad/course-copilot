@@ -48,7 +48,7 @@ def create_course_description_file(course_id: str, user_id: str):
             return None
         
         # Generate PDF using the utility
-        pdf_path = generate_course_pdf(course_id, user_id)
+        pdf_path = generate_course_pdf(course_id)
         if not pdf_path or not os.path.exists(pdf_path):
             logger.error(f"Failed to generate PDF for course {course_id}")
             return None
@@ -58,7 +58,7 @@ def create_course_description_file(course_id: str, user_id: str):
         pdf_relative_path = "local_storage" + pdf_relative_path
         
         #name of the pdf should be the title
-        resource_name = pdf_relative_path.split("/")[-1].split(".")[0] + ".pdf"
+        resource_name = os.path.basename(pdf_path)
 
         # Create resource in MongoDB
         create_resource(course_id, resource_name)

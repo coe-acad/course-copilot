@@ -14,7 +14,7 @@ from app.utils.openai_client import client
 
 def test_create_course_and_vector_store():
     print("=== Test: Create Course, Vector Store, and Link ===\n")
-    output = create_course_description_file("f91e3c94-7bc3-4677-abba-c66d3f409e63", "test_user_001")
+    output = create_course_description_file("f91e3c94-7bc3-4677-abba-c66d3f409e63", "test_user_00")
     print(output)
     # # Step 1: Create an assistant
     # assistant_id = create_assistant()
