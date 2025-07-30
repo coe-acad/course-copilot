@@ -96,7 +96,20 @@ export default function KnowledgeBase({
             fontWeight: 500,
             fontSize: 14
           }}>
-            <input type="checkbox" disabled />
+            <input
+              type="checkbox"
+              checked={selected.length === resources.length && resources.length > 0}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  const allIds = resources.map(
+                    (res, i) => res.id || res.resourceName || res.fileName || i
+                  );
+                  allIds.forEach((id) => onSelect(id)); // ensure all get selected
+                } else {
+                  selected.forEach((id) => onSelect(id)); // deselect all
+                }
+              }}
+            />
             Select All References
           </label>
         </div>
