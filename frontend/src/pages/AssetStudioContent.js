@@ -21,17 +21,6 @@ const optionTitles = {
   "sprint-plan": "Sprint Plan"
 };
 
-const sectionMap = {
-  "course-outcomes": "Curriculum",
-  "modules-topics": "Curriculum",
-  "concept-map": "Curriculum",
-  "lesson-plans": "Curriculum",
-  "course-notes": "Curriculum",
-  "brainstorm": "Assessments",
-  "quiz": "Assessments",
-  "assignment": "Assessments",
-  "viva": "Assessments"
-};
 
 export default function AssetStudioContent() {
   const params = useParams();
@@ -49,7 +38,7 @@ export default function AssetStudioContent() {
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [resources, setResources] = useState([]);
-  const [resourcesLoading, setResourcesLoading] = useState(true);
+  const [, setResourcesLoading] = useState(true);
   const [threadId, setThreadId] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
@@ -295,24 +284,25 @@ export default function AssetStudioContent() {
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
-                          h1: ({node, ...props}) => <h1 style={{fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
-                          h2: ({node, ...props}) => <h2 style={{fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
-                          h3: ({node, ...props}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}} {...props} />,
-                          p: ({node, ...props}) => <p style={{margin: "8px 0", color: "#222"}} {...props} />,
-                          ul: ({node, ...props}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props} />,
-                          ol: ({node, ...props}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props} />,
-                          li: ({node, ...props}) => <li style={{margin: "4px 0", color: "#222"}} {...props} />,
-                          strong: ({node, ...props}) => <strong style={{fontWeight: "bold", color: "#222"}} {...props} />,
-                          em: ({node, ...props}) => <em style={{fontStyle: "italic", color: "#222"}} {...props} />,
-                          code: ({node, ...props}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}} {...props} />,
-                          pre: ({node, ...props}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}} {...props} />,
-                          blockquote: ({node, ...props}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}} {...props} />,
-                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}} {...props} />,
-                          thead: ({node, ...props}) => <thead style={{backgroundColor: "#f5f5f5"}} {...props} />,
-                          tbody: ({node, ...props}) => <tbody {...props} />,
-                          tr: ({node, ...props}) => <tr style={{borderBottom: "1px solid #ddd"}} {...props} />,
-                          th: ({node, ...props}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}} {...props} />,
-                          td: ({node, ...props}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}} {...props} />
+                          h1: ({node, ...props}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{props.children}</h1>,
+                          h2: ({node, ...props}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{props.children}</h2>,
+                          h3: ({node, ...props}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}}> {props.children} </h3>,
+                          p: ({node, ...props}) => <p style={{ margin: "8px 0", color: "#222" }}>{props.children}</p>,
+                          li: ({node, ...props}) => <li style={{ margin: "4px 0", color: "#222" }}>{props.children}</li>,
+                          ul: ({node, ...props}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props.children} />,
+                          ol: ({node, ...props}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props.children} />,
+                          // li: ({node, ...props}) => <li style={{margin: "4px 0", color: "#222"}} {...props.children} />,
+                          strong: ({node, ...props}) => <strong style={{fontWeight: "bold", color: "#222"}} {...props.children} />,
+                          em: ({node, ...props}) => <em style={{fontStyle: "italic", color: "#222"}} {...props.children} />,
+                          code: ({node, ...props}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}} {...props.children} />,
+                          pre: ({node, ...props}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}} {...props.children} />,
+                          blockquote: ({node, ...props}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}} {...props.children} />,
+                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}} {...props.children} />,
+                          thead: ({node, ...props}) => <thead style={{backgroundColor: "#f5f5f5"}} {...props.children} />,
+                          tbody: ({node, ...props}) => <tbody {...props.children} />,
+                          tr: ({node, ...props}) => <tr style={{borderBottom: "1px solid #ddd"}} {...props.children} />,
+                          th: ({node, ...props}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}} {...props.children} />,
+                          td: ({node, ...props}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}} {...props.children} />
                         }}
                       >
                         {msg.text}

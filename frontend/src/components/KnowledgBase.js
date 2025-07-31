@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiMoreVertical } from "react-icons/fi";
-import { deleteResource, uploadCourseResources } from "../services/resources";
+import { uploadCourseResources } from "../services/resources";
 
 export default function KnowledgeBase({
   resources = [],
@@ -196,7 +196,7 @@ const menuItemStyle = {
   cursor: "pointer"
 };
 
-const linkStyle = {
-  color: "#222",
-  textDecoration: "none"
-};
+// const linkStyle = {
+//   color: "#222",
+//   textDecoration: "none"
+// };
