@@ -68,7 +68,6 @@ def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: 
 
             # Connect file to vector store
             batch = connect_file_to_vector_store(vector_store_id, openai_file_id)
-            print(batch)
 
             vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
             for vs_file in vs_files:

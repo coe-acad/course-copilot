@@ -87,11 +87,6 @@ async def start_google_login():
     # For now, we'll redirect to Google OAuth
     return RedirectResponse(AUTH_URL)
 
-@router.get("/test-callback")
-async def test_callback():
-    """Test endpoint to verify the callback route is accessible"""
-    return {"message": "Callback route is working!"}
-
 @router.get("/callback")
 async def google_callback(code: Optional[str] = None, error: Optional[str] = None):
     logger.info(f"Google callback received - code: {code is not None}, error: {error}")

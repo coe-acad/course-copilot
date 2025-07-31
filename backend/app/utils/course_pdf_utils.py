@@ -83,7 +83,7 @@ class CoursePDFUtils:
             if not output_filename:
                 # Replace spaces with underscores and ensure proper format
                 safe_course_name = course_name.replace(' ', '_')
-                output_filename = f"{safe_course_name}_Description.pdf"
+                output_filename = f"{safe_course_name}_Course_Description.pdf"
             
             # Ensure filename has .pdf extension
             if not output_filename.lower().endswith('.pdf'):

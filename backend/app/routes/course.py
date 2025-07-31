@@ -87,7 +87,6 @@ def save_course_settings(user_id: str, course_id: str, request: CourseSettingsRe
         print(request.dict())
         course["settings"] = request.dict()
         # Update the course in the database
-        print(course)
         update_course(course_id, course)
         logger.info(f"Updated settings for course {course_id}")
         return {"message": "Settings updated"}
