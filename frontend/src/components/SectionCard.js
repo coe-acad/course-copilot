@@ -1,8 +1,8 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import AssetSubCard from "./AssetSubCard";
+import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
 export default function SectionCard({ title, description, buttonLabel, style, onButtonClick, assets = [] }) {
-  const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = useRef(null);
 
   const scrollLeft = () => {
@@ -18,7 +18,7 @@ export default function SectionCard({ title, description, buttonLabel, style, on
   };
 
   return (
-    <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", padding: "32px 36px", minHeight: 140, display: "flex", flexDirection: "column", justifyContent: "center", ...style }}>
+    <div style={{ background: "#fff", borderRadius: 18, padding: "40px 36px",margin: "0.25em", boxShadow: "0 2px 7px #0002", minHeight: 200, maxWidth: '90%', width: '1000%', display: "flex", flexDirection: "column", justifyContent: "center", ...style }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, flex: 1 }}>{title}</h2>
         {buttonLabel && assets.length > 0 && (
@@ -33,7 +33,7 @@ export default function SectionCard({ title, description, buttonLabel, style, on
           marginTop: 20, 
           marginBottom: 24, 
           width: "100%", 
-          overflow: "hidden",
+          overflow: "visible", // allow arrows to show outside
           position: "relative"
         }}>
           {/* Left Arrow */}
@@ -41,26 +41,28 @@ export default function SectionCard({ title, description, buttonLabel, style, on
             onClick={scrollLeft}
             style={{
               position: "absolute",
-              left: -10,
+              left: -18,
               top: "50%",
               transform: "translateY(-50%)",
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               borderRadius: "50%",
-              background: "#3b82f6",
+              background: "#fff",
               border: "none",
-              color: "white",
+              color: "#2563eb",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 16,
-              fontWeight: "bold",
-              zIndex: 10,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+              fontSize: 20,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+              transition: "background 0.2s, color 0.2s",
+              zIndex: 10
             }}
+            onMouseOver={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.color = '#174ea6'; }}
+            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#2563eb'; }}
           >
-            ‹
+            <FaChevronLeft />
           </button>
 
           {/* Right Arrow */}
@@ -68,26 +70,28 @@ export default function SectionCard({ title, description, buttonLabel, style, on
             onClick={scrollRight}
             style={{
               position: "absolute",
-              right: -10,
+              right: -18,
               top: "50%",
               transform: "translateY(-50%)",
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               borderRadius: "50%",
-              background: "#3b82f6",
+              background: "#fff",
               border: "none",
-              color: "white",
+              color: "#2563eb",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 16,
-              fontWeight: "bold",
-              zIndex: 10,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+              fontSize: 20,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+              transition: "background 0.2s, color 0.2s",
+              zIndex: 10
             }}
+            onMouseOver={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.color = '#174ea6'; }}
+            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#2563eb'; }}
           >
-            ›
+            <FaChevronRight />
           </button>
 
           <div 
