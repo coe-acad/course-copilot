@@ -1,15 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { fetchCourses, createCourse } from "../services/course";
+import { fetchCourses } from "../services/course";
 
 export function useCourses() {
   const [showModal, setShowModal] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [courseDesc, setCourseDesc] = useState("");
-  const [savedCourses, setSavedCourses] = useState([]);
-  
-  // TODO: Replace dummy courses list with data fetched from backend
+  const [, setSavedCourses] = useState([]);
   
   useEffect(() => {
     async function loadCourses() {
