@@ -9,23 +9,35 @@ export default function CourseModal({
   onSubmit, loading, error
 }) {
   return (
-    <Modal open={open} onClose={onClose} modalStyle={{ minWidth: 0, maxWidth: 600, width: '100%', borderRadius: 12 }}>
-      <div>
-        <div style={{ fontWeight: 700, fontSize: 24, marginBottom: 24 }}>Create Course</div>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Course Name</div>
+    <Modal open={open} onClose={onClose} modalStyle={{ minWidth: 0, maxWidth: 800, width: '100%', borderRadius: 18, boxShadow: '0 8px 32px rgba(37,99,235,0.10)', background: '#fff', padding: 0 }}>
+      <div style={{ padding: '36px 32px 28px 32px', borderRadius: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 26, marginBottom: 28, letterSpacing: 0.2, textAlign: 'center' }}>Create Course</div>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Course Name</div>
         <input
           type="text"
           placeholder="e.g. Introduction to Python"
           value={courseName}
           onChange={e => setCourseName(e.target.value)}
-          style={{ width: "100%", padding: "10px 12px", fontSize: 15, borderRadius: 6, border: "1px solid #ccc", marginBottom: 22 }}
+          style={{
+            width: "100%",
+            padding: "12px 14px",
+            fontSize: 16,
+            borderRadius: 10,
+            border: "1.5px solid #e5e7eb",
+            marginBottom: 24,
+            outline: 'none',
+            background: '#fafbfc',
+            transition: 'border 0.18s',
+          }}
+          onFocus={e => e.target.style.border = '1.5px solid #2563eb'}
+          onBlur={e => e.target.style.border = '1.5px solid #e5e7eb'}
           required
         />
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: 'center' }}>
           <span>About the course</span>
           <button
             type="button"
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", fontSize: 18 }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", fontSize: 20, padding: 0, marginLeft: 8 }}
             title="AI Sparkle"
           >
             <FaRegStar />
@@ -35,14 +47,39 @@ export default function CourseModal({
           placeholder="Describe your course audience, topics, projects etc."
           value={courseDesc}
           onChange={e => setCourseDesc(e.target.value)}
-          style={{ width: "100%", minHeight: 90, padding: "10px 12px", fontSize: 15, borderRadius: 6, border: "1px solid #ccc", resize: "vertical", marginBottom: 32 }}
+          style={{
+            width: "100%",
+            minHeight: 90,
+            padding: "12px 14px",
+            fontSize: 15,
+            borderRadius: 10,
+            border: "1.5px solid #e5e7eb",
+            resize: "vertical",
+            marginBottom: 32,
+            outline: 'none',
+            background: '#fafbfc',
+            transition: 'border 0.18s',
+          }}
+          onFocus={e => e.target.style.border = '1.5px solid #2563eb'}
+          onBlur={e => e.target.style.border = '1.5px solid #e5e7eb'}
           required
         />
-        {error && <div style={{ color: "red", marginBottom: 8 }}>{error}</div>}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", fontSize: 15 }}>Close</button>
+        {error && <div style={{ color: "#e11d48", marginBottom: 10, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
+          <button onClick={onClose} style={{ padding: "9px 22px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 15, color: '#222', fontWeight: 500, transition: 'border 0.18s, background 0.18s', cursor: 'pointer' }}>Close</button>
           <button onClick={onSubmit} disabled={!courseName.trim() || !courseDesc.trim() || loading}
-            style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: (!courseName || !courseDesc || loading) ? "#bbb" : "#1680ea", color: "#fff", fontSize: 15 }}>
+            style={{
+              padding: "9px 22px",
+              borderRadius: 8,
+              border: "none",
+              background: (!courseName || !courseDesc || loading) ? "#b6cdfa" : "#2563eb",
+              color: "#fff",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: (!courseName || !courseDesc || loading) ? 'not-allowed' : 'pointer',
+              boxShadow: (!courseName || !courseDesc || loading) ? 'none' : '0 2px 8px #2563eb22',
+              transition: 'background 0.18s, box-shadow 0.18s',
+            }}>
             Get Started
           </button>
         </div>
