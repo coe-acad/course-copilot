@@ -145,7 +145,7 @@ export default function Dashboard() {
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header and breadcrumbs (static) */}
         <Header
-          title="Creators Copilot"
+          title="Course Copilot"
           onLogout={handleLogout}
           onSettings={() => setShowSettingsModal(true)}
           onExport={() => alert("Export to LMS coming soon!")}

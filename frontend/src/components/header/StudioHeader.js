@@ -21,7 +21,7 @@ export default function StudioHeader({
       }}
     >
       {/* Left: Brand */}
-      <div style={{ fontWeight: 700, fontSize: 20 }}>Creators Copilot</div>
+      <div style={{ fontWeight: 700, fontSize: 20 }}>Course Copilot</div>
 
       {/* Right: Buttons */}
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>

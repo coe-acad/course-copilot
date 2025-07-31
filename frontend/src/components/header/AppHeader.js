@@ -1,7 +1,7 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
 
-export default function AppHeader({ onAdd, onLogout, title = "Creators Copilot" }) {
+export default function AppHeader({ onAdd, onLogout, title = "Course Copilot" }) {
   return (
     <div style={{
       height: 64,

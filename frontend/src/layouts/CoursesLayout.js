@@ -36,7 +36,7 @@ export default function CoursesLayout({ onAddCourse, onLogout, children }) {
           }}>
             C
           </div>
-          <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>Creators Copilot</span>
+          <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <button

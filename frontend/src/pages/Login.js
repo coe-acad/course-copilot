@@ -52,7 +52,7 @@ export default function Login() {
           }}>
             C
           </div>
-          <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Creators Copilot</span>
+          <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
         </div>
 
         {/* Google Sign-In (Placeholder Only) */}
