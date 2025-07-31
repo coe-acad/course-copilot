@@ -31,7 +31,14 @@ export default function Dashboard() {
     const fetchResources = async () => {
       try {
         setLoadingResources(true);
-        const data = await getAllResources();
+        const courseId = localStorage.getItem('currentCourseId');
+        if (!courseId) {
+          console.error('No current course ID found');
+          setResources([]);
+          return;
+        }
+        
+        const data = await getAllResources(courseId);
         // Transform the resources to match the expected format
         const transformedResources = (data.resources || []).map(resource => ({
           id: resource.resourceName,

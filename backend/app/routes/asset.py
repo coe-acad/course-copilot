@@ -1,10 +1,10 @@
 import asyncio
 from openai import AssistantEventHandler
-from fastapi.responses import StreamingResponse
 from typing_extensions import override
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from datetime import datetime
+from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 import logging
@@ -63,7 +63,7 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
     return input_variables
 
 @router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=AssetResponse)
-async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, request: AssetRequest):
+async def create_asset_chat(course_id: str, asset_type_name: str, request: AssetRequest, user_id: str = Depends(verify_token)):
     try:
         course = get_course(course_id)
         if not course or "assistant_id" not in course:
@@ -104,7 +104,7 @@ async def create_asset_chat(user_id: str, course_id: str, asset_type_name: str, 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/courses/{course_id}/asset_chat/{asset_name}", response_model=AssetResponse)
-def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id: str, request: AssetPromptRequest):
+def continue_asset_chat(course_id: str, asset_name: str, thread_id: str, request: AssetPromptRequest, user_id: str = Depends(verify_token)):
     try:
         course = get_course(course_id)
         if not course or "assistant_id" not in course:
@@ -134,7 +134,7 @@ def continue_asset_chat(user_id: str, course_id: str, asset_name: str, thread_id
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
-def save_asset(user_id: str, course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest):
+def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest, user_id: str = Depends(verify_token)):
     # TODO: Make this a configuration for the app overall, add the remaining categories and asset types here
     category_map = {
         "course-outcomes": "curriculum"
@@ -146,6 +146,6 @@ def save_asset(user_id: str, course_id: str, asset_name: str, asset_type: str, r
     return AssetCreateResponse(message=f"Asset '{asset_name}' created successfully")
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
-def get_assets(user_id: str, course_id: str):
+def get_assets(course_id: str, user_id: str = Depends(verify_token)):
     assets = get_assets_by_course_id(course_id)
     return AssetListResponse(assets=assets)

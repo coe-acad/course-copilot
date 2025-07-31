@@ -40,24 +40,15 @@ export async function getCourse(courseId) {
 }
 
 export async function saveCourseSettings(courseId, settings) {
-  const userId = getUserId();
-  if (!userId) {
-    throw new Error('User not authenticated');
-  }
   
-  const res = await axios.put(`${API_BASE}/courses/${courseId}/settings?user_id=${userId}`, settings, {
+  const res = await axios.put(`${API_BASE}/courses/${courseId}/settings`, settings, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;
 }
 
 export async function getCourseSettings(courseId) {
-  const userId = getUserId();
-  if (!userId) {
-    throw new Error('User not authenticated');
-  }
-  
-  const res = await axios.get(`${API_BASE}/courses/${courseId}/settings?user_id=${userId}`, {
+  const res = await axios.get(`${API_BASE}/courses/${courseId}/settings`, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;

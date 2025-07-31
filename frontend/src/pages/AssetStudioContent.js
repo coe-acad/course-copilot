@@ -54,7 +54,14 @@ export default function AssetStudioContent() {
     const fetchResources = async () => {
       try {
         setResourcesLoading(true);
-        const resourcesData = await getAllResources();
+        const courseId = localStorage.getItem('currentCourseId');
+        if (!courseId) {
+          console.error('No current course ID found');
+          setResources([]);
+          return;
+        }
+        
+        const resourcesData = await getAllResources(courseId);
         setResources(resourcesData.resources);
       } catch (error) {
         console.error("Error fetching resources:", error);

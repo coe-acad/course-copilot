@@ -15,9 +15,9 @@ function handleAxiosError(error) {
 
 export const assetService = {
   // Get all assets for a course
-  getAssets: async (courseId, user_id = 123) => {
+  getAssets: async (courseId) => {
     try {
-      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets?user_id=${user_id}`, {
+      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets`, {
         headers: {
           'Authorization': `Bearer ${getToken()}`
         }
@@ -29,9 +29,9 @@ export const assetService = {
   },
 
   // Create initial asset chat with selected files
-  createAssetChat: async (courseId, assetTypeName, fileNames, user_id = 123) => {
+  createAssetChat: async (courseId, assetTypeName, fileNames) => {
     try {
-      const res = await axios.post(`${API_BASE}/courses/${courseId}/asset_chat/${assetTypeName}?user_id=${user_id}`, 
+      const res = await axios.post(`${API_BASE}/courses/${courseId}/asset_chat/${assetTypeName}`, 
         { file_names: fileNames }, 
         {
           headers: {
@@ -47,9 +47,9 @@ export const assetService = {
   },
 
   // Continue asset chat conversation
-  continueAssetChat: async (courseId, assetName, threadId, userPrompt, user_id = 123) => {
+  continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
     try {
-      const res = await axios.put(`${API_BASE}/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}&user_id=${user_id}`, 
+      const res = await axios.put(`${API_BASE}/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
         { user_prompt: userPrompt }, 
         {
           headers: {
@@ -65,9 +65,9 @@ export const assetService = {
   },
 
   // Save asset to database
-  saveAsset: async (courseId, assetName, assetType, content, user_id = 123) => {
+  saveAsset: async (courseId, assetName, assetType, content) => {
     try {
-      const res = await axios.post(`${API_BASE}/courses/${courseId}/assets?user_id=${user_id}`, 
+      const res = await axios.post(`${API_BASE}/courses/${courseId}/assets`, 
         { content: content }, 
         {
           headers: {

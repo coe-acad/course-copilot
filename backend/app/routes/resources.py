@@ -36,7 +36,7 @@ def check_course_exists(course_id: str):
         raise HTTPException(status_code=404, detail="Course not found")
     return True
 
-def create_course_description_file(course_id: str, user_id: str):
+def create_course_description_file(course_id: str, user_id: str = Depends(verify_token)):
     """
     Create a course description file using PDF utility and add it to vector store
     """
@@ -100,7 +100,7 @@ def create_course_description_file(course_id: str, user_id: str):
 
 # Keep this route, we add the file to the vector store attached to the Assistant
 @router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
-def upload_resources(user_id: str, course_id: str, files: List[UploadFile] = File(...)):
+def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
         # if course exists, get the assistant id and vector store id from the course
@@ -116,7 +116,7 @@ def upload_resources(user_id: str, course_id: str, files: List[UploadFile] = Fil
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/resources", response_model=ResourceListResponse) 
-def list_resources(user_id: str, course_id: str):
+def list_resources(course_id: str, user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
         resources = get_resources_by_course_id(course_id)
@@ -130,7 +130,7 @@ def list_resources(user_id: str, course_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}/resources/{resource_name}", response_model=DeleteResponse)
-def delete_resource(user_id: str,course_id: str, file_id: str):
+def delete_resource(course_id: str, file_id: str, user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
         # result = openai_service.delete_single_resource(course_id, file_id, user_id)

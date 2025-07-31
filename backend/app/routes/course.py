@@ -39,7 +39,7 @@ def get_courses(user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @router.post("/courses", response_model=CourseResponse)
-def create_course(user_id: str, request: CourseCreateRequest):
+def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
     try:
         assistant_id = openai_service.create_assistant()
         vector_store_id = create_vector_store(assistant_id)
@@ -67,7 +67,7 @@ def create_course(user_id: str, request: CourseCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}")
-async def delete_course(course_id: str, user_id: str):
+async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
     try:
         await openai_service.delete_course(course_id, user_id)
         logger.info(f"Deleted course {course_id} for user {user_id}")
@@ -77,7 +77,7 @@ async def delete_course(course_id: str, user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/courses/{course_id}/settings")
-def save_course_settings(user_id: str, course_id: str, request: CourseSettingsRequest):
+def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id: str = Depends(verify_token)):
     try:
         course = get_course(course_id)
         if not course:
@@ -96,7 +96,7 @@ def save_course_settings(user_id: str, course_id: str, request: CourseSettingsRe
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/settings")
-def get_course_settings(user_id: str,course_id: str):
+def get_course_settings(course_id: str, user_id: str = Depends(verify_token)):
     try:
         course = get_course(course_id)
         if not course:
