@@ -8,17 +8,7 @@ function getToken() {
   return user ? user.token : null;
 }
 
-function getUserId() {
-  const user = getCurrentUser();
-  return user ? user.id : null;
-}
-
 export async function fetchCourses() {
-  const userId = getUserId();
-  if (!userId) {
-    throw new Error('User not authenticated');
-  }
-  
   const res = await axios.get(`${API_BASE}/courses`, {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
@@ -26,12 +16,7 @@ export async function fetchCourses() {
 }
 
 export async function createCourse({name, description}) {
-  const userId = getUserId();
-  if (!userId) {
-    throw new Error('User not authenticated');
-  }
-  
-  const res = await axios.post(`${API_BASE}/courses?user_id=${userId}`, {name, description}, {
+  const res = await axios.post(`${API_BASE}/courses`, {name, description}, {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`

@@ -148,22 +148,89 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
         token_key = f"google_token_{user_id}"
         _temp_tokens[token_key] = firebase_tokens["idToken"]
 
-        # Return a simple HTML page indicating success
+        # Get additional user info from Firebase
+        user_info = {
+            "email": email,
+            "userId": user_id,
+            "displayName": decoded_token.get("name", ""),
+            "token": firebase_tokens["idToken"]
+        }
+
+        # Return HTML with JavaScript to automatically close the tab and notify the parent window
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Login Successful</title>
             <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                .success {{ color: green; font-size: 24px; }}
-                .info {{ color: #666; margin: 20px 0; }}
+                body {{ 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 50px; 
+                    background: #f8f9fa;
+                }}
+                .success {{ 
+                    color: #28a745; 
+                    font-size: 24px; 
+                    margin-bottom: 20px;
+                }}
+                .info {{ 
+                    color: #666; 
+                    margin: 10px 0; 
+                }}
+                .container {{
+                    background: white;
+                    border-radius: 8px;
+                    padding: 30px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    max-width: 400px;
+                    margin: 0 auto;
+                }}
             </style>
         </head>
         <body>
-            <div class="success">✅ Google Login Successful!</div>
-            <div class="info">Welcome, {email}</div>
-            <div class="info">You can now close this tab and return to the Course Copilot app.</div>
+            <div class="container">
+                <div class="success">✅ Login Successful!</div>
+                <div class="info">Welcome, {email}</div>
+                <div class="info">Closing this tab automatically...</div>
+            </div>
+            <script>
+                // Try to notify the parent window about successful login
+                let messageSent = false;
+                
+                if (window.opener && !window.opener.closed) {{
+                    console.log('Notifying parent window about successful login');
+                    try {{
+                        window.opener.postMessage({{
+                            type: 'GOOGLE_LOGIN_SUCCESS',
+                            user: {{
+                                email: '{email}',
+                                userId: '{user_id}',
+                                displayName: '{decoded_token.get("name", "")}',
+                                token: '{firebase_tokens["idToken"]}'
+                            }}
+                        }}, '*');
+                        messageSent = true;
+                        console.log('Message sent successfully to parent window');
+                    }} catch (e) {{
+                        console.log('Could not notify parent window:', e);
+                    }}
+                }}
+                else {{
+                    console.log('No parent window found or parent window is closed');
+                }}
+                
+                // If we couldn't send the message, show instructions to the user
+                if (!messageSent) {{
+                    document.querySelector('.info').innerHTML = 
+                        'Login successful! Please close this tab and return to the main application.';
+                }}
+                
+                // Close the tab after a short delay
+                setTimeout(() => {{
+                    window.close();
+                }}, 3000);
+            </script>
         </body>
         </html>
         """

@@ -28,7 +28,7 @@ class CourseResponse(BaseModel):
     id: str
 
 @router.get("/courses", response_model=list[CourseResponse])
-def get_courses(user_id: str):
+def get_courses(user_id: str = Depends(verify_token)):
     logger.info(f"Fetching courses for user {user_id}")
     try:
         courses = get_courses_by_user_id(user_id)
