@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
-// import { login } from "../services/auth"; // ❌ removed actual login function
+import { googleLogin } from "../services/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -12,6 +12,29 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Listen for messages from the Google login popup
+  React.useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
+        // Handle successful Google login
+        console.log('Google login successful:', event.data.user);
+        
+        // Store complete user object
+        localStorage.setItem('user', JSON.stringify({
+          id: event.data.user.userId,
+          email: event.data.user.email,
+          displayName: event.data.user.displayName,
+          token: event.data.user.token
+        }));
+        
+        // Navigate to courses
+        navigate("/courses");
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [navigate]);
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -36,6 +59,26 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true);
+      // Open Google login in a new tab with proper opener reference
+      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/auth/google-login`;
+      const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
+      
+      if (!popup) {
+        setError("Popup blocked. Please allow popups for this site.");
+        setLoading(false);
+        return;
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      setError("Google login failed. Please try again.");
+      setLoading(false);
+    }
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f7", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -65,7 +108,7 @@ export default function Login() {
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 24
           }}
           disabled={loading}
-          onClick={() => alert('TODO: Integrate Google OAuth login here')}
+          onClick={handleGoogleLogin}
         >
           <svg width="20" height="20" viewBox="0 0 48 48" style={{ marginRight: 8 }}>
             {/* Google Icon */}

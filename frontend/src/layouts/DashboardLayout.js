@@ -21,7 +21,7 @@ export default function DashboardLayout({ state }) {
         onSettings={() => state.setShowSettingsModal(true)}
         onExport={() => alert("Export to LMS is coming soon!")}
         onLogout={() => {
-          localStorage.removeItem("token");
+          localStorage.removeItem("user");
           navigate("/login");
         }}
         type="dashboard"

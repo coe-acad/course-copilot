@@ -28,11 +28,15 @@ export default function Courses() {
         setSavedCourses(coursesFromAPI);
       } catch (err) {
         console.error("Failed to fetch courses:", err);
+        if (err.message === 'User not authenticated') {
+          // Redirect to login if user is not authenticated
+          navigate("/login");
+        }
       }
     }
   
     loadCourses();
-  }, [showModal]);
+  }, [showModal, navigate]);
 
   // Close menu on outside click
   useEffect(() => {

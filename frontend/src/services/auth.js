@@ -13,6 +13,15 @@ export async function login(email, password) {
   }
 }
 
+export async function googleLogin() {
+  try {
+    const response = await axios.get(`${API_BASE}/auth/google-login`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { detail: 'Google login failed' };
+  }
+}
+
 export async function register(email, password, name) {
   try {
     const response = await axios.post(`${API_BASE}/auth/signup`, { email, password, name });
@@ -31,4 +40,28 @@ export function logout() {
 export function getCurrentUser() {
   const user = localStorage.getItem('user');
   return user ? JSON.parse(user) : null;
+}
+
+export function getAuthToken() {
+  const user = getCurrentUser();
+  return user ? user.token : null;
+}
+
+export function isAuthenticated() {
+  return !!getAuthToken();
+}
+
+export function getUserId() {
+  const user = getCurrentUser();
+  return user ? user.id : null;
+}
+
+export function getUserEmail() {
+  const user = getCurrentUser();
+  return user ? user.email : null;
+}
+
+export function getUserDisplayName() {
+  const user = getCurrentUser();
+  return user ? user.displayName : null;
 }

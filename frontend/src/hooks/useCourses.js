@@ -28,10 +28,11 @@ export function useCourses() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    // TODO: Implement logout logic
-    // - clear tokens or session data
-    // - optionally call backend logout API
-    // - redirect to login page
+    // Clear user data from localStorage
+    localStorage.removeItem("user");
+    
+    // Redirect to login page
+    navigate("/login");
   };
 
   const handleGetStarted = () => {

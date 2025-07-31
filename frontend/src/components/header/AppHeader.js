@@ -1,7 +1,9 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
+import { getCurrentUser } from "../../services/auth";
 
 export default function AppHeader({ onAdd, onLogout, title = "Course Copilot" }) {
+  const currentUser = getCurrentUser();
   return (
     <div style={{
       height: 64,

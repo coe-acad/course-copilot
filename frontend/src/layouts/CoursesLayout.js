@@ -1,7 +1,9 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
+import { getCurrentUser } from "../services/auth";
 
 export default function CoursesLayout({ onAddCourse, onLogout, children }) {
+  const currentUser = getCurrentUser();
   return (
     <>
       {/* Header Bar */}
