@@ -66,8 +66,9 @@ async def login(request: Request):
         user = firebase.auth().sign_in_with_email_and_password(email, password)
         user_id = user["localId"]
         id_token = user["idToken"]
+        refresh_token = user["refreshToken"]
         logger.info(f"User logged in: {email}")
-        return JSONResponse(content={"message": "Login successful", "token": id_token, "user_id": user_id}, status_code=200)
+        return JSONResponse(content={"message": "Login successful", "token": id_token, "refresh_token": refresh_token, "user_id": user_id}, status_code=200)
     except Exception as e:
         logger.error(f"Login failed: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -207,7 +208,8 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
                                 email: '{email}',
                                 userId: '{user_id}',
                                 displayName: '{decoded_token.get("name", "")}',
-                                token: '{firebase_tokens["idToken"]}'
+                                token: '{firebase_tokens["idToken"]}',
+                                refreshToken: '{firebase_tokens["refreshToken"]}'
                             }}
                         }}, '*');
                         messageSent = true;
@@ -239,6 +241,40 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
     except requests.RequestException as e:
         logger.error(f"Token exchange failed: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Token exchange failed: {str(e)}")
+
+@router.post("/refresh-token")
+async def refresh_token_endpoint(request: Request):
+    """Refresh Firebase ID token using refresh token"""
+    try:
+        data = await request.json()
+        refresh_token = data.get("refresh_token")
+        
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="Missing refresh token")
+        
+        # Call Firebase to refresh the token
+        response = requests.post(
+            f"https://securetoken.googleapis.com/v1/token?key={FIREBASE_API_KEY}",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        token_data = response.json()
+        
+        return JSONResponse(content={
+            "token": token_data["id_token"],
+            "refresh_token": token_data["refresh_token"]
+        }, status_code=200)
+        
+    except requests.RequestException as e:
+        logger.error(f"Token refresh failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Failed to refresh token")
+    except Exception as e:
+        logger.error(f"Token refresh error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Token refresh failed")
 
 @router.get("/get-token")
 async def get_token(request: Request):

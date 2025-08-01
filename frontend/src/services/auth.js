@@ -6,7 +6,8 @@ export async function login(email, password) {
   try {
     const response = await axios.post(`${API_BASE}/auth/login`, { email, password });
     localStorage.setItem('user', JSON.stringify(response.data));
-    localStorage.setItem('token', response.data.token); // Store token for authenticated requests
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('refresh_token', response.data.refresh_token); // Store refresh token
     return response.data;
   } catch (error) {
     throw error.response?.data || { detail: 'Login failed' };
@@ -34,7 +35,7 @@ export async function register(email, password, name) {
 export function logout() {
   localStorage.removeItem('user');
   localStorage.removeItem('token');
-  // Optionally, call backend logout endpoint if needed
+  localStorage.removeItem('refresh_token');
 }
 
 export function getCurrentUser() {
@@ -65,3 +66,58 @@ export function getUserDisplayName() {
   const user = getCurrentUser();
   return user ? user.displayName : null;
 }
+
+// Function to refresh token
+async function refreshAuthToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  try {
+    const response = await axios.post(`${API_BASE}/auth/refresh-token`, {
+      refresh_token: refreshToken
+    });
+    
+    // Update stored tokens
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('refresh_token', response.data.refresh_token);
+    
+    // Update user object
+    const user = getCurrentUser();
+    if (user) {
+      user.token = response.data.token;
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+    
+    return response.data.token;
+  } catch (error) {
+    // If refresh fails, logout user
+    logout();
+    throw error;
+  }
+}
+
+// Axios interceptor to handle token refresh on 401 responses
+axios.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        const newToken = await refreshAuthToken();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axios(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed, redirect to login
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);

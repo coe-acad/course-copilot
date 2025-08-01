@@ -26,6 +26,8 @@ export default function Login() {
           displayName: event.data.user.displayName,
           token: event.data.user.token
         }));
+        localStorage.setItem('token', event.data.user.token);
+        localStorage.setItem('refresh_token', event.data.user.refreshToken);
         
         // Navigate to courses
         navigate("/courses");
