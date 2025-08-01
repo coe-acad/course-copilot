@@ -1,4 +1,4 @@
-import asyncio
+import logging
 from openai import AssistantEventHandler
 from typing_extensions import override
 from fastapi import APIRouter, HTTPException, Depends
@@ -7,7 +7,6 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-import logging
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id
 
 logger = logging.getLogger(__name__)

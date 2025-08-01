@@ -48,7 +48,7 @@ class Settings:
     # Firebase Client SDK
     FIREBASE_API_KEY: Optional[str] = os.getenv("FIREBASE_API_KEY")
     FIREBASE_AUTH_DOMAIN: Optional[str] = os.getenv("FIREBASE_AUTH_DOMAIN")
-    FIREBASE_STORAGE_BUCKET: str = os.getenv("FIREBASE_STORAGE_BUCKET", "creator-co-pilot.appspot.com")
+    FIREBASE_STORAGE_BUCKET: Optional[str] = os.getenv("FIREBASE_STORAGE_BUCKET")
     FIREBASE_MESSAGING_SENDER_ID: Optional[str] = os.getenv("FIREBASE_MESSAGING_SENDER_ID")
     FIREBASE_APP_ID: Optional[str] = os.getenv("FIREBASE_APP_ID")
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")

@@ -1,9 +1,10 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
 from .routes import auth, course, resources, asset
 from .config.settings import settings
 from .routes.auth import google_callback

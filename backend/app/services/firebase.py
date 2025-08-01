@@ -1,6 +1,6 @@
 import os
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import credentials, firestore
 import logging
 from ..config.settings import settings
 
@@ -39,14 +39,3 @@ if not firebase_admin._apps:
         raise ValueError(f"Failed to initialize Firebase Admin SDK: {str(e)}")
 
 db = firestore.client()
-
-# Initialize storage bucket with error handling
-try:
-    storage_bucket = storage.bucket('creator-co-pilot.appspot.com')
-    # Test if bucket exists by trying to list files
-    list(storage_bucket.list_blobs(max_results=1))
-    logger.info("Firebase Storage bucket initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize storage bucket 'creator-co-pilot.appspot.com': {str(e)}")
-    logger.warning("Firebase Storage is not available. File uploads will use placeholder URLs.")
-    storage_bucket = None
