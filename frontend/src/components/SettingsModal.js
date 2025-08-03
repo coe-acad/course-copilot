@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
 import { FaWrench } from "react-icons/fa";
 import { saveCourseSettings, getCourseSettings } from "../services/course";
@@ -19,19 +19,12 @@ export default function SettingsModal({ open, onClose, onSave }) {
   const [selectedStudyAreas, setSelectedStudyAreas] = useState([]);
   const [selectedPedagogical, setSelectedPedagogical] = useState([]);
   const [askClarifyingQuestions, setAskClarifyingQuestions] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   // Get courseId from localStorage
   const courseId = localStorage.getItem("currentCourseId");
 
-  // Load saved settings when modal opens
-  useEffect(() => {
-    if (open && courseId) {
-      loadSavedSettings();
-    }
-  }, [open, courseId]);
-
-  const loadSavedSettings = async () => {
+  const loadSavedSettings = useCallback(async () => {
     if (!courseId) return;
     
     setLoading(true);
@@ -51,7 +44,14 @@ export default function SettingsModal({ open, onClose, onSave }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [courseId]);
+
+  // Load saved settings when modal opens
+  useEffect(() => {
+    if (open && courseId) {
+      loadSavedSettings();
+    }
+  }, [open, courseId, loadSavedSettings]);
 
   // Toggle tag selection
   const toggleTag = (tag, selectedTags, setSelectedTags) => {
