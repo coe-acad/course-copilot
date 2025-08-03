@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { FiMoreVertical } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
 
@@ -9,9 +9,23 @@ export default function KnowledgeBase({
   showCheckboxes = false, // 🔁 Controls checkbox display
   selected = [],
   onSelect = () => {},
-  onDelete = () => {} // Callback to refresh resources after deletion
+  onDelete = () => {}, // Callback to refresh resources after deletion
+  onAddResource // <-- new prop
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const menuRef = useRef(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (menuOpenId === null) return;
+    function handleClick(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpenId]);
 
   const toggleMenu = (id) => {
     setMenuOpenId(menuOpenId === id ? null : id);
@@ -82,7 +96,7 @@ export default function KnowledgeBase({
           fontSize: 15,
           cursor: "pointer"
         }}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={onAddResource}
       >
         Add Resource
       </button>
@@ -145,11 +159,11 @@ export default function KnowledgeBase({
                     />
                   )}
                   <span>📄</span>
-                  <span style={{ flex: 1 }}>{res.resourceName || res.fileName || res.title}</span>
+                  <span style={{ flex: 1, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{res.resourceName || res.fileName || res.title}</span>
                 </label>
 
                 {/* Three-dot menu */}
-                <div style={{ position: "relative" }}>
+                <div style={{ position: "relative" }} ref={menuOpenId === id ? menuRef : null}>
                   <FiMoreVertical
                     style={{ cursor: "pointer", fontSize: 18 }}
                     onClick={() => toggleMenu(id)}

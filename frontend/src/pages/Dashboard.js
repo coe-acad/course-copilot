@@ -6,10 +6,11 @@ import KnowledgeBase from "../components/KnowledgBase";
 import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
-import { getAllResources } from "../services/resources";
+import { getAllResources, uploadCourseResources } from "../services/resources";
 import { assetService } from "../services/asset";
 import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
+import AddResourceModal from '../components/AddReferencesModal';
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [loadingResources, setLoadingResources] = useState(true);
   const [assets, setAssets] = useState({ curriculum: [], assessments: [], evaluation: [] });
   const [, setLoadingAssets] = useState(true);
+  const [showAddResourceModal, setShowAddResourceModal] = useState(false);
   const navigate = useNavigate();
 
   // Fetch resources on component mount
@@ -130,6 +132,23 @@ export default function Dashboard() {
     navigate("/login");
   };
 
+  // Add this handler to refresh resources after adding
+  const handleAddResources = async (files) => {
+    setShowAddResourceModal(false);
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId || !files.length) return;
+    await uploadCourseResources(courseId, files); // upload to backend
+    // Refresh resources
+    const data = await getAllResources(courseId);
+    const transformedResources = (data.resources || []).map(resource => ({
+      id: resource.resourceName,
+      fileName: resource.resourceName,
+      title: resource.resourceName,
+      url: `#${resource.resourceName}`
+    }));
+    setResources(transformedResources);
+  };
+
   return (
     <>
       <style>{`
@@ -207,6 +226,7 @@ export default function Dashboard() {
               showCheckboxes={false}
               selected={[]}
               onSelect={() => {}}
+              onAddResource={() => setShowAddResourceModal(true)}
             />
           </div>
         </div>
@@ -246,6 +266,11 @@ export default function Dashboard() {
         />
 
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+        <AddResourceModal
+          open={showAddResourceModal}
+          onClose={() => setShowAddResourceModal(false)}
+          onAdd={handleAddResources}
+        />
       </div>
     </>
   );

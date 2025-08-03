@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { googleLogin } from "../services/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");

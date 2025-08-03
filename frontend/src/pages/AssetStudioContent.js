@@ -3,10 +3,11 @@ import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
-import { getAllResources } from "../services/resources";
+import { getAllResources, uploadCourseResources } from "../services/resources";
 import { assetService } from "../services/asset";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import AddResourceModal from '../components/AddReferencesModal';
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -43,6 +44,7 @@ export default function AssetStudioContent() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
   const [assetName, setAssetName] = useState("");
+  const [showAddResourceModal, setShowAddResourceModal] = useState(false);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -218,6 +220,17 @@ export default function AssetStudioContent() {
     console.log("File upload triggered - in real implementation this would refresh from API");
   };
 
+  // Add this handler to refresh resources after adding
+  const handleAddResources = async (files) => {
+    setShowAddResourceModal(false);
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId || !files.length) return;
+    await uploadCourseResources(courseId, files); // upload to backend
+    // Refresh resources
+    const resourcesData = await getAllResources(courseId);
+    setResources(resourcesData.resources);
+  };
+
   return (
     <AssetStudioLayout
       title={title}
@@ -229,6 +242,7 @@ export default function AssetStudioContent() {
           onSelect={toggleSelect}
           fileInputRef={{ current: null }}
           onFileChange={handleFileUpload}
+          onAddResource={() => setShowAddResourceModal(true)}
         />
       }
     >
@@ -470,6 +484,11 @@ export default function AssetStudioContent() {
           </div>
         </div>
       )}
+      <AddResourceModal
+        open={showAddResourceModal}
+        onClose={() => setShowAddResourceModal(false)}
+        onAdd={handleAddResources}
+      />
     </AssetStudioLayout>
   );
 }
