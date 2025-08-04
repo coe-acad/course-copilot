@@ -4,11 +4,20 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 export async function login(email, password) {
   try {
-    const response = await axios.post(`${API_BASE}/auth/login`, { email, password });
-    localStorage.setItem('user', JSON.stringify(response.data));
+    const response = await axios.post(`${API_BASE}/api/login`, { email, password });
+    
+    // Create user object from backend response
+    const userData = {
+      id: response.data.user_id,
+      email: email,
+      token: response.data.token,
+      message: response.data.message
+    };
+    
+    localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', response.data.token);
-    localStorage.setItem('refresh_token', response.data.refresh_token); // Store refresh token
-    return response.data;
+    localStorage.setItem('refresh_token', response.data.refresh_token);
+    return userData;
   } catch (error) {
     throw error.response?.data || { detail: 'Login failed' };
   }
@@ -16,7 +25,7 @@ export async function login(email, password) {
 
 export async function googleLogin() {
   try {
-    const response = await axios.get(`${API_BASE}/auth/google-login`);
+    const response = await axios.get(`${API_BASE}/api/google-login`);
     return response.data;
   } catch (error) {
     throw error.response?.data || { detail: 'Google login failed' };
@@ -25,7 +34,7 @@ export async function googleLogin() {
 
 export async function register(email, password, name) {
   try {
-    const response = await axios.post(`${API_BASE}/auth/signup`, { email, password, name });
+    const response = await axios.post(`${API_BASE}/api/signup`, { email, password, name });
     return response.data;
   } catch (error) {
     throw error.response?.data || { detail: 'Registration failed' };
@@ -75,7 +84,7 @@ async function refreshAuthToken() {
   }
 
   try {
-    const response = await axios.post(`${API_BASE}/auth/refresh-token`, {
+    const response = await axios.post(`${API_BASE}/api/refresh-token`, {
       refresh_token: refreshToken
     });
     

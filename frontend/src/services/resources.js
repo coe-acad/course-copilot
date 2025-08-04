@@ -6,7 +6,10 @@ const API_BASE = new URL('/api', baseUrl).toString();
 
 function getToken() {
   const user = getCurrentUser();
-  return user ? user.token : null;
+  if (!user || !user.token) {
+    throw new Error('User not authenticated. Please log in.');
+  }
+  return user.token;
 }
 
 
