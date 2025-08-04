@@ -3,7 +3,11 @@ import axios from 'axios';
 const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
 
 function getToken() {
-  return localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  if (!token || token === 'null') {
+    throw new Error('User not authenticated. Please log in.');
+  }
+  return token;
 }
 
 function handleAxiosError(error) {

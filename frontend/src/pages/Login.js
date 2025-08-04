@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { login } from "../services/auth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -41,21 +42,11 @@ export default function Login() {
     setLoading(true);
     setError("");
 
-    // TODO: Replace this with actual backend login API integration
     try {
-      // const loginResp = await login(email, password);
-      // localStorage.setItem('userId', loginResp.user_id);  // Save login session
-      // navigate("/courses");  // Navigate to courses on successful login
-
-      // TEMPORARY: Simulate successful login (for frontend-only demo)
-      setTimeout(() => {
-        // TODO: Replace with real login response
-        localStorage.setItem('userId', 'demo-user-id');
-        navigate("/courses");
-      }, 1000);
+      const loginResp = await login(email, password);
+      navigate("/courses");
     } catch (err) {
-      // TODO: Replace with actual error response from backend
-      setError("Login failed. Please check credentials.");
+      setError(err.detail || "Login failed. Please check credentials.");
     } finally {
       setLoading(false);
     }
@@ -65,7 +56,7 @@ export default function Login() {
     try {
       setLoading(true);
       // Open Google login in a new tab with proper opener reference
-      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/auth/google-login`;
+      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login`;
       const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
       
       if (!popup) {

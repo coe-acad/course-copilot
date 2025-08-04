@@ -5,7 +5,10 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/ap
 
 function getToken() {
   const user = getCurrentUser();
-  return user ? user.token : null;
+  if (!user || !user.token) {
+    throw new Error('User not authenticated. Please log in.');
+  }
+  return user.token;
 }
 
 export async function fetchCourses() {

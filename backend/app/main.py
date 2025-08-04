@@ -55,13 +55,12 @@ app.add_middleware(
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-app.include_router(auth.router, prefix="/auth")
+app.include_router(auth.router, prefix="/api")
 app.include_router(course.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
 app.include_router(asset.router, prefix="/api")
 
-# Add callback route at root level to match Google OAuth redirect
-app.add_api_route("/callback", google_callback, methods=["GET"])
+# Google OAuth callback is now handled by the auth router at /api/callback
 
 @app.get("/")
 async def root():
