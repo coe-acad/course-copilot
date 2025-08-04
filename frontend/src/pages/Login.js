@@ -65,7 +65,8 @@ export default function Login() {
     try {
       setLoading(true);
       // Open Google login in a new tab with proper opener reference
-      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/auth/google-login`;
+      const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+      const loginUrl = new URL('/auth/google-login', baseUrl).toString();
       const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
       
       if (!popup) {

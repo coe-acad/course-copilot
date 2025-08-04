@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { getCurrentUser } from './auth';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = new URL('/api', baseUrl).toString();
 
 function getToken() {
   const user = getCurrentUser();
