@@ -96,7 +96,12 @@ async def create_asset_chat(course_id: str, asset_type_name: str, request: Asset
         ) as stream:
             stream.until_done()
 
-        return AssetResponse(response=handler.response_text, thread_id=thread_id)
+        # Get complete response from thread messages
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        latest_message = messages.data[0]
+        complete_response = latest_message.content[0].text.value
+
+        return AssetResponse(response=complete_response, thread_id=thread_id)
 
     except Exception as e:
         logger.error(f"Exception in create_asset for asset '{asset_type_name}': {e}")
@@ -126,7 +131,12 @@ def continue_asset_chat(course_id: str, asset_name: str, thread_id: str, request
         ) as stream:
             stream.until_done()
 
-        return AssetResponse(response=handler.response_text, thread_id=thread_id)
+        # Get complete response from thread messages
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        latest_message = messages.data[0]
+        complete_response = latest_message.content[0].text.value
+        
+        return AssetResponse(response=complete_response, thread_id=thread_id)
 
     except Exception as e:
         logger.error(f"Exception in continue_asset for asset '{asset_name}': {e}")

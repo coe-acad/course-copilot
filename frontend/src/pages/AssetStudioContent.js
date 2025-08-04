@@ -296,7 +296,7 @@ export default function AssetStudioContent() {
                     lineHeight: "1.5"
                   }}
                 >
-                  {msg.type === "bot" ? (
+                                    {msg.type === "bot" ? (
                     <div style={{ 
                       fontSize: "15px",
                       lineHeight: "1.6",
@@ -305,25 +305,24 @@ export default function AssetStudioContent() {
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
-                          h1: ({node, ...props}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{props.children}</h1>,
-                          h2: ({node, ...props}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{props.children}</h2>,
-                          h3: ({node, ...props}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}}> {props.children} </h3>,
-                          p: ({node, ...props}) => <p style={{ margin: "8px 0", color: "#222" }}>{props.children}</p>,
-                          li: ({node, ...props}) => <li style={{ margin: "4px 0", color: "#222" }}>{props.children}</li>,
-                          ul: ({node, ...props}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props.children} />,
-                          ol: ({node, ...props}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}} {...props.children} />,
-                          // li: ({node, ...props}) => <li style={{margin: "4px 0", color: "#222"}} {...props.children} />,
-                          strong: ({node, ...props}) => <strong style={{fontWeight: "bold", color: "#222"}} {...props.children} />,
-                          em: ({node, ...props}) => <em style={{fontStyle: "italic", color: "#222"}} {...props.children} />,
-                          code: ({node, ...props}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}} {...props.children} />,
-                          pre: ({node, ...props}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}} {...props.children} />,
-                          blockquote: ({node, ...props}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}} {...props.children} />,
-                          table: ({node, ...props}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}} {...props.children} />,
-                          thead: ({node, ...props}) => <thead style={{backgroundColor: "#f5f5f5"}} {...props.children} />,
-                          tbody: ({node, ...props}) => <tbody {...props.children} />,
-                          tr: ({node, ...props}) => <tr style={{borderBottom: "1px solid #ddd"}} {...props.children} />,
-                          th: ({node, ...props}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}} {...props.children} />,
-                          td: ({node, ...props}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}} {...props.children} />
+                          h1: ({children}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
+                          h2: ({children}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
+                          h3: ({children}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}}>{children}</h3>,
+                          p: ({children}) => <p style={{ margin: "8px 0", color: "#222" }}>{children}</p>,
+                          li: ({children}) => <li style={{ margin: "4px 0", color: "#222" }}>{children}</li>,
+                          ul: ({children}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}}>{children}</ul>,
+                          ol: ({children}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}}>{children}</ol>,
+                          strong: ({children}) => <strong style={{fontWeight: "bold", color: "#222"}}>{children}</strong>,
+                          em: ({children}) => <em style={{fontStyle: "italic", color: "#222"}}>{children}</em>,
+                          code: ({children}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}}>{children}</code>,
+                          pre: ({children}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}}>{children}</pre>,
+                          blockquote: ({children}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}}>{children}</blockquote>,
+                          table: ({children}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}}>{children}</table>,
+                          thead: ({children}) => <thead style={{backgroundColor: "#f5f5f5"}}>{children}</thead>,
+                          tbody: ({children}) => <tbody>{children}</tbody>,
+                          tr: ({children}) => <tr style={{borderBottom: "1px solid #ddd"}}>{children}</tr>,
+                          th: ({children}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}}>{children}</th>,
+                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>
                         }}
                       >
                         {msg.text}
