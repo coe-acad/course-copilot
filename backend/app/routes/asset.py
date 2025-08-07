@@ -7,10 +7,18 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+class AssetViewResponse(BaseModel):
+    asset_name: str
+    asset_type: str
+    asset_category: str
+    asset_content: str
+    asset_last_updated_by: str
+    asset_last_updated_at: str
 
 class AssetPromptRequest(BaseModel):
     user_prompt: str
@@ -158,3 +166,17 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
 def get_assets(course_id: str, user_id: str = Depends(verify_token)):
     assets = get_assets_by_course_id(course_id)
     return AssetListResponse(assets=assets)
+
+@router.get("/courses/{course_id}/assets/{asset_name}/view", response_model=AssetViewResponse)
+def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
+    asset = get_asset_by_course_id_and_name(course_id, asset_name)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return AssetViewResponse(
+        asset_name=asset["asset_name"], 
+        asset_type=asset["asset_type"], 
+        asset_category=asset["asset_category"], 
+        asset_content=asset["asset_content"], 
+        asset_last_updated_by=asset["asset_last_updated_by"], 
+        asset_last_updated_at=asset["asset_last_updated_at"]
+    )

@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from ..services import openai_service
 import logging
 from ..utils.verify_token import verify_token
-from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course
+from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course, delete_course as delete_course_in_db
 from ..routes.resources import create_course_description_file
 from app.utils.openai_client import client
 from ..services.openai_service import create_vector_store
@@ -67,13 +67,8 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
 
 @router.delete("/courses/{course_id}")
 async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
-    try:
-        await openai_service.delete_course(course_id, user_id)
-        logger.info(f"Deleted course {course_id} for user {user_id}")
-        return {"message": "Course deleted successfully"}
-    except Exception as e:
-        logger.error(f"Error deleting course {course_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    delete_course_in_db(course_id)
+    return {"message": "Course deleted successfully"}
 
 @router.put("/courses/{course_id}/settings")
 def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id: str = Depends(verify_token)):

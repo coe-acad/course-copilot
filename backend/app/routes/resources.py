@@ -6,10 +6,11 @@ import os
 import io
 from pathlib import Path
 from ..services import openai_service
-from ..services.mongo import get_course, get_resources_by_course_id, create_resource
+from ..services.mongo import get_course, get_resources_by_course_id, create_resource, delete_resource as delete_resource_in_db
 from ..services.openai_service import create_file, connect_file_to_vector_store
 from ..utils.course_pdf_utils import generate_course_pdf
 from ..utils.verify_token import verify_token
+from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -130,12 +131,43 @@ def list_resources(course_id: str, user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}/resources/{resource_name}", response_model=DeleteResponse)
-def delete_resource(course_id: str, file_id: str, user_id: str = Depends(verify_token)):
-    try:
+def delete_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+    try:    
         check_course_exists(course_id)
-        # result = openai_service.delete_single_resource(course_id, file_id, user_id)
-        # return DeleteResponse(message=result["message"])
+        delete_resource_in_db(course_id, resource_name)
         return DeleteResponse(message="Resource deleted successfully")
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/courses/{course_id}/resources/{resource_name}/view")
+def view_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+    # 1. Check course exists
+    check_course_exists(course_id)
+    # 2. Check resource exists
+    resources = get_resources_by_course_id(course_id)
+    if not resources:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    # 3. Find file path
+    path_to_file = resource.get("file_path")
+    if not path_to_file:
+        raise HTTPException(status_code=404, detail="File path not found")
+    # 4. Return FileResponse
+    return FileResponse(path_to_file, filename=resource_name)
+
+@router.get("/courses/{course_id}/resources/{resource_name}/download")
+def download_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+    check_course_exists(course_id)
+    resources = get_resources_by_course_id(course_id)
+    if not resources:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    path_to_file = resource.get("file_path")
+    if not path_to_file:
+        raise HTTPException(status_code=404, detail="File path not found")
+    return FileResponse(path_to_file, filename=resource_name, media_type='application/octet-stream', headers={"Content-Disposition": f"attachment; filename={resource_name}"})

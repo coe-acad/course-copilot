@@ -6,7 +6,7 @@ import KnowledgeBase from "../components/KnowledgBase";
 import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
-import { getAllResources, uploadCourseResources } from "../services/resources";
+import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
 import { assetService } from "../services/asset";
 import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
@@ -149,6 +149,25 @@ export default function Dashboard() {
     setResources(transformedResources);
   };
 
+  const handleDeleteResource = async (resourceId) => {
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId) return;
+    try {
+      await deleteResourceApi(courseId, resourceId);
+      // Refresh resources
+      const data = await getAllResources(courseId);
+      const transformedResources = (data.resources || []).map(resource => ({
+        id: resource.resourceName,
+        fileName: resource.resourceName,
+        title: resource.resourceName,
+        url: `#${resource.resourceName}`
+      }));
+      setResources(transformedResources);
+    } catch (err) {
+      alert('Failed to delete resource.');
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -195,17 +214,20 @@ export default function Dashboard() {
               buttonLabel="Create" 
               onButtonClick={handleCurriculumCreate}
               assets={assets.curriculum}
+              courseId={localStorage.getItem('currentCourseId')}
             />
             <SectionCard 
               title="Assessments" 
               buttonLabel="Create" 
               onButtonClick={handleAssessmentCreate}
               assets={assets.assessments}
+              courseId={localStorage.getItem('currentCourseId')}
             />
             <SectionCard 
               title="Evaluation" 
               buttonLabel="Start Evaluation"
               assets={assets.evaluation}
+              courseId={localStorage.getItem('currentCourseId')}
             />
             <div style={{ background: "#fff", borderRadius: 18, padding: 28, boxShadow: "0 4px 24px #0002" }}>
               <h2 style={{ margin: 0 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444' }}>(Based on the Academic term...)</span></h2>
@@ -227,6 +249,7 @@ export default function Dashboard() {
               selected={[]}
               onSelect={() => {}}
               onAddResource={() => setShowAddResourceModal(true)}
+              onDelete={handleDeleteResource}
             />
           </div>
         </div>

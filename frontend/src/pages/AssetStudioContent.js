@@ -3,7 +3,7 @@ import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
-import { getAllResources, uploadCourseResources } from "../services/resources";
+import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
 import { assetService } from "../services/asset";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -231,6 +231,19 @@ export default function AssetStudioContent() {
     setResources(resourcesData.resources);
   };
 
+  const handleDeleteResource = async (resourceId) => {
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId) return;
+    try {
+      await deleteResourceApi(courseId, resourceId);
+      // Refresh resources
+      const resourcesData = await getAllResources(courseId);
+      setResources(resourcesData.resources);
+    } catch (err) {
+      alert('Failed to delete resource.');
+    }
+  };
+
   return (
     <AssetStudioLayout
       title={title}
@@ -243,6 +256,7 @@ export default function AssetStudioContent() {
           fileInputRef={{ current: null }}
           onFileChange={handleFileUpload}
           onAddResource={() => setShowAddResourceModal(true)}
+          onDelete={handleDeleteResource}
         />
       }
     >
