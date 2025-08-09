@@ -6,7 +6,7 @@ import AssetViewModal from "./AssetViewModal";
 export default function AssetSubCard({ 
   label, 
   name, 
-  updatedBy = "Joseph Chackon", 
+  updatedBy = "", 
   timestamp,
   courseId,
   onView,
@@ -158,6 +158,7 @@ export default function AssetSubCard({
         open={showViewModal}
         onClose={() => setShowViewModal(false)}
         assetData={assetData}
+        courseId={courseId}
       />
     </>
   );

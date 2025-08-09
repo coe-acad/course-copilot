@@ -78,5 +78,5 @@ def create_asset(course_id: str, asset_name: str, asset_category: str, asset_typ
 def get_assets_by_course_id(course_id: str):
     return get_many_from_collection("assets", {"course_id": course_id})
 
-def get_asset_by_course_id_and_name(course_id: str, asset_name: str):
+def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})

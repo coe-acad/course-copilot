@@ -7,7 +7,25 @@ import { getAllResources, uploadCourseResources, deleteResource as deleteResourc
 import { assetService } from "../services/asset";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
+
+function downloadTextFile(filename, content) {
+  try {
+    const normalized = (content || "").replace(/\r?\n/g, "\r\n");
+    const blob = new Blob([normalized], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Download failed', e);
+  }
+}
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -95,10 +113,7 @@ export default function AssetStudioContent() {
         console.log("Response:", response);
         
         if (response && response.response) {
-          setChatMessages([{
-            type: "bot",
-            text: response.response
-          }]);
+          setChatMessages([{ type: "bot", text: response.response }]);
           setThreadId(response.thread_id);
           console.log("Thread ID:", response.thread_id);
         }
@@ -172,8 +187,8 @@ export default function AssetStudioContent() {
   };
 
   const handleDownload = (message) => {
-    // TODO: Implement backend download
-    console.log("Download message:", message);
+    const safeTitle = (title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
+    downloadTextFile(`${safeTitle}.md`, message || '');
   };
 
   const handleSaveToAsset = (message) => {
@@ -317,7 +332,7 @@ export default function AssetStudioContent() {
                       color: "#222"
                     }}>
                       <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={[remarkGfm, remarkBreaks]}
                         components={{
                           h1: ({children}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
                           h2: ({children}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
@@ -336,14 +351,15 @@ export default function AssetStudioContent() {
                           tbody: ({children}) => <tbody>{children}</tbody>,
                           tr: ({children}) => <tr style={{borderBottom: "1px solid #ddd"}}>{children}</tr>,
                           th: ({children}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}}>{children}</th>,
-                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>
+                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>,
+                          a: ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
                         }}
                       >
                         {msg.text}
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <div style={{ color: "#222" }}>{msg.text}</div>
+                    <div style={{ color: "#222", whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                   )}
                 </div>
                 {msg.type !== "user" && (
@@ -378,6 +394,42 @@ export default function AssetStudioContent() {
               </div>
             </div>
           ))}
+
+          {/* Typing indicator or first-response placeholder */}
+          {isLoading && (
+            chatMessages.length === 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-start",
+                  marginBottom: 12
+                }}
+              >
+                <div
+                  style={{
+                    background: "transparent",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    color: "#666",
+                    fontSize: 14
+                  }}
+                >
+                  Processing answer...
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "flex-start", padding: "4px 8px" }}>
+                <style>{`
+                  @keyframes blink { 0% { opacity: 0.2 } 20% { opacity: 1 } 100% { opacity: 0.2 } }
+                `}</style>
+                <div aria-label="Assistant is typing" style={{ display: "flex", alignItems: "center", gap: 6, color: "#888" }}>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite" }}></span>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite", animationDelay: "0.2s" }}></span>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite", animationDelay: "0.4s" }}></span>
+                </div>
+              </div>
+            )
+          )}
           <div ref={bottomRef}></div>
         </div>
       </div>

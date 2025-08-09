@@ -7,7 +7,8 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_name
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name
+from ..services.openai_service import clean_text
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -159,7 +160,9 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     asset_category = category_map.get(asset_type)
     if not asset_category:
         raise HTTPException(status_code=400, detail=f"Invalid asset type: {asset_type}")
-    create_asset(course_id, asset_name, asset_category, asset_type, request.content, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
+    #this text should go to openai and get cleaned up and than use the text to create the asset
+    cleaned_text = clean_text(request.content)
+    create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
     return AssetCreateResponse(message=f"Asset '{asset_name}' created successfully")
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
@@ -169,7 +172,7 @@ def get_assets(course_id: str, user_id: str = Depends(verify_token)):
 
 @router.get("/courses/{course_id}/assets/{asset_name}/view", response_model=AssetViewResponse)
 def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
-    asset = get_asset_by_course_id_and_name(course_id, asset_name)
+    asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return AssetViewResponse(
