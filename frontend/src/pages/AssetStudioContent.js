@@ -63,6 +63,7 @@ export default function AssetStudioContent() {
   const [saveModalMessage, setSaveModalMessage] = useState("");
   const [assetName, setAssetName] = useState("");
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
+  const [isSavingAsset, setIsSavingAsset] = useState(false);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -198,6 +199,8 @@ export default function AssetStudioContent() {
   };
 
   const handleSaveAssetConfirm = async () => {
+    if (isSavingAsset) return;
+    setIsSavingAsset(true);
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) {
@@ -216,6 +219,10 @@ export default function AssetStudioContent() {
       setAssetName("");
     } catch (error) {
       console.error("Error saving asset:", error);
+      // Optionally surface to user
+      // alert(error?.message || 'Failed to save asset');
+    } finally {
+      setIsSavingAsset(false);
     }
   };
 
@@ -531,19 +538,19 @@ export default function AssetStudioContent() {
               </button>
               <button
                 onClick={handleSaveAssetConfirm}
-                disabled={!assetName.trim()}
+                disabled={!assetName.trim() || isSavingAsset}
                 style={{
                   padding: "8px 16px",
                   borderRadius: 6,
                   border: "none",
-                  background: assetName.trim() ? "#2563eb" : "#ccc",
+                  background: assetName.trim() && !isSavingAsset ? "#2563eb" : "#ccc",
                   color: "#fff",
-                  cursor: assetName.trim() ? "pointer" : "not-allowed",
+                  cursor: assetName.trim() && !isSavingAsset ? "pointer" : "not-allowed",
                   fontSize: 14,
                   fontWeight: 500
                 }}
               >
-                Save Asset
+                {isSavingAsset ? "Saving..." : "Save Asset"}
               </button>
             </div>
           </div>

@@ -1,9 +1,17 @@
 import React from "react";
 import SettingsModal from "../components/SettingsModal";
 import StudioHeader from "../components/header/StudioHeader";
+import { useNavigate } from "react-router-dom";
+import { logout } from "../services/auth";
 
 export default function AssetStudioLayout({ title = "AI Studio", children, rightPanel }) {
   const [showSettingsModal, setShowSettingsModal] = React.useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <div style={{ minHeight: "60vh", background: "#e6f0fc", display: "flex", flexDirection: "column" }}>
@@ -11,6 +19,7 @@ export default function AssetStudioLayout({ title = "AI Studio", children, right
       <StudioHeader
         title={title}
         onSettings={() => setShowSettingsModal(true)}
+        onLogout={handleLogout}
       />
 
       {/* Content Area */}

@@ -155,14 +155,27 @@ def continue_asset_chat(course_id: str, asset_name: str, thread_id: str, request
 def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest, user_id: str = Depends(verify_token)):
     # TODO: Make this a configuration for the app overall, add the remaining categories and asset types here
     category_map = {
-        "course-outcomes": "curriculum"
+        "brainstorm": "curriculum",
+        "course-outcomes": "curriculum",
+        "modules-topics": "curriculum",
+        "lesson-plans": "curriculum",
+        "concept-map": "curriculum",
+        "course-notes": "curriculum",
+        "project": "assessments",
+        "activity": "assessments",
+        "quiz": "assessments",
+        "question-paper": "assessments",
+        "mock-interview": "assessments",
     }
-    asset_category = category_map.get(asset_type)
-    if not asset_category:
-        raise HTTPException(status_code=400, detail=f"Invalid asset type: {asset_type}")
+    # Default to a safe category so saving never fails due to unmapped type
+    asset_category = category_map.get(asset_type, "content")
     #this text should go to openai and get cleaned up and than use the text to create the asset
     cleaned_text = clean_text(request.content)
-    create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
+    try:
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
+    except ValueError as e:
+        # Duplicate asset name or other validation errors
+        raise HTTPException(status_code=409, detail=str(e))
     return AssetCreateResponse(message=f"Asset '{asset_name}' created successfully")
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
