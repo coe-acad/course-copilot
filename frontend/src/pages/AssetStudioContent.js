@@ -29,7 +29,7 @@ function downloadTextFile(filename, content) {
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
-  "modules-topics": "Modules & Topics",
+  "modules-and-topics": "Modules & Topics",
   "lesson-plans": "Lesson Plans",
   "concept-map": "Concept Map",
   "course-notes": "Course Notes",
