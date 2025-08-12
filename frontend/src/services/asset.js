@@ -1512,5 +1512,21 @@ export const assetService = {
       console.error('PDF generation error:', error);
       throw new Error(`Failed to generate PDF: ${error.message}`);
     }
+  },
+  // Generate image for an asset type (e.g., concept-map)
+  generateImageAsset: async (courseId, assetTypeName) => {
+    try {
+      const res = await axios.post(
+        `${API_BASE}/courses/${courseId}/assets/image`,
+        {},
+        {
+          headers: { 'Authorization': `Bearer ${getToken()}` },
+          params: { asset_type_name: assetTypeName }
+        }
+      );
+      return res.data; // expects { image_url }
+    } catch (error) {
+      handleAxiosError(error);
+    }
   }
 }; 

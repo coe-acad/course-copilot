@@ -96,17 +96,24 @@ export default function AssetStudioContent() {
           return;
         }
 
-        // Create asset chat with all available files (or empty array if no files)
-        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
+        // If concept-map, first generate image using the image endpoint
+        if (option === 'concept-map') {
+          try {
+            const img = await assetService.generateImageAsset(courseId, 'concept-map');
+            if (img && img.image_url) {
+              setChatMessages([{ type: 'bot-image', url: img.image_url }]);
+            }
+          } catch (e) {
+            console.error('Image generation failed, continuing with text prompt', e);
+          }
+        }
 
-        // Create asset chat with available files
+        // Create asset chat with all available files (or empty array if no files) for follow-up text
+        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
         const response = await assetService.createAssetChat(courseId, option, fileNames);
-        console.log("Response:", response);
-        
         if (response && response.response) {
-          setChatMessages([{ type: "bot", text: response.response }]);
+          setChatMessages(prev => [...prev, { type: "bot", text: response.response }]);
           setThreadId(response.thread_id);
-          console.log("Thread ID:", response.thread_id);
         }
       } catch (error) {
         console.error("Error creating initial message:", error);
@@ -312,6 +319,7 @@ export default function AssetStudioContent() {
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
+          onSelectAll={(ids) => setSelectedIds(ids)}
           fileInputRef={{ current: null }}
           onFileChange={handleFileUpload}
           onAddResource={() => setShowAddResourceModal(true)}
@@ -353,7 +361,7 @@ export default function AssetStudioContent() {
                 style={{
                   background: msg.type === "user" ? "#e0f2ff" : "transparent",
                   borderRadius: 10,
-                  padding: "10px 12px 10px 12px",
+                  padding: msg.type === 'bot-image' ? '8px' : "10px 12px 26px 12px",
                   minWidth: msg.type === "user" ? "120px" : "0",
                   maxWidth: msg.type === "user" ? "60%" : "100%",
                   position: "relative",
@@ -369,7 +377,9 @@ export default function AssetStudioContent() {
                     lineHeight: "1.5"
                   }}
                 >
-                                    {msg.type === "bot" ? (
+                  {msg.type === 'bot-image' ? (
+                    <img src={msg.url} alt="Concept Map" style={{ maxWidth: '100%', borderRadius: 8 }} />
+                  ) : msg.type === "bot" ? (
                     <div style={{ 
                       fontSize: "15px",
                       lineHeight: "1.6",
@@ -406,7 +416,7 @@ export default function AssetStudioContent() {
                     <div style={{ color: "#222", whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                   )}
                 </div>
-                {msg.type !== "user" && (
+                {msg.type !== "user" && msg.type !== 'bot-image' && (
               <div
                 style={{
                   position: "absolute",

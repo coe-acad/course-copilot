@@ -48,6 +48,12 @@ class Asset(BaseModel):
 class AssetListResponse(BaseModel):
     assets: list[Asset]
 
+class ImageRequest(BaseModel):
+    prompt: str
+
+class ImageResponse(BaseModel):
+    image_url: str
+
 class AssetChatStreamHandler(AssistantEventHandler):
     def __init__(self):
         super().__init__()  # ✅ This is the fix
@@ -196,3 +202,27 @@ def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_to
         asset_last_updated_by=asset["asset_last_updated_by"], 
         asset_last_updated_at=asset["asset_last_updated_at"]
     )
+
+@router.post("/courses/{course_id}/assets/image", response_model=ImageResponse)
+def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(verify_token)):
+    course = get_course(course_id)
+    if not course or "assistant_id" not in course:
+        raise HTTPException(status_code=404, detail="Course or assistant not found")
+
+    input_variables = construct_input_variables(course, [])
+    parser = PromptParser()
+    prompt = parser.get_asset_prompt(asset_type_name, input_variables)
+
+    image = client.images.generate(
+        model="dall-e-3",
+        prompt=prompt,
+        n=1,
+        size="1024x1024"
+    )
+
+    # Extract URL
+    image_url = image.data[0].url
+
+    return ImageResponse(image_url=image_url)
+
+

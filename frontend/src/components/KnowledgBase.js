@@ -10,6 +10,7 @@ export default function KnowledgeBase({
   showCheckboxes = false, // 🔁 Controls checkbox display
   selected = [],
   onSelect = () => {},
+  onSelectAll = () => {},
   onDelete = () => {}, // Callback to refresh resources after deletion
   onAddResource, // <-- new prop
   courseId // <-- add courseId prop
@@ -119,13 +120,13 @@ export default function KnowledgeBase({
               type="checkbox"
               checked={selected.length === resources.length && resources.length > 0}
               onChange={(e) => {
+                const allIds = resources.map(
+                  (res, i) => res.id || res.resourceName || res.fileName || i
+                );
                 if (e.target.checked) {
-                  const allIds = resources.map(
-                    (res, i) => res.id || res.resourceName || res.fileName || i
-                  );
-                  allIds.forEach((id) => onSelect(id)); // ensure all get selected
+                  onSelectAll(allIds);
                 } else {
-                  selected.forEach((id) => onSelect(id)); // deselect all
+                  onSelectAll([]);
                 }
               }}
             />
@@ -188,48 +189,6 @@ export default function KnowledgeBase({
                       fontSize: 14,
                       listStyleType: "none"
                     }}>
-{/*
-                      <li style={menuItemStyle}>
-                        <button
-                          style={{ color: "#222", textDecoration: "none", background: "none", border: "none", width: "100%", textAlign: "left", padding: 0, cursor: loadingViewId === id ? "wait" : "pointer", opacity: loadingViewId === id ? 0.6 : 1 }}
-                          onClick={async () => {
-                            setLoadingViewId(id);
-                            try {
-                              await viewResourceFile(courseId, res.resourceName || res.fileName || res.title);
-                              setMenuOpenId(null);
-                            } catch (e) {
-                              alert('Failed to view file.');
-                            } finally {
-                              setLoadingViewId(null);
-                            }
-                          }}
-                          disabled={loadingViewId === id}
-                        >
-                          {loadingViewId === id ? 'Opening...' : 'View'}
-                        </button>
-                      </li>
-*/}
-{/*
-                      <li style={menuItemStyle}>
-                        <button
-                          style={{ color: "#222", textDecoration: "none", background: "none", border: "none", width: "100%", textAlign: "left", padding: 0, cursor: loadingDownloadId === id ? "wait" : "pointer", opacity: loadingDownloadId === id ? 0.6 : 1 }}
-                          onClick={async () => {
-                            setLoadingDownloadId(id);
-                            try {
-                              await downloadResourceFile(courseId, res.resourceName || res.fileName || res.title);
-                              setMenuOpenId(null);
-                            } catch (e) {
-                              alert('Failed to download file.');
-                            } finally {
-                              setLoadingDownloadId(null);
-                            }
-                          }}
-                          disabled={loadingDownloadId === id}
-                        >
-                          {loadingDownloadId === id ? 'Downloading...' : 'Download'}
-                        </button>
-                      </li>
-*/}
                       <li
                         style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
                         onClick={async (e) => {
