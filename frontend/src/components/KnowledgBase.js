@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiMoreVertical } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
-import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
+// import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
 
 export default function KnowledgeBase({
   resources = [],
@@ -17,8 +17,8 @@ export default function KnowledgeBase({
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
   const [deletingId, setDeletingId] = useState(null);
-  const [loadingViewId, setLoadingViewId] = useState(null);
-  const [loadingDownloadId, setLoadingDownloadId] = useState(null);
+  // const [loadingViewId, setLoadingViewId] = useState(null);
+  // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
 
   // Close menu on outside click
   useEffect(() => {
@@ -188,6 +188,7 @@ export default function KnowledgeBase({
                       fontSize: 14,
                       listStyleType: "none"
                     }}>
+{/*
                       <li style={menuItemStyle}>
                         <button
                           style={{ color: "#222", textDecoration: "none", background: "none", border: "none", width: "100%", textAlign: "left", padding: 0, cursor: loadingViewId === id ? "wait" : "pointer", opacity: loadingViewId === id ? 0.6 : 1 }}
@@ -207,6 +208,8 @@ export default function KnowledgeBase({
                           {loadingViewId === id ? 'Opening...' : 'View'}
                         </button>
                       </li>
+*/}
+{/*
                       <li style={menuItemStyle}>
                         <button
                           style={{ color: "#222", textDecoration: "none", background: "none", border: "none", width: "100%", textAlign: "left", padding: 0, cursor: loadingDownloadId === id ? "wait" : "pointer", opacity: loadingDownloadId === id ? 0.6 : 1 }}
@@ -226,6 +229,7 @@ export default function KnowledgeBase({
                           {loadingDownloadId === id ? 'Downloading...' : 'Download'}
                         </button>
                       </li>
+*/}
                       <li
                         style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
                         onClick={async (e) => {

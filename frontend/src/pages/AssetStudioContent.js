@@ -10,22 +10,6 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
 
-function downloadTextFile(filename, content) {
-  try {
-    const normalized = (content || "").replace(/\r?\n/g, "\r\n");
-    const blob = new Blob([normalized], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('Download failed', e);
-  }
-}
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -57,13 +41,19 @@ export default function AssetStudioContent() {
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [resources, setResources] = useState([]);
-  const [, setResourcesLoading] = useState(true);
+  const [resourcesLoading, setResourcesLoading] = useState(true);
   const [threadId, setThreadId] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
   const [assetName, setAssetName] = useState("");
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
   const [isSavingAsset, setIsSavingAsset] = useState(false);
+  const [isSavingResource, setIsSavingResource] = useState(false);
+  const [showSaveResourceModal, setShowSaveResourceModal] = useState(false);
+  const [resourceFileName, setResourceFileName] = useState("");
+  const [resourceSaveMessage, setResourceSaveMessage] = useState("");
+  const hasInitializedRef = useRef(false);
+  const isSendingRef = useRef(false);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -95,7 +85,7 @@ export default function AssetStudioContent() {
     fetchResources();
   }, []);
 
-  // Create initial AI message when component loads
+  // Create initial AI message only after resources have finished loading
   useEffect(() => {
     const createInitialMessage = async () => {
       try {
@@ -126,11 +116,12 @@ export default function AssetStudioContent() {
       }
     };
 
-    // Only create initial message if resources are loaded and we haven't created one yet
-    if (resources.length > 0 && chatMessages.length === 0) {
+    // Guard against double-invocation and ensure resources have been fetched first
+    if (!hasInitializedRef.current && !resourcesLoading && chatMessages.length === 0) {
+      hasInitializedRef.current = true;
       createInitialMessage();
     }
-  }, [resources, option, chatMessages.length]);
+  }, [resourcesLoading, resources, option, chatMessages.length]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
@@ -140,6 +131,8 @@ export default function AssetStudioContent() {
 
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
+    if (isSendingRef.current || isLoading) return;
+    isSendingRef.current = true;
     const newMsg = { type: "user", text: inputMessage };
     setChatMessages((prev) => [...prev, newMsg]);
     setInputMessage("");
@@ -184,12 +177,22 @@ export default function AssetStudioContent() {
       setChatMessages((prev) => [...prev, errorResponse]);
     } finally {
       setIsLoading(false);
+      isSendingRef.current = false;
     }
   };
 
-  const handleDownload = (message) => {
-    const safeTitle = (title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
-    downloadTextFile(`${safeTitle}.md`, message || '');
+  const handleDownload = async (message) => {
+    try {
+      const safeTitle = (title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
+      await assetService.downloadContentAsPdf(safeTitle, message || '', {
+        asset_type: option,
+        asset_category: undefined,
+        updated_by: undefined,
+        updated_at: undefined,
+      });
+    } catch (e) {
+      console.error('PDF download failed', e);
+    }
   };
 
   const handleSaveToAsset = (message) => {
@@ -233,8 +236,42 @@ export default function AssetStudioContent() {
   };
 
   const handleSaveToResource = (message) => {
-    // TODO: Send resource to backend store
-    console.log("Save to Resource:", message);
+    setResourceSaveMessage(message || "");
+    setResourceFileName("");
+    setShowSaveResourceModal(true);
+  };
+
+  const handleSaveResourceConfirm = async () => {
+    if (isSavingResource) return;
+    setIsSavingResource(true);
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      const baseName = (resourceFileName || '').trim() || 'document';
+      const safeBase = baseName.replace(/[^a-zA-Z0-9-_ ]/g, '_');
+      const finalFileName = safeBase.toLowerCase().endsWith('.pdf') ? safeBase : `${safeBase}.pdf`;
+      const blob = await assetService.generateContentPdfBlob(safeBase, resourceSaveMessage || '', {
+        asset_type: option
+      });
+      const file = new File([blob], finalFileName, { type: 'application/pdf' });
+      await uploadCourseResources(courseId, [file]);
+      const resourcesData = await getAllResources(courseId);
+      setResources(resourcesData.resources);
+      setShowSaveResourceModal(false);
+      setResourceFileName("");
+      setResourceSaveMessage("");
+    } catch (e) {
+      console.error('Failed to save to resources', e);
+      alert('Failed to save to resources');
+    } finally {
+      setIsSavingResource(false);
+    }
+  };
+
+  const handleSaveResourceCancel = () => {
+    setShowSaveResourceModal(false);
+    setResourceFileName("");
+    setResourceSaveMessage("");
   };
 
   const handleFileUpload = () => {
@@ -316,7 +353,7 @@ export default function AssetStudioContent() {
                 style={{
                   background: msg.type === "user" ? "#e0f2ff" : "transparent",
                   borderRadius: 10,
-                  padding: "10px 12px 26px 12px",
+                  padding: "10px 12px 10px 12px",
                   minWidth: msg.type === "user" ? "120px" : "0",
                   maxWidth: msg.type === "user" ? "60%" : "100%",
                   position: "relative",
@@ -445,7 +482,14 @@ export default function AssetStudioContent() {
         <input
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (!isLoading) {
+                handleSend();
+              }
+            }
+          }}
           placeholder="Type your message..."
           style={{
             flex: 1,
@@ -551,6 +595,89 @@ export default function AssetStudioContent() {
                 }}
               >
                 {isSavingAsset ? "Saving..." : "Save Asset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showSaveResourceModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              width: "400px",
+              maxWidth: "90vw",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)"
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px 0", fontSize: 18, fontWeight: 600 }}>
+              Save to Resource
+            </h3>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                File Name:
+              </label>
+              <input
+                type="text"
+                value={resourceFileName}
+                onChange={(e) => setResourceFileName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontSize: 14,
+                  boxSizing: "border-box"
+                }}
+                placeholder="Enter file name (e.g., Outcome Draft)"
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={handleSaveResourceCancel}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 14
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveResourceConfirm}
+                disabled={!resourceFileName.trim() || isSavingResource}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: resourceFileName.trim() && !isSavingResource ? "#2563eb" : "#ccc",
+                  color: "#fff",
+                  cursor: resourceFileName.trim() && !isSavingResource ? "pointer" : "not-allowed",
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                {isSavingResource ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

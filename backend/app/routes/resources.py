@@ -106,8 +106,31 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
         check_course_exists(course_id)
         # if course exists, get the assistant id and vector store id from the course
         course = get_course(course_id)
+
+        # Build a set of existing resource names for collision handling
+        existing_resources = get_resources_by_course_id(course_id) or []
+        existing_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
+
+        def ensure_unique_name(filename: str, used: set[str]) -> str:
+            base, ext = os.path.splitext(filename or "")
+            if not base:
+                base = "resource"
+            candidate = f"{base}{ext}"
+            n = 1
+            while candidate in used:
+                candidate = f"{base} ({n}){ext}"
+                n += 1
+            used.add(candidate)
+            return candidate
+
+        # Rename duplicates in-place so downstream uses the new name
+        for f in files:
+            f.filename = ensure_unique_name(f.filename, existing_names)
+
+        # Upload files to vector store (this uses f.filename for the OpenAI file name)
         openai_service.upload_resources(user_id, course_id, course["vector_store_id"], files)
-        # Create resource in MongoDB
+
+        # Create resource records with the possibly renamed filenames
         for file in files:
             create_resource(course_id, file.filename)
 
@@ -140,34 +163,34 @@ def delete_resource(course_id: str, resource_name: str, user_id: str = Depends(v
         logger.error(f"Error deleting resource: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/courses/{course_id}/resources/{resource_name}/view")
-def view_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
-    # 1. Check course exists
-    check_course_exists(course_id)
-    # 2. Check resource exists
-    resources = get_resources_by_course_id(course_id)
-    if not resources:
-        raise HTTPException(status_code=404, detail="Resource not found")
-    resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
-    if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
-    # 3. Find file path
-    path_to_file = resource.get("file_path")
-    if not path_to_file:
-        raise HTTPException(status_code=404, detail="File path not found")
-    # 4. Return FileResponse
-    return FileResponse(path_to_file, filename=resource_name)
+# @router.get("/courses/{course_id}/resources/{resource_name}/view")
+# def view_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+#     # 1. Check course exists
+#     check_course_exists(course_id)
+#     # 2. Check resource exists
+#     resources = get_resources_by_course_id(course_id)
+#     if not resources:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
+#     if not resource:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     # 3. Find file path
+#     path_to_file = resource.get("file_path")
+#     if not path_to_file:
+#         raise HTTPException(status_code=404, detail="File path not found")
+#     # 4. Return FileResponse
+#     return FileResponse(path_to_file, filename=resource_name)
 
-@router.get("/courses/{course_id}/resources/{resource_name}/download")
-def download_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
-    check_course_exists(course_id)
-    resources = get_resources_by_course_id(course_id)
-    if not resources:
-        raise HTTPException(status_code=404, detail="Resource not found")
-    resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
-    if not resource:
-        raise HTTPException(status_code=404, detail="Resource not found")
-    path_to_file = resource.get("file_path")
-    if not path_to_file:
-        raise HTTPException(status_code=404, detail="File path not found")
-    return FileResponse(path_to_file, filename=resource_name, media_type='application/octet-stream', headers={"Content-Disposition": f"attachment; filename={resource_name}"})
+# @router.get("/courses/{course_id}/resources/{resource_name}/download")
+# def download_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+#     check_course_exists(course_id)
+#     resources = get_resources_by_course_id(course_id)
+#     if not resources:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
+#     if not resource:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     path_to_file = resource.get("file_path")
+#     if not path_to_file:
+#         raise HTTPException(status_code=404, detail="File path not found")
+#     return FileResponse(path_to_file, filename=resource_name, media_type='application/octet-stream', headers={"Content-Disposition": f"attachment; filename={resource_name}"})

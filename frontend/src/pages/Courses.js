@@ -54,6 +54,8 @@ export default function Courses() {
   }, [menuOpenIndex]);
 
   const handleDelete = async (courseId) => {
+    const confirmed = window.confirm("Are you sure you want to delete this course? This action cannot be undone.");
+    if (!confirmed) return;
     try {
       await deleteCourse(courseId);
       setSavedCourses((prev) => prev.filter((c) => c.id !== courseId));

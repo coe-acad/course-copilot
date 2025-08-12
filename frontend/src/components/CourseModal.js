@@ -81,8 +81,25 @@ export default function CourseModal({
                 cursor: (!courseName || !courseDesc || loading) ? 'not-allowed' : 'pointer',
                 boxShadow: (!courseName || !courseDesc || loading) ? 'none' : '0 2px 8px #2563eb22',
                 transition: 'background 0.18s, box-shadow 0.18s',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8
               }}>
-              Get Started
+              {loading && (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 14,
+                    height: 14,
+                    border: '2px solid rgba(255,255,255,0.6)',
+                    borderTop: '2px solid #fff',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }}
+                />
+              )}
+              <span>{loading ? 'Creating...' : 'Get Started'}</span>
+              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             </button>
           </div>
         </div>

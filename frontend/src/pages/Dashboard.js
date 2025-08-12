@@ -229,7 +229,7 @@ export default function Dashboard() {
               assets={assets.evaluation}
               courseId={localStorage.getItem('currentCourseId')}
             />
-            <div style={{ background: "#fff", borderRadius: 18, padding: 28, boxShadow: "0 4px 24px #0002" }}>
+            {/* <div style={{ background: "#fff", borderRadius: 18, padding: 28, boxShadow: "0 4px 24px #0002" }}>
               <h2 style={{ margin: 0 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444' }}>(Based on the Academic term...)</span></h2>
               <button
                 onClick={() => navigate("/studio/sprint-plan")}
@@ -237,7 +237,7 @@ export default function Dashboard() {
               >
                 Create Documentation
               </button>
-            </div>
+            </div> */}
           </div>
           {/* Right panel: Knowledge Base */}
           <div style={{ flex: 1, marginTop: 24, minWidth: 340, maxWidth: 420 }}>

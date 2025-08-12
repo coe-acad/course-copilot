@@ -69,11 +69,13 @@ export async function deleteResource(courseId, resourceName) {
   return res.data;
 }
 
+/*
 // Returns the view URL for a resource (for use as an href)
 export function getResourceViewUrl(courseId, resourceName) {
   return `${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/view`;
 }
-
+*/
+/*
 // Fetches and opens the resource file in a new tab for viewing
 export async function viewResourceFile(courseId, resourceName) {
   const url = getResourceViewUrl(courseId, resourceName);
@@ -86,8 +88,9 @@ export async function viewResourceFile(courseId, resourceName) {
   const fileURL = window.URL.createObjectURL(blob);
   window.open(fileURL, '_blank');
 }
-
+*/
 // Fetches and triggers download of the resource file
+/*
 export async function downloadResourceFile(courseId, resourceName) {
   const url = getResourceViewUrl(courseId, resourceName);
   const token = getToken();
@@ -105,3 +108,4 @@ export async function downloadResourceFile(courseId, resourceName) {
   a.remove();
   window.URL.revokeObjectURL(fileURL);
 }
+*/
