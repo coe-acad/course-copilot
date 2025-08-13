@@ -82,3 +82,21 @@ def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: 
             continue
 
     return "Resources uploaded successfully"
+
+def clean_text(text: str):
+    try:
+        response = client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that cleans AI-generated messages. Your job is to remove any irrelevant or excessive introductory or concluding text — such as apologies, disclaimers, or requests for confirmation — that do not contribute to the core output.\n\nFocus on keeping only the core meaningful content such as course outcomes, summaries, tables, or actual suggestions.\n\nIf there is any core component or content to be saved, preserve that fully.\n\nIf no meaningful content is found (e.g., just a warning or error message), return it as-is without adding any explanation or comment."
+                },
+                {"role": "user", "content": text}
+            ]
+        )
+
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"Error cleaning text: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

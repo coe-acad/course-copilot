@@ -3,15 +3,16 @@ import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
-import { getAllResources, uploadCourseResources } from "../services/resources";
+import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
 import { assetService } from "../services/asset";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
-  "modules-topics": "Modules & Topics",
+  "modules-and-topics": "Modules & Topics",
   "lesson-plans": "Lesson Plans",
   "concept-map": "Concept Map",
   "course-notes": "Course Notes",
@@ -39,12 +40,19 @@ export default function AssetStudioContent() {
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [resources, setResources] = useState([]);
-  const [, setResourcesLoading] = useState(true);
+  const [resourcesLoading, setResourcesLoading] = useState(true);
   const [threadId, setThreadId] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
   const [assetName, setAssetName] = useState("");
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
+  const [isSavingAsset, setIsSavingAsset] = useState(false);
+  const [isSavingResource, setIsSavingResource] = useState(false);
+  const [showSaveResourceModal, setShowSaveResourceModal] = useState(false);
+  const [resourceFileName, setResourceFileName] = useState("");
+  const [resourceSaveMessage, setResourceSaveMessage] = useState("");
+  const hasInitializedRef = useRef(false);
+  const isSendingRef = useRef(false);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -76,7 +84,7 @@ export default function AssetStudioContent() {
     fetchResources();
   }, []);
 
-  // Create initial AI message when component loads
+  // Create initial AI message only after resources have finished loading
   useEffect(() => {
     const createInitialMessage = async () => {
       try {
@@ -87,20 +95,24 @@ export default function AssetStudioContent() {
           return;
         }
 
-        // Create asset chat with all available files (or empty array if no files)
-        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
+        // If concept-map, first generate image using the image endpoint
+        if (option === 'concept-map') {
+          try {
+            const img = await assetService.generateImageAsset(courseId, 'concept-map');
+            if (img && img.image_url) {
+              setChatMessages([{ type: 'bot-image', url: img.image_url }]);
+            }
+          } catch (e) {
+            console.error('Image generation failed, continuing with text prompt', e);
+          }
+        }
 
-        // Create asset chat with available files
+        // Create asset chat with all available files (or empty array if no files) for follow-up text
+        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
         const response = await assetService.createAssetChat(courseId, option, fileNames);
-        console.log("Response:", response);
-        
         if (response && response.response) {
-          setChatMessages([{
-            type: "bot",
-            text: response.response
-          }]);
+          setChatMessages(prev => [...prev, { type: "bot", text: response.response }]);
           setThreadId(response.thread_id);
-          console.log("Thread ID:", response.thread_id);
         }
       } catch (error) {
         console.error("Error creating initial message:", error);
@@ -110,11 +122,12 @@ export default function AssetStudioContent() {
       }
     };
 
-    // Only create initial message if resources are loaded and we haven't created one yet
-    if (resources.length > 0 && chatMessages.length === 0) {
+    // Guard against double-invocation and ensure resources have been fetched first
+    if (!hasInitializedRef.current && !resourcesLoading && chatMessages.length === 0) {
+      hasInitializedRef.current = true;
       createInitialMessage();
     }
-  }, [resources, option, chatMessages.length]);
+  }, [resourcesLoading, resources, option, chatMessages.length]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
@@ -124,6 +137,8 @@ export default function AssetStudioContent() {
 
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
+    if (isSendingRef.current || isLoading) return;
+    isSendingRef.current = true;
     const newMsg = { type: "user", text: inputMessage };
     setChatMessages((prev) => [...prev, newMsg]);
     setInputMessage("");
@@ -168,12 +183,22 @@ export default function AssetStudioContent() {
       setChatMessages((prev) => [...prev, errorResponse]);
     } finally {
       setIsLoading(false);
+      isSendingRef.current = false;
     }
   };
 
-  const handleDownload = (message) => {
-    // TODO: Implement backend download
-    console.log("Download message:", message);
+  const handleDownload = async (message) => {
+    try {
+      const safeTitle = (title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
+      await assetService.downloadContentAsPdf(safeTitle, message || '', {
+        asset_type: option,
+        asset_category: undefined,
+        updated_by: undefined,
+        updated_at: undefined,
+      });
+    } catch (e) {
+      console.error('PDF download failed', e);
+    }
   };
 
   const handleSaveToAsset = (message) => {
@@ -183,6 +208,8 @@ export default function AssetStudioContent() {
   };
 
   const handleSaveAssetConfirm = async () => {
+    if (isSavingAsset) return;
+    setIsSavingAsset(true);
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) {
@@ -201,6 +228,10 @@ export default function AssetStudioContent() {
       setAssetName("");
     } catch (error) {
       console.error("Error saving asset:", error);
+      // Optionally surface to user
+      // alert(error?.message || 'Failed to save asset');
+    } finally {
+      setIsSavingAsset(false);
     }
   };
 
@@ -211,8 +242,42 @@ export default function AssetStudioContent() {
   };
 
   const handleSaveToResource = (message) => {
-    // TODO: Send resource to backend store
-    console.log("Save to Resource:", message);
+    setResourceSaveMessage(message || "");
+    setResourceFileName("");
+    setShowSaveResourceModal(true);
+  };
+
+  const handleSaveResourceConfirm = async () => {
+    if (isSavingResource) return;
+    setIsSavingResource(true);
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      const baseName = (resourceFileName || '').trim() || 'document';
+      const safeBase = baseName.replace(/[^a-zA-Z0-9-_ ]/g, '_');
+      const finalFileName = safeBase.toLowerCase().endsWith('.pdf') ? safeBase : `${safeBase}.pdf`;
+      const blob = await assetService.generateContentPdfBlob(safeBase, resourceSaveMessage || '', {
+        asset_type: option
+      });
+      const file = new File([blob], finalFileName, { type: 'application/pdf' });
+      await uploadCourseResources(courseId, [file]);
+      const resourcesData = await getAllResources(courseId);
+      setResources(resourcesData.resources);
+      setShowSaveResourceModal(false);
+      setResourceFileName("");
+      setResourceSaveMessage("");
+    } catch (e) {
+      console.error('Failed to save to resources', e);
+      alert('Failed to save to resources');
+    } finally {
+      setIsSavingResource(false);
+    }
+  };
+
+  const handleSaveResourceCancel = () => {
+    setShowSaveResourceModal(false);
+    setResourceFileName("");
+    setResourceSaveMessage("");
   };
 
   const handleFileUpload = () => {
@@ -231,6 +296,19 @@ export default function AssetStudioContent() {
     setResources(resourcesData.resources);
   };
 
+  const handleDeleteResource = async (resourceId) => {
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId) return;
+    try {
+      await deleteResourceApi(courseId, resourceId);
+      // Refresh resources
+      const resourcesData = await getAllResources(courseId);
+      setResources(resourcesData.resources);
+    } catch (err) {
+      alert('Failed to delete resource.');
+    }
+  };
+
   return (
     <AssetStudioLayout
       title={title}
@@ -240,9 +318,11 @@ export default function AssetStudioContent() {
           showCheckboxes
           selected={selectedIds}
           onSelect={toggleSelect}
+          onSelectAll={(ids) => setSelectedIds(ids)}
           fileInputRef={{ current: null }}
           onFileChange={handleFileUpload}
           onAddResource={() => setShowAddResourceModal(true)}
+          onDelete={handleDeleteResource}
         />
       }
     >
@@ -280,7 +360,7 @@ export default function AssetStudioContent() {
                 style={{
                   background: msg.type === "user" ? "#e0f2ff" : "transparent",
                   borderRadius: 10,
-                  padding: "10px 12px 26px 12px",
+                  padding: msg.type === 'bot-image' ? '8px' : "10px 12px 26px 12px",
                   minWidth: msg.type === "user" ? "120px" : "0",
                   maxWidth: msg.type === "user" ? "60%" : "100%",
                   position: "relative",
@@ -296,14 +376,16 @@ export default function AssetStudioContent() {
                     lineHeight: "1.5"
                   }}
                 >
-                                    {msg.type === "bot" ? (
+                  {msg.type === 'bot-image' ? (
+                    <img src={msg.url} alt="Concept Map" style={{ maxWidth: '100%', borderRadius: 8 }} />
+                  ) : msg.type === "bot" ? (
                     <div style={{ 
                       fontSize: "15px",
                       lineHeight: "1.6",
                       color: "#222"
                     }}>
                       <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={[remarkGfm, remarkBreaks]}
                         components={{
                           h1: ({children}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
                           h2: ({children}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
@@ -322,17 +404,18 @@ export default function AssetStudioContent() {
                           tbody: ({children}) => <tbody>{children}</tbody>,
                           tr: ({children}) => <tr style={{borderBottom: "1px solid #ddd"}}>{children}</tr>,
                           th: ({children}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}}>{children}</th>,
-                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>
+                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>,
+                          a: ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
                         }}
                       >
                         {msg.text}
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <div style={{ color: "#222" }}>{msg.text}</div>
+                    <div style={{ color: "#222", whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                   )}
                 </div>
-                {msg.type !== "user" && (
+                {msg.type !== "user" && msg.type !== 'bot-image' && (
               <div
                 style={{
                   position: "absolute",
@@ -364,6 +447,42 @@ export default function AssetStudioContent() {
               </div>
             </div>
           ))}
+
+          {/* Typing indicator or first-response placeholder */}
+          {isLoading && (
+            chatMessages.length === 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-start",
+                  marginBottom: 12
+                }}
+              >
+                <div
+                  style={{
+                    background: "transparent",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    color: "#666",
+                    fontSize: 14
+                  }}
+                >
+                  Processing answer...
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "flex-start", padding: "4px 8px" }}>
+                <style>{`
+                  @keyframes blink { 0% { opacity: 0.2 } 20% { opacity: 1 } 100% { opacity: 0.2 } }
+                `}</style>
+                <div aria-label="Assistant is typing" style={{ display: "flex", alignItems: "center", gap: 6, color: "#888" }}>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite" }}></span>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite", animationDelay: "0.2s" }}></span>
+                  <span style={{ display: "inline-block", width: 6, height: 6, background: "#bbb", borderRadius: "50%", animation: "blink 1.4s infinite", animationDelay: "0.4s" }}></span>
+                </div>
+              </div>
+            )
+          )}
           <div ref={bottomRef}></div>
         </div>
       </div>
@@ -372,7 +491,14 @@ export default function AssetStudioContent() {
         <input
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (!isLoading) {
+                handleSend();
+              }
+            }
+          }}
           placeholder="Type your message..."
           style={{
             flex: 1,
@@ -465,19 +591,102 @@ export default function AssetStudioContent() {
               </button>
               <button
                 onClick={handleSaveAssetConfirm}
-                disabled={!assetName.trim()}
+                disabled={!assetName.trim() || isSavingAsset}
                 style={{
                   padding: "8px 16px",
                   borderRadius: 6,
                   border: "none",
-                  background: assetName.trim() ? "#2563eb" : "#ccc",
+                  background: assetName.trim() && !isSavingAsset ? "#2563eb" : "#ccc",
                   color: "#fff",
-                  cursor: assetName.trim() ? "pointer" : "not-allowed",
+                  cursor: assetName.trim() && !isSavingAsset ? "pointer" : "not-allowed",
                   fontSize: 14,
                   fontWeight: 500
                 }}
               >
-                Save Asset
+                {isSavingAsset ? "Saving..." : "Save Asset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showSaveResourceModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              width: "400px",
+              maxWidth: "90vw",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)"
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px 0", fontSize: 18, fontWeight: 600 }}>
+              Save to Resource
+            </h3>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                File Name:
+              </label>
+              <input
+                type="text"
+                value={resourceFileName}
+                onChange={(e) => setResourceFileName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontSize: 14,
+                  boxSizing: "border-box"
+                }}
+                placeholder="Enter file name (e.g., Outcome Draft)"
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={handleSaveResourceCancel}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 14
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveResourceConfirm}
+                disabled={!resourceFileName.trim() || isSavingResource}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: resourceFileName.trim() && !isSavingResource ? "#2563eb" : "#ccc",
+                  color: "#fff",
+                  cursor: resourceFileName.trim() && !isSavingResource ? "pointer" : "not-allowed",
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                {isSavingResource ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

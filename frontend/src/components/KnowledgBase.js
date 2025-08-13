@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiMoreVertical } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
+// import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
 
 export default function KnowledgeBase({
   resources = [],
@@ -9,11 +10,16 @@ export default function KnowledgeBase({
   showCheckboxes = false, // 🔁 Controls checkbox display
   selected = [],
   onSelect = () => {},
+  onSelectAll = () => {},
   onDelete = () => {}, // Callback to refresh resources after deletion
-  onAddResource // <-- new prop
+  onAddResource, // <-- new prop
+  courseId // <-- add courseId prop
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
+  const [deletingId, setDeletingId] = useState(null);
+  // const [loadingViewId, setLoadingViewId] = useState(null);
+  // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
 
   // Close menu on outside click
   useEffect(() => {
@@ -114,13 +120,13 @@ export default function KnowledgeBase({
               type="checkbox"
               checked={selected.length === resources.length && resources.length > 0}
               onChange={(e) => {
+                const allIds = resources.map(
+                  (res, i) => res.id || res.resourceName || res.fileName || i
+                );
                 if (e.target.checked) {
-                  const allIds = resources.map(
-                    (res, i) => res.id || res.resourceName || res.fileName || i
-                  );
-                  allIds.forEach((id) => onSelect(id)); // ensure all get selected
+                  onSelectAll(allIds);
                 } else {
-                  selected.forEach((id) => onSelect(id)); // deselect all
+                  onSelectAll([]);
                 }
               }}
             />
@@ -183,13 +189,20 @@ export default function KnowledgeBase({
                       fontSize: 14,
                       listStyleType: "none"
                     }}>
-                      {/* <li style={menuItemStyle}>
-                        <a href={res.url} target="_blank" rel="noopener noreferrer" style={linkStyle}>View</a>
-                      </li>
-                      <li style={menuItemStyle}>
-                        <a href={res.url} download style={linkStyle}>Download</a>
-                      </li> */}
-                      <li style={{ ...menuItemStyle, color: "#d32f2f", cursor: "not-allowed" }}>
+                      <li
+                        style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (deletingId === id) return;
+                          setDeletingId(id);
+                          try {
+                            await onDelete(id);
+                            setMenuOpenId(null);
+                          } finally {
+                            setDeletingId(null);
+                          }
+                        }}
+                      >
                         Delete
                       </li>
                     </ul>

@@ -99,7 +99,6 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
   if (step === 2) {
     return (
       <Modal open={open} onClose={handleClose}>
-        <button onClick={() => setStep(1)} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 500, marginBottom: 8, cursor: 'pointer', fontSize: 15 }}>&larr; Back</button>
         <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Upload</h3>
         <div
           onDrop={handleDrop}
@@ -149,7 +148,6 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
   if (step === 3) {
     return (
       <Modal open={open} onClose={handleClose}>
-        <button onClick={() => setStep(1)} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 500, marginBottom: 8, cursor: 'pointer', fontSize: 15 }}>&larr; Back</button>
         <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Discover</h3>
         <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 15 }}>
           Discover feature coming soon.

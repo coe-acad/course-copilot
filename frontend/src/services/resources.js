@@ -61,3 +61,51 @@ export async function uploadCourseResources(courseId, files) {
     handleAxiosError(error);
   }
 }
+
+export async function deleteResource(courseId, resourceName) {
+  const res = await axios.delete(`${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}`, {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  });
+  return res.data;
+}
+
+/*
+// Returns the view URL for a resource (for use as an href)
+export function getResourceViewUrl(courseId, resourceName) {
+  return `${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/view`;
+}
+*/
+/*
+// Fetches and opens the resource file in a new tab for viewing
+export async function viewResourceFile(courseId, resourceName) {
+  const url = getResourceViewUrl(courseId, resourceName);
+  const token = getToken();
+  const response = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Failed to fetch file');
+  const blob = await response.blob();
+  const fileURL = window.URL.createObjectURL(blob);
+  window.open(fileURL, '_blank');
+}
+*/
+// Fetches and triggers download of the resource file
+/*
+export async function downloadResourceFile(courseId, resourceName) {
+  const url = getResourceViewUrl(courseId, resourceName);
+  const token = getToken();
+  const response = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Failed to fetch file');
+  const blob = await response.blob();
+  const fileURL = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = fileURL;
+  a.download = resourceName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(fileURL);
+}
+*/
