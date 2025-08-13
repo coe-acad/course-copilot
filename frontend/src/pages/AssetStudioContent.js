@@ -10,7 +10,6 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
 
-
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
   "modules-and-topics": "Modules & Topics",
