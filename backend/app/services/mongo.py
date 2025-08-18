@@ -80,3 +80,17 @@ def get_assets_by_course_id(course_id: str):
 
 def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+
+# Evaluation    
+def create_evaluation(course_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str]):
+    evaluation_id = str(uuid4())
+    evaluation = {"_id": evaluation_id, "course_id": course_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids}
+    add_to_collection("evaluations", evaluation)
+    return evaluation
+
+def get_evaluation_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("evaluations", {"_id": evaluation_id})
+
+def update_evaluation(evaluation_id: str, evaluation_result: dict):
+    update_in_collection("evaluations", {"_id": evaluation_id}, {"evaluation_result": evaluation_result})
+
