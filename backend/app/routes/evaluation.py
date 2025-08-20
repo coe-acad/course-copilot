@@ -4,10 +4,11 @@ from fastapi import Form, File, HTTPException
 from typing import List, Optional
 import logging
 import json
+from uuid import uuid4
 from ..utils.verify_token import verify_token
 from app.services.openai_service import upload_evaluation_files
-from app.services.mongo import create_evaluation, get_course, get_evaluation_by_evaluation_id, update_evaluation
-from app.services.openai_service import extract_mark_scheme, extract_answer_sheets, evaluate_files
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation
+from app.services.openai_service import evaluate_files_individually, create_evaluation_assistant_and_vector_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,22 +25,49 @@ class EvaluationResponse(BaseModel):
 
 @router.post("/evaluation/upload-files")
 def upload_files(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...), answer_sheets: List[UploadFile] = File(None)):
-    vector_store_id = get_course(course_id)["vector_store_id"]
+    evaluation_id = str(uuid4())
+    eval_info= create_evaluation_assistant_and_vector_store(evaluation_id)
+    evaluation_assistant_id = eval_info[0]
+    vector_store_id = eval_info[1]
     mark_info = upload_evaluation_files(user_id, course_id, vector_store_id, mark_scheme, answer_sheets)
-    evaluation_id = create_evaluation(course_id, mark_info["mark_scheme"], mark_info["answer_sheet"])
+    # Create evaluation record in MongoDB
+    create_evaluation(
+        evaluation_id=evaluation_id,
+        course_id=course_id, 
+        evaluation_assistant_id=evaluation_assistant_id, 
+        vector_store_id=vector_store_id,
+        mark_scheme_file_id=mark_info["mark_scheme"], 
+        answer_sheet_file_ids=mark_info["answer_sheet"]
+    )
+    print(evaluation_id)
     return {"evaluation_id": evaluation_id}
-
-@router.get("/evaluation/extract-files")
-def extract_files(evaluation_id: str, user_id: str):
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    mark_scheme_file_id = evaluation["mark_scheme_file_id"]
-    answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
-    extracted_mark_scheme = extract_mark_scheme(evaluation_id, user_id, mark_scheme_file_id)
-    extracted_answer_sheets = extract_answer_sheets(evaluation_id, user_id, answer_sheet_file_ids)
-    return {"extracted_mark_scheme": extracted_mark_scheme, "extracted_answer_sheets": extracted_answer_sheets}
 
 @router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
 def evaluate_files_endpoint(evaluation_id: str, user_id: str):
-    evaluation_result = evaluate_files(evaluation_id, user_id)
-    update_evaluation(evaluation_id, evaluation_result)
-    return EvaluationResponse(evaluation_id=evaluation_id, evaluation_result=evaluation_result)
+    try:
+        # Get evaluation record
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+        
+        answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
+        
+        logger.info(f"Starting individual evaluation for {evaluation_id} with {len(answer_sheet_file_ids)} answer sheets")
+        
+        # Perform individual evaluation (processes each file separately)
+        evaluation_result = evaluate_files_individually(evaluation_id, user_id, answer_sheet_file_ids)
+        
+        # Save to MongoDB
+        update_evaluation(evaluation_id, evaluation_result)
+        
+        logger.info(f"Successfully completed and saved evaluation {evaluation_id}")
+        return EvaluationResponse(evaluation_id=evaluation_id, evaluation_result=evaluation_result)
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error processing evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing evaluation: {str(e)}")
+
+

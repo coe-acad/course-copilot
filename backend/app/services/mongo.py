@@ -1,6 +1,7 @@
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from uuid import uuid4
+import logging
 
 uri = "mongodb+srv://acad:nPyjuhmdeIgTxySD@creators-copilot-demo.aoq6p75.mongodb.net/?retryWrites=true&w=majority&appName=creators-copilot-demo&tls=true&tlsAllowInvalidCertificates=true"
 # Create a new client and connect to the server
@@ -82,15 +83,33 @@ def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
 # Evaluation    
-def create_evaluation(course_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str]):
-    evaluation_id = str(uuid4())
-    evaluation = {"_id": evaluation_id, "course_id": course_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids}
+def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str]):
+    evaluation = {"evaluation_id": evaluation_id, "course_id": course_id,"evaluation_assistant_id": evaluation_assistant_id, "vector_store_id": vector_store_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids}
     add_to_collection("evaluations", evaluation)
     return evaluation
 
 def get_evaluation_by_evaluation_id(evaluation_id: str):
-    return get_one_from_collection("evaluations", {"_id": evaluation_id})
+    return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id})
 
 def update_evaluation(evaluation_id: str, evaluation_result: dict):
-    update_in_collection("evaluations", {"_id": evaluation_id}, {"evaluation_result": evaluation_result})
+    """
+    Update an evaluation with the evaluation result.
+    Stores the complete evaluation result including all student scores and feedback.
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Log the update operation
+    students_count = len(evaluation_result.get('students', []))
+    logger.info(f"Updating evaluation {evaluation_id} with results for {students_count} students")
+    
+    # Store the evaluation result with timestamp
+    from datetime import datetime
+    update_data = {
+        "evaluation_result": evaluation_result,
+        "evaluation_completed_at": datetime.utcnow().isoformat(),
+        "status": "completed"
+    }
+    
+    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, update_data)
+    logger.info(f"Successfully updated evaluation {evaluation_id} in MongoDB")
 
