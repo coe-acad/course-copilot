@@ -8,6 +8,7 @@ from ..config.settings import settings
 import json
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id
 
+
 logger = logging.getLogger(__name__)
 
 def create_assistant():
@@ -134,7 +135,10 @@ def create_evaluation_assistant_and_vector_store(evaluation_id: str):
             tools=[{"type": "file_search"}],
             tool_resources={
                 "file_search": {
-                    "vector_store_ids": [vector_store.id]
+                    "vector_store_ids": [vector_store.id],
+                    "ranking_options": {
+                        "score_threshold": 0  # keep this 0
+                    }
                 }
             }
         )
@@ -145,26 +149,49 @@ def create_evaluation_assistant_and_vector_store(evaluation_id: str):
         logger.error(f"Error creating Evaluation Assistant: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def upload_evaluation_files(user_id: str, course_id: str, vector_store_id: str, mark_scheme: UploadFile, answer_sheets: List[UploadFile]) -> dict:
-    content = mark_scheme.file.read()
+def upload_file_to_vector_store(upload_file: UploadFile, vector_store_id: str) -> str:
+    """Upload a single file to OpenAI and connect to vector store"""
+    upload_file.file.seek(0)
+    content = upload_file.file.read()
+    
+    if not content:
+        raise HTTPException(status_code=400, detail=f"File {upload_file.filename} is empty")
+    
     file_obj = io.BytesIO(content)
-    file_obj.name = mark_scheme.filename
-    openai_mark_scheme_file_id = create_file(file_obj)
-    connect_file_to_vector_store(vector_store_id, openai_mark_scheme_file_id)
+    file_obj.name = upload_file.filename
+    
+    openai_file_id = create_file(file_obj)
+    connect_file_to_vector_store(vector_store_id, openai_file_id)
+    
+    return openai_file_id
 
+def upload_mark_scheme_file(mark_scheme: UploadFile, vector_store_id: str) -> str:
+    """Upload mark scheme file"""
+    return upload_file_to_vector_store(mark_scheme, vector_store_id)
+
+def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: str) -> List[str]:
+    """Upload multiple answer sheet files"""
     answer_sheet_ids = []
+    
     for answer_sheet in answer_sheets:
-        content = answer_sheet.file.read()
-        file_obj = io.BytesIO(content)
-        file_obj.name = answer_sheet.filename
-        openai_answer_sheet_file_id = create_file(file_obj)
-        connect_file_to_vector_store(vector_store_id, openai_answer_sheet_file_id)
-        answer_sheet_ids.append(openai_answer_sheet_file_id)
-
-    return {"mark_scheme": openai_mark_scheme_file_id, "answer_sheet": answer_sheet_ids}
+        try:
+            file_id = upload_file_to_vector_store(answer_sheet, vector_store_id)
+            answer_sheet_ids.append(file_id)
+        except Exception as e:
+            logger.error(f"Failed to upload {answer_sheet.filename}: {str(e)}")
+            continue
+    
+    if not answer_sheet_ids:
+        raise HTTPException(status_code=400, detail="No answer sheet files were uploaded successfully")
+    
+    return answer_sheet_ids
 
 def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+    if not mark_scheme_file_id:
+        raise HTTPException(status_code=400, detail="mark_scheme_file_id is required for extraction")
     assistant_id = evaluation["evaluation_assistant_id"]
     vector_store_id = evaluation["vector_store_id"]
     logger.info(f"Using assistant {assistant_id} for mark scheme extraction")
@@ -224,534 +251,242 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
         raise HTTPException(status_code=500, detail=f"Run failed: {run.last_error}")
 
     messages = client.beta.threads.messages.list(thread_id=thread.id)
-    logger.info(f"Got {len(messages.data)} messages")
-    
     for msg in messages.data:
-        logger.info(f"Message role: {msg.role}")
         if msg.role == "assistant":
             content = msg.content[0].text.value
-            logger.info(f"Assistant response: {content[:200]}...")
             return json.loads(content)
     
     raise HTTPException(status_code=500, detail="No assistant response found")
 
-
-
-def extract_single_answer_sheet(evaluation_id: str, user_id: str, answer_sheet_file_id: str) -> dict:
+def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet_file_ids: list[str]) -> dict:
     """
-    Extract evaluation content from a single answer sheet using OpenAI structured outputs.
-    
-    Returns structured JSON for a single student.
+    Multi-file extraction with batching (up to 10 attachments per run) to respect API limits.
+    Returns: { "answer_sheets": [ { file_id, student_name, answers: [...] }, ... ] }
     """
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
     assistant_id = evaluation["evaluation_assistant_id"]
     vector_store_id = evaluation["vector_store_id"]
-    
-    # Quick check that vector store is ready
+
+    if not answer_sheet_file_ids:
+        raise HTTPException(status_code=400, detail="answer_sheet_file_ids must be a non-empty list")
+
+    # Coerce to list and deduplicate while preserving order
+    if isinstance(answer_sheet_file_ids, str):
+        answer_sheet_file_ids = [answer_sheet_file_ids]
+    seen = set()
+    unique_ids: list[str] = []
+    for fid in answer_sheet_file_ids:
+        if not fid:
+            logger.warning("Encountered empty file_id in answer_sheet_file_ids; skipping")
+            continue
+        if fid not in seen:
+            seen.add(fid)
+            unique_ids.append(fid)
+
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="No valid answer sheet file_ids provided")
+
+    # Ensure vector store is ready
     vector_store = client.vector_stores.retrieve(vector_store_id)
     if vector_store.status != "completed":
         logger.warning(f"Vector store not ready: {vector_store.status}")
         import time
-        time.sleep(5)  # Brief wait
-    
+        time.sleep(5)
+
     extraction_schema = {
         "type": "object",
         "properties": {
-            "file_id": {"type": "string"},
-            "student_name": {"type": "string"},
-            "answers": {
+            "answer_sheets": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "question_number": {"type": "string"},
-                        "question_text": {"type": "string"},
-                        "student_answer": {"type": "string"}
+                        "file_id": {"type": "string"},
+                        "student_name": {"type": "string"},
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "question_number": {"type": "string"},
+                                    "question_text": {"type": "string"},
+                                    "student_answer": {"type": ["string", "null"]}
+                                },
+                                "required": ["question_number", "question_text", "student_answer"]
+                            }
+                        }
                     },
-                    "required": ["question_number", "question_text", "student_answer"]
+                    "required": ["file_id", "student_name", "answers"]
                 }
             }
         },
-        "required": ["file_id", "student_name", "answers"]
+        "required": ["answer_sheets"]
     }
 
-    # Create thread with single file attachment
     thread = client.beta.threads.create(
         messages=[
             {
                 "role": "user",
-                "content": f"Extract ALL questions and answers from this answer sheet file; include student name if available; for every question always include question text, preserving numbering/order; if the answer is missing, blank, or 'N/A', set 'student_answer' to null; capture answers exactly as written; include the file_id '{answer_sheet_file_id}' in the response; return ONLY valid JSON.",
+                "content": (
+                    f"Extract ALL questions and answers from each of the {len(unique_ids)} attached answer sheet files. "
+                    "Treat each file independently and DO NOT merge or infer information across files. "
+                    "For each file, include: exact file_id, student_name (if available), and an ordered list of answers. "
+                    "For missing/blank/'N/A' answers, set 'student_answer' to null. "
+                    "Return ONLY valid JSON that strictly conforms to the schema."
+                ),
                 "attachments": [
-                    {"file_id": answer_sheet_file_id, "tools": [{"type": "file_search"}]}
+                    {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in unique_ids
                 ]
             }
         ]
     )
 
-    # Run assistant with structured output
     run = client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=assistant_id,
         response_format={
             "type": "json_schema",
-            "json_schema": {"name": "single_answer_sheet_schema", "schema": extraction_schema}
+            "json_schema": {"name": "multi_answer_sheets_schema", "schema": extraction_schema}
         }
     )
 
-    # Wait for completion
     while run.status in ["queued", "in_progress"]:
         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
     if run.status == "failed":
-        logger.error(f"Extraction failed for file {answer_sheet_file_id}: {run.last_error}")
+        logger.error(f"Extraction run failed: {run.last_error}")
         raise HTTPException(status_code=500, detail=f"Extraction failed: {run.last_error}")
 
-    # Get the response
     messages = client.beta.threads.messages.list(thread_id=thread.id)
     for msg in messages.data:
         if msg.role == "assistant":
-            result = json.loads(msg.content[0].text.value)
-            # Ensure file_id is set correctly
-            result["file_id"] = answer_sheet_file_id
-            logger.info(f"Successfully extracted answers for student: {result.get('student_name', 'Unknown')} from file {answer_sheet_file_id}")
-            return result
-    
-    raise HTTPException(status_code=500, detail="No response from assistant")
+            parsed = json.loads(msg.content[0].text.value)
+            items = parsed.get("answer_sheets", [])
+            # Validate IDs
+            for item in items:
+                if item.get("file_id") not in set(unique_ids):
+                    raise HTTPException(status_code=500, detail="Extraction result contains unknown file_id")
+            logger.info(f"Extraction completed for {len(items)} files in one run")
+            return {"answer_sheets": items}
 
-# def extract_answer_sheets(evaluation_id: str, user_id: str, answer_sheet_file_ids: list[str]) -> dict:
-#     """
-#     Extract evaluation content from answer sheets using OpenAI structured outputs.
-#     Processes all answer sheet files and returns structured data with file attribution.
-
-#     Returns structured JSON matching the defined schema.
-#     """
-#     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-#     assistant_id = evaluation["evaluation_assistant_id"]
-#     vector_store_id = evaluation["vector_store_id"]
-    
-#     # Quick check that vector store is ready
-#     vector_store = client.vector_stores.retrieve(vector_store_id)
-#     if vector_store.status != "completed":
-#         logger.warning(f"Vector store not ready: {vector_store.status}")
-#         import time
-#         time.sleep(5)  # Brief wait
-    
-#     extraction_schema = {
-#         "type": "object",
-#         "properties": {
-#             "answer_sheets": {
-#                 "type": "array",
-#                 "items": {
-#                     "type": "object",
-#                     "properties": {
-#                         "file_id": {"type": "string"},
-#                         "student_name": {"type": "string"},
-#                         "answers": {
-#                             "type": "array",
-#                             "items": {
-#                                 "type": "object",
-#                                 "properties": {
-#                                     "question_number": {"type": "string"},
-#                                     "question_text": {"type": "string"},
-#                                     "student_answer": {"type": "string"}
-#                                 },
-#                                 "required": ["question_number", "question_text", "student_answer"]
-#                             }
-#                         }
-#                     },
-#                     "required": ["file_id", "student_name", "answers"]
-#                 }
-#             }
-#         },
-#         "required": ["answer_sheets"]
-#     }
-
-#     # Create thread with attachments
-#     thread = client.beta.threads.create(
-#         messages=[
-#             {
-#                 "role": "user",
-#                 "content": f"Extract ALL questions and answers from each of the {len(answer_sheet_file_ids)} provided answer sheet files; include student name if available; for every question always include question text, preserving numbering/order; if the answer is missing, blank, or 'N/A', set 'answer' to null; capture answers exactly as written; return ONLY valid JSON.",
-#                 "attachments": [
-#                     {"file_id": fid, "tools": [{"type": "file_search"}]}
-#                     for fid in answer_sheet_file_ids
-#                 ]
-#             }
-#         ]
-#     )
-
-#     # Run assistant with structured output
-#     run = client.beta.threads.runs.create(
-#         thread_id=thread.id,
-#         assistant_id=assistant_id,
-#         response_format={
-#             "type": "json_schema",
-#             "json_schema": {"name": "answer_sheets_schema", "schema": extraction_schema}
-#         }
-#     )
-
-#     # Wait for completion
-#     while run.status in ["queued", "in_progress"]:
-#         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
-#     # Get the response
-#     messages = client.beta.threads.messages.list(thread_id=thread.id)
-#     for msg in messages.data:
-#         if msg.role == "assistant":
-#             return json.loads(msg.content[0].text.value)
-    
-#     raise HTTPException(status_code=500, detail="No response from assistant")
+    raise HTTPException(status_code=500, detail="No assistant response found for extraction")
 
 
-def evaluate_single_student(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, student_answer_sheet: dict):
+def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict) -> dict:
     """
-    Evaluate a single student's answers against the mark scheme.
-    
-    Returns structured JSON with scores and feedback for the individual student.
+    Evaluate all students in one go using Chat Completions.
+    Uses the already extracted mark scheme and answer sheets JSON to compute scores.
+    Returns: { evaluation_id, extracted_file_ids, students: [...] }
     """
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    evaluation_assistant_id = evaluation["evaluation_assistant_id"]
-    
-    # Build payload for prompt rendering with extracted data
+    # Build prompt payload
     payload = {
         "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
-        "student_answer_sheet": json.dumps(student_answer_sheet, indent=2),
+        "answer_sheets": json.dumps(extracted_answer_sheets, indent=2),
         "evaluation_id": evaluation_id
     }
-    
-    # Render evaluation prompt for single student
-    evaluation_prompt = PromptParser().render_prompt(
-        "app/prompts/evaluation/evaluation.json",
-        payload
-    )
+
+    evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
     print(evaluation_prompt)
-    
-    logger.info(f"Evaluating student: {student_answer_sheet.get('student_name', 'Unknown')} for evaluation {evaluation_id}")
-    
+
+    # Schema: covers all files, grouped in students with file_id attribution
     evaluation_schema = {
         "type": "object",
         "properties": {
-            "student_name": {"type": "string"},
-            "file_id": {"type": "string"},
-            "answers": {
+            "evaluation_id": {"type": "string"},
+            "students": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "question_number": {"type": "string"},
-                        "question_text": {"type": "string"},
-                        "student_answer": {"type": "string"},
-                        "correct_answer": {"type": "string"},
-                        "score": {"type": "number"},
-                        "max_score": {"type": "number"},
-                        "feedback": {"type": "string"}
+                        "file_id": {"type": "string"},
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "question_number": {"type": "string"},
+                                    "question_text": {"type": "string"},
+                                    "student_answer": {"type": ["string", "null"]},
+                                    "correct_answer": {"type": ["string", "null"]},
+                                    "score": {"type": "number"},
+                                    "max_score": {"type": "number"},
+                                    "feedback": {"type": "string"}
+                                },
+                                "required": [
+                                    "question_number",
+                                    "question_text",
+                                    "student_answer",
+                                    "correct_answer",
+                                    "score",
+                                    "max_score",
+                                    "feedback"
+                                ]
+                            }
+                        },
+                        "total_score": {"type": "number"},
+                        "max_total_score": {"type": "number"}
                     },
-                    "required": [
-                        "question_number",
-                        "question_text", 
-                        "student_answer",
-                        "correct_answer",
-                        "score",
-                        "max_score",
-                        "feedback"
-                    ]
+                    "required": ["file_id", "answers", "total_score", "max_total_score"]
                 }
-            },
-            "total_score": {"type": "number"},
-            "max_total_score": {"type": "number"}
+            }
         },
-        "required": ["student_name", "file_id", "answers", "total_score", "max_total_score"]
+        "required": ["evaluation_id", "students"]
     }
 
-    # Create thread for single student evaluation
+    # Use Assistants API for evaluation again
+    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    evaluation_assistant_id = evaluation["evaluation_assistant_id"]
+
     thread = client.beta.threads.create(
-        messages=[
-            {
-                "role": "user",
-                "content": evaluation_prompt
-            }
-        ]
+        messages=[{"role": "user", "content": evaluation_prompt}]
     )
 
-    # Run assistant with structured output
     run = client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=evaluation_assistant_id,
         response_format={
             "type": "json_schema",
-            "json_schema": {"name": "single_student_evaluation_schema", "schema": evaluation_schema}
+            "json_schema": {"name": "evaluation_schema", "schema": evaluation_schema}
         }
     )
-    
-    # Wait for completion with logging
+
     while run.status in ["queued", "in_progress"]:
-        logger.info(f"Single student evaluation {evaluation_id} status: {run.status}")
         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-    
-    logger.info(f"Single student evaluation {evaluation_id} completed with status: {run.status}")
-    
+
     if run.status == "failed":
-        logger.error(f"Single student evaluation {evaluation_id} failed: {run.last_error}")
-        raise HTTPException(status_code=500, detail=f"Single student evaluation failed: {run.last_error}")
+        logger.error(f"All-in-one evaluation {evaluation_id} failed: {run.last_error}")
+        raise HTTPException(status_code=500, detail=f"All-in-one evaluation failed: {run.last_error}")
 
-    # Get the response
     messages = client.beta.threads.messages.list(thread_id=thread.id)
-    if not messages.data:
-        logger.error(f"No messages found in thread for single student evaluation {evaluation_id}")
-        raise HTTPException(status_code=500, detail="No response from OpenAI")
-
-    # Get the latest assistant message
     assistant_message = None
-    for message in messages.data:
-        if message.role == "assistant":
-            assistant_message = message
-            break
-    
+    for m in messages.data:
+        if m.role != "assistant":
+            continue
+        # Ensure content is present and has text
+        if getattr(m, "content", None) and len(m.content) > 0:
+            first = m.content[0]
+            if getattr(first, "text", None) and getattr(first.text, "value", None):
+                assistant_message = m
+                break
     if not assistant_message:
-        logger.error(f"No assistant message found for single student evaluation {evaluation_id}")
-        raise HTTPException(status_code=500, detail="No assistant response found")
+        raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
 
     structured_output = assistant_message.content[0].text.value
-    logger.info(f"Raw OpenAI response for single student evaluation {evaluation_id}: {structured_output[:200]}...")
-    
-    # Parse JSON string to dictionary
+
+    # Parse result and enforce minimal invariants
     try:
         evaluation_result = json.loads(structured_output)
-        
-        # Validate that we got actual data, not schema
         if "properties" in evaluation_result and "type" in evaluation_result:
-            logger.error(f"OpenAI returned schema instead of data for single student evaluation {evaluation_id}")
             raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results")
-        
-        # Ensure required fields are present
-        if not all(field in evaluation_result for field in ['student_name', 'file_id', 'answers', 'total_score', 'max_total_score']):
-            logger.error(f"Invalid single student evaluation result structure for evaluation {evaluation_id}")
-            raise HTTPException(status_code=500, detail="Invalid single student evaluation result structure")
-        
-        # Ensure file_id matches
-        evaluation_result["file_id"] = student_answer_sheet["file_id"]
-        
-        logger.info(f"Successfully evaluated student: {evaluation_result['student_name']} with total score: {evaluation_result['total_score']}/{evaluation_result['max_total_score']}")
+        if "evaluation_id" not in evaluation_result:
+            evaluation_result["evaluation_id"] = evaluation_id
+        if "students" not in evaluation_result:
+            raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students'")
         return evaluation_result
-        
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse OpenAI response as JSON for single student evaluation {evaluation_id}: {structured_output}")
+        logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
         raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error processing single student evaluation result for evaluation {evaluation_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-def evaluate_files_individually(evaluation_id: str, user_id: str, answer_sheet_file_ids: list[str]):
-    """
-    Evaluate each answer sheet file individually against the mark scheme.
-    Iterates through each file ID and processes them one by one.
-    
-    Returns combined evaluation results for all students.
-    """
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    mark_scheme_file_id = evaluation["mark_scheme_file_id"]
-    
-    logger.info(f"Starting individual evaluation for {len(answer_sheet_file_ids)} answer sheets in evaluation {evaluation_id}")
-    
-    # Extract mark scheme once (it's the same for all students)
-    extracted_mark_scheme = extract_mark_scheme(evaluation_id, user_id, mark_scheme_file_id)
-    logger.info(f"Extracted mark scheme with {len(extracted_mark_scheme.get('mark_scheme', []))} questions")
-    
-    # Store individual evaluation results
-    all_student_evaluations = []
-    
-    # Process each answer sheet file individually
-    for i, answer_sheet_file_id in enumerate(answer_sheet_file_ids, 1):
-        try:
-            logger.info(f"Processing answer sheet {i}/{len(answer_sheet_file_ids)}: {answer_sheet_file_id}")
-            
-            # Extract single answer sheet
-            student_answer_sheet = extract_single_answer_sheet(evaluation_id, user_id, answer_sheet_file_id)
-            
-            # Evaluate single student
-            student_evaluation = evaluate_single_student(evaluation_id, user_id, extracted_mark_scheme, student_answer_sheet)
-            
-            # Add to results
-            all_student_evaluations.append(student_evaluation)
-            
-            logger.info(f"Completed evaluation for student: {student_evaluation['student_name']} "
-                       f"(Score: {student_evaluation['total_score']}/{student_evaluation['max_total_score']})")
-            
-        except Exception as e:
-            logger.error(f"Failed to process answer sheet {answer_sheet_file_id}: {str(e)}")
-            # Continue with other files even if one fails
-            continue
-    
-    # Combine all results into final structure
-    final_evaluation_result = {
-        "evaluation_id": evaluation_id,
-        "students": all_student_evaluations
-    }
-    
-    logger.info(f"Successfully completed individual evaluation for {len(all_student_evaluations)} students in evaluation {evaluation_id}")
-    
-    return final_evaluation_result
-
-# def evaluate_files(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
-#     """
-#     Evaluate student answers against mark scheme using previously extracted structured data.
-    
-#     Returns structured JSON with scores and feedback for each answer.
-#     """
-#     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-#     evaluation_assistant_id = evaluation["evaluation_assistant_id"]
-    
-#     # Build payload for prompt rendering with extracted data
-#     payload = {
-#         "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
-#         "answer_sheets": json.dumps(extracted_answer_sheets, indent=2),
-#         "evaluation_id": evaluation_id
-#     }
-    
-#     # Render evaluation prompt
-#     evaluation_prompt = PromptParser().render_prompt(
-#         "app/prompts/evaluation/evaluation.json",
-#         payload
-#     )
-#     print(evaluation_prompt)
-#     logger.info(f"Evaluation prompt rendered for evaluation {evaluation_id}")
-    
-#     evaluation_schema = {
-#         "type": "object",
-#         "properties": {
-#             "evaluation_id": {"type": "string"},
-#             "students": {
-#                 "type": "array",
-#                 "items": {
-#                     "type": "object",
-#                     "properties": {
-#                         "student_name": {"type": "string"},
-#                         "file_id": {"type": "string"},
-#                         "answers": {
-#                             "type": "array",
-#                             "items": {
-#                                 "type": "object",
-#                                 "properties": {
-#                                     "question_number": {"type": "string"},
-#                                     "question_text": {"type": "string"},
-#                                     "student_answer": {"type": "string"},
-#                                     "correct_answer": {"type": "string"},
-#                                     "score": {"type": "number"},
-#                                     "max_score": {"type": "number"},
-#                                     "feedback": {"type": "string"}
-#                                 },
-#                                 "required": [
-#                                     "question_number",
-#                                     "question_text",
-#                                     "student_answer",
-#                                     "correct_answer",
-#                                     "score",
-#                                     "max_score",
-#                                     "feedback"
-#                                 ]
-#                             }
-#                         },
-#                         "total_score": {"type": "number"},
-#                         "max_total_score": {"type": "number"}
-#                     },
-#                     "required": ["student_name", "file_id", "answers", "total_score", "max_total_score"]
-#                 }
-#             }
-#         },
-#         "required": ["evaluation_id", "students"]
-#     }
-
-#     # Log the number of students being evaluated
-#     num_students = len(extracted_answer_sheets.get("answer_sheets", []))
-#     logger.info(f"Starting evaluation for {num_students} students in evaluation {evaluation_id}")
-    
-#     # Create thread without file attachments since we're using extracted data
-#     thread = client.beta.threads.create(
-#         messages=[
-#             {
-#                 "role": "user",
-#                 "content": evaluation_prompt
-#             }
-#         ]
-#     )
-
-#     # Run assistant with structured output
-#     run = client.beta.threads.runs.create(
-#         thread_id=thread.id,
-#         assistant_id=evaluation_assistant_id,
-#         response_format={
-#             "type": "json_schema",
-#             "json_schema": {"name": "evaluation_schema", "schema": evaluation_schema}
-#         }
-#     )
-    
-#     # Wait for completion with better logging
-#     while run.status in ["queued", "in_progress"]:
-#         logger.info(f"Evaluation {evaluation_id} status: {run.status}")
-#         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-    
-#     logger.info(f"Evaluation {evaluation_id} completed with status: {run.status}")
-    
-#     if run.status == "failed":
-#         logger.error(f"Evaluation {evaluation_id} failed: {run.last_error}")
-#         raise HTTPException(status_code=500, detail=f"Evaluation failed: {run.last_error}")
-
-#     # Get the response
-#     messages = client.beta.threads.messages.list(thread_id=thread.id)
-#     if not messages.data:
-#         logger.error(f"No messages found in thread for evaluation {evaluation_id}")
-#         raise HTTPException(status_code=500, detail="No response from OpenAI")
-
-#     # Get the latest assistant message
-#     assistant_message = None
-#     for message in messages.data:
-#         if message.role == "assistant":
-#             assistant_message = message
-#             break
-    
-#     if not assistant_message:
-#         logger.error(f"No assistant message found for evaluation {evaluation_id}")
-#         raise HTTPException(status_code=500, detail="No assistant response found")
-
-#     structured_output = assistant_message.content[0].text.value
-#     logger.info(f"Raw OpenAI response for evaluation {evaluation_id}: {structured_output[:500]}...")
-    
-#     # Parse JSON string to dictionary
-#     try:
-#         evaluation_result = json.loads(structured_output)
-        
-#         # Validate that we got actual data, not schema
-#         if "properties" in evaluation_result and "type" in evaluation_result:
-#             logger.error(f"OpenAI returned schema instead of data for evaluation {evaluation_id}")
-#             raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results")
-        
-#         # Set evaluation_id if not present (sometimes OpenAI doesn't include it)
-#         if "evaluation_id" not in evaluation_result:
-#             evaluation_result["evaluation_id"] = evaluation_id
-#             logger.info(f"Added missing evaluation_id to result for evaluation {evaluation_id}")
-        
-#         # Validate required fields
-#         if "students" not in evaluation_result:
-#             logger.error(f"Invalid evaluation result structure for evaluation {evaluation_id}: missing 'students' field")
-#             raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students' field")
-        
-#         # Log detailed information about the evaluation
-#         students_evaluated = len(evaluation_result.get('students', []))
-#         total_answers = sum(len(student.get('answers', [])) for student in evaluation_result.get('students', []))
-#         logger.info(f"Successfully completed evaluation {evaluation_id}: {students_evaluated} students, {total_answers} total answers evaluated")
-        
-#         # Validate each student has required fields
-#         for i, student in enumerate(evaluation_result.get('students', [])):
-#             if not all(field in student for field in ['student_name', 'file_id', 'answers', 'total_score', 'max_total_score']):
-#                 logger.warning(f"Student {i} missing required fields in evaluation {evaluation_id}")
-        
-#         return evaluation_result
-#     except json.JSONDecodeError as e:
-#         logger.error(f"Failed to parse OpenAI response as JSON for evaluation {evaluation_id}: {structured_output}")
-#         raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
-#     except Exception as e:
-#         logger.error(f"Error processing evaluation result for evaluation {evaluation_id}: {str(e)}")
-#         raise HTTPException(status_code=500, detail=str(e))
-
 
 

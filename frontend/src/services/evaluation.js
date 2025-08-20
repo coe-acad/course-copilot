@@ -13,19 +13,36 @@ function getToken() {
 }
 
 export const evaluationService = {
-  async uploadEvaluationFiles({ userId, courseId, markSchemeFile, answerSheetFiles }) {
+  async uploadMarkScheme({ courseId, markSchemeFile }) {
     const formData = new FormData();
-    formData.append('user_id', userId);
     formData.append('course_id', courseId);
     formData.append('mark_scheme', markSchemeFile);
-    if (Array.isArray(answerSheetFiles)) {
-      answerSheetFiles.forEach(f => formData.append('answer_sheets', f));
-    } else if (answerSheetFiles) {
-      formData.append('answer_sheet', answerSheetFiles);
-    }
-    const res = await axios.post(`${API_BASE}/evaluation/upload-files`, formData, {
+    
+    const res = await axios.post(`${API_BASE}/evaluation/upload-mark-scheme`, formData, {
       headers: { 'Authorization': `Bearer ${getToken()}` }
     });
-    return res.data; // { mark_scheme: "id", answer_sheet: ["id1", "id2", ...] }
+    return res.data; // { evaluation_id: "id", mark_scheme_file_id: "id" }
+  },
+
+  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
+    const formData = new FormData();
+    formData.append('evaluation_id', evaluationId);
+    
+    if (Array.isArray(answerSheetFiles)) {
+      answerSheetFiles.forEach(f => formData.append('answer_sheets', f));
+    }
+    
+    const res = await axios.post(`${API_BASE}/evaluation/upload-answer-sheets`, formData, {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    });
+    return res.data; // { evaluation_id: "id", answer_sheet_file_ids: ["id1", "id2", ...] }
+  },
+
+  async evaluateFiles({ evaluationId }) {
+    const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
+      params: { evaluation_id: evaluationId },
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    });
+    return res.data;
   }
 }; 

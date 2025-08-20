@@ -11,56 +11,80 @@ export default function Evaluation() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [answerSheetFiles, setAnswerSheetFiles] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingMarkScheme, setIsUploadingMarkScheme] = useState(false);
+  const [isUploadingAnswerSheets, setIsUploadingAnswerSheets] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [hasUploaded, setHasUploaded] = useState(false);
-  const [markSchemeId, setMarkSchemeId] = useState(null);
-  const [answerSheetIds, setAnswerSheetIds] = useState([]);
+  const [evaluationId, setEvaluationId] = useState(null);
+  const [markSchemeFileId, setMarkSchemeFileId] = useState(null);
+  const [answerSheetFileIds, setAnswerSheetFileIds] = useState([]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/login");
   };
 
-  const handleUploadFiles = async () => {
-    if (!markSchemeFile || !answerSheetFiles || answerSheetFiles.length === 0) {
-      alert("Please select a Mark Scheme and at least one Answer Sheet.");
+  const handleUploadMarkScheme = async () => {
+    if (!markSchemeFile) {
+      alert("Please select a Mark Scheme file.");
       return;
     }
     try {
-      setIsUploading(true);
+      setIsUploadingMarkScheme(true);
       const courseId = localStorage.getItem('currentCourseId');
-      const user = getCurrentUser();
-      if (!courseId || !user?.id) {
-        alert('No active course or user found. Please log in and select a course.');
+      if (!courseId) {
+        alert('No active course found. Please select a course.');
         return;
       }
 
-      const res = await evaluationService.uploadEvaluationFiles({
-        userId: user.id,
+      const res = await evaluationService.uploadMarkScheme({
         courseId,
-        markSchemeFile,
+        markSchemeFile
+      });
+      setEvaluationId(res?.evaluation_id);
+      setMarkSchemeFileId(res?.mark_scheme_file_id);
+      alert('Mark scheme uploaded successfully!');
+    } catch (err) {
+      alert(err?.message || 'Mark scheme upload failed');
+    } finally {
+      setIsUploadingMarkScheme(false);
+    }
+  };
+
+  const handleUploadAnswerSheets = async () => {
+    if (!evaluationId) {
+      alert("Please upload mark scheme first.");
+      return;
+    }
+    if (!answerSheetFiles || answerSheetFiles.length === 0) {
+      alert("Please select at least one Answer Sheet.");
+      return;
+    }
+    try {
+      setIsUploadingAnswerSheets(true);
+      const res = await evaluationService.uploadAnswerSheets({
+        evaluationId,
         answerSheetFiles
       });
-      setMarkSchemeId(res?.mark_scheme || null);
-      setAnswerSheetIds(Array.isArray(res?.answer_sheet) ? res.answer_sheet : (res?.answer_sheet ? [res.answer_sheet] : []));
-      setHasUploaded(true);
-      alert(`Uploaded ${Array.isArray(res?.answer_sheet) ? res.answer_sheet.length : (res?.answer_sheet ? 1 : 0)} answer sheet(s).`);
+      setAnswerSheetFileIds(res?.answer_sheet_file_ids || []);
+      alert(`Uploaded ${res?.answer_sheet_file_ids?.length || 0} answer sheet(s) successfully!`);
     } catch (err) {
-      alert(err?.message || 'Upload failed');
+      alert(err?.message || 'Answer sheets upload failed');
     } finally {
-      setIsUploading(false);
+      setIsUploadingAnswerSheets(false);
     }
   };
 
   const handleEvaluate = async () => {
-    if (!hasUploaded || !markSchemeId || answerSheetIds.length === 0) {
-      alert('Please upload files first.');
+    if (!evaluationId || !markSchemeFileId || answerSheetFileIds.length === 0) {
+      alert('Please upload both mark scheme and answer sheets first.');
       return;
     }
     try {
       setIsEvaluating(true);
-      alert(`Evaluation started with\nMark scheme: ${markSchemeId}\nAnswer sheets: ${answerSheetIds.join(', ')}`);
+      const res = await evaluationService.evaluateFiles({ evaluationId });
+      alert(`Evaluation completed! Evaluated ${res?.evaluation_result?.students?.length || 0} students.`);
+    } catch (err) {
+      alert(err?.message || 'Evaluation failed');
     } finally {
       setIsEvaluating(false);
     }
@@ -101,8 +125,8 @@ export default function Evaluation() {
                 {markSchemeFile && (
                   <div style={{ marginTop: 6, fontSize: 14, color: '#555' }}>Selected: {markSchemeFile.name}</div>
                 )}
-                {markSchemeId && (
-                  <div style={{ marginTop: 4, fontSize: 12, color: '#2563eb' }}>Uploaded ID: {markSchemeId}</div>
+                {markSchemeFileId && (
+                  <div style={{ marginTop: 4, fontSize: 12, color: '#2563eb' }}>Uploaded ID: {markSchemeFileId}</div>
                 )}
               </div>
               <div>
@@ -113,17 +137,18 @@ export default function Evaluation() {
                     Selected ({answerSheetFiles.length}): {answerSheetFiles.map(f => f.name).join(', ')}
                   </div>
                 )}
-                {answerSheetIds && answerSheetIds.length > 0 && (
+                {answerSheetFileIds && answerSheetFileIds.length > 0 && (
                   <div style={{ marginTop: 6, fontSize: 12, color: '#2563eb' }}>
-                    Uploaded IDs: {answerSheetIds.join(', ')}
+                    Uploaded IDs: {answerSheetFileIds.join(', ')}
                   </div>
                 )}
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <button type="button" onClick={() => navigate('/dashboard')} style={{ padding: '8px 22px', borderRadius: 6, border: '1px solid #bbb', background: '#fff', fontWeight: 500, fontSize: 15, cursor: 'pointer' }}>Cancel</button>
-                <button type="button" onClick={handleUploadFiles} disabled={isUploading || !markSchemeFile || !answerSheetFiles || answerSheetFiles.length === 0} style={{ padding: '8px 22px', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', opacity: isUploading ? 0.7 : 1 }}>{isUploading ? 'Uploading...' : 'Upload Files'}</button>
-                <button type="button" onClick={handleEvaluate} disabled={isEvaluating || !hasUploaded} style={{ padding: '8px 22px', borderRadius: 6, border: '1px solid #bbb', background: '#fff', color: '#222', fontWeight: 600, fontSize: 15, cursor: 'pointer', opacity: isEvaluating ? 0.7 : 1 }}>{isEvaluating ? 'Evaluating...' : 'Evaluate'}</button>
+                <button type="button" onClick={handleUploadMarkScheme} disabled={isUploadingMarkScheme || !markSchemeFile} style={{ padding: '8px 22px', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', opacity: isUploadingMarkScheme ? 0.7 : 1 }}>{isUploadingMarkScheme ? 'Uploading...' : 'Upload Mark Scheme'}</button>
+                <button type="button" onClick={handleUploadAnswerSheets} disabled={isUploadingAnswerSheets || !evaluationId || !answerSheetFiles || answerSheetFiles.length === 0} style={{ padding: '8px 22px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', opacity: isUploadingAnswerSheets ? 0.7 : 1 }}>{isUploadingAnswerSheets ? 'Uploading...' : 'Upload Answer Sheets'}</button>
+                <button type="button" onClick={handleEvaluate} disabled={isEvaluating || !evaluationId || !markSchemeFileId || answerSheetFileIds.length === 0} style={{ padding: '8px 22px', borderRadius: 6, border: '1px solid #bbb', background: '#fff', color: '#222', fontWeight: 600, fontSize: 15, cursor: 'pointer', opacity: isEvaluating ? 0.7 : 1 }}>{isEvaluating ? 'Evaluating...' : 'Evaluate'}</button>
               </div>
             </form>
           </div>
