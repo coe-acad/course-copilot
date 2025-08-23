@@ -6,7 +6,7 @@ from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..config.settings import settings
 import json
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id
+from app.services.mongo import get_evaluation_by_evaluation_id
 
 
 logger = logging.getLogger(__name__)
@@ -135,10 +135,7 @@ def create_evaluation_assistant_and_vector_store(evaluation_id: str):
             tools=[{"type": "file_search"}],
             tool_resources={
                 "file_search": {
-                    "vector_store_ids": [vector_store.id],
-                    "ranking_options": {
-                        "score_threshold": 0  # keep this 0
-                    }
+                    "vector_store_ids": [vector_store.id]
                 }
             }
         )
@@ -208,7 +205,7 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
         messages=[{
             "role": "user",
             "content": "Extract questions, answers, and marking scheme. Return JSON format: {\"mark_scheme\": [{\"question_number\": \"1\", \"question_text\": \"...\", \"correct_answer\": \"...\", \"mark_scheme\": \"...\"}]}",
-            "attachments": [{"file_id": mark_scheme_file_id, "tools": [{"type": "file_search"}]}]
+            # "attachments": [{"file_id": mark_scheme_file_id, "tools": [{"type": "file_search"}]}]
         }]
     )
 
@@ -336,9 +333,9 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
                     "For missing/blank/'N/A' answers, set 'student_answer' to null. "
                     "Return ONLY valid JSON that strictly conforms to the schema."
                 ),
-                "attachments": [
-                    {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in unique_ids
-                ]
+                # "attachments": [
+                #     {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in unique_ids
+                # ]
             }
         ]
     )
@@ -489,4 +486,34 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
         raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
 
+def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
+    thread = client.beta.threads.create(
+        messages=[{"role": "user", "content": "Check if the mark scheme follows the correct format where each question has a Question, an Answer/Correct Answer (wording may vary), and a Marking Scheme/Mark Scheme (wording may vary); if correct return only 'The format is correct, you can move forward', if not return only 'Mark scheme is not in the correct format'."}]
+    )
+    run = client.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=evaluation_assistant_id
+    )
+
+    while run.status in ["queued", "in_progress"]:
+        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+    if run.status == "failed":
+        logger.error(f"Mark scheme check failed: {run.last_error}")
+        raise HTTPException(status_code=500, detail=f"Mark scheme check failed: {run.last_error}")
+
+    messages = client.beta.threads.messages.list(thread_id=thread.id)
+    assistant_message = None
+    for m in messages.data:
+        if m.role != "assistant":
+            continue
+        # Ensure content is present and has text
+        if getattr(m, "content", None) and len(m.content) > 0:
+            first = m.content[0]
+            if getattr(first, "text", None) and getattr(first.text, "value", None):
+                assistant_message = m
+                break
+    if not assistant_message:
+        raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
+    return assistant_message.content[0].text.value
 
