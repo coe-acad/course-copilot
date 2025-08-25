@@ -91,7 +91,13 @@ def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id
 def get_evaluation_by_evaluation_id(evaluation_id: str):
     return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id})
 
-def update_evaluation(evaluation_id: str, evaluation_result: dict):
+def update_evaluation(evaluation_id: str, data: dict):
+    """Update an evaluation record with new data"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Updating evaluation {evaluation_id} with data: {list(data.keys())}")
+    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, data)
+    
+def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     """
     Update an evaluation with the evaluation result.
     Stores the complete evaluation result including all student scores and feedback.

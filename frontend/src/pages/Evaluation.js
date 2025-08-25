@@ -13,7 +13,8 @@ export default function Evaluation() {
   const [selectedScheme, setSelectedScheme] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [answerSheetFiles, setAnswerSheetFiles] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingMarkScheme, setIsUploadingMarkScheme] = useState(false);
+  const [isUploadingAnswerSheets, setIsUploadingAnswerSheets] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [hasUploaded, setHasUploaded] = useState(false);
   const [evaluationId, setEvaluationId] = useState(null);
@@ -95,8 +96,7 @@ export default function Evaluation() {
         return;
       }
 
-      const res = await evaluationService.uploadEvaluationFiles({
-        userId: user.id,
+      const res = await evaluationService.uploadMarkScheme({
         courseId,
         schemeId: selectedScheme.scheme_id,
         answerSheetFiles
@@ -109,7 +109,7 @@ export default function Evaluation() {
       console.error('Upload error:', err);
       alert(err?.message || 'Upload failed');
     } finally {
-      setIsUploading(false);
+      setIsUploadingAnswerSheets(false);
     }
   };
 
