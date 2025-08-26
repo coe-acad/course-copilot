@@ -90,6 +90,7 @@ def extracting_answersheets_and_mark_scheme(evaluation_id: str, user_id: str):
             raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
         
         answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
+        logger.info(f"Found {len(answer_sheet_file_ids)} answer sheets for evaluation {evaluation_id}")
         
         logger.info(f"Starting individual evaluation for {evaluation_id} with {len(answer_sheet_file_ids)} answer sheets")
         
