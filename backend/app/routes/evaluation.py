@@ -9,6 +9,7 @@ from uuid import uuid4
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation, update_evaluation_with_result
 from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -93,8 +94,11 @@ def extracting_answersheets_and_mark_scheme(evaluation_id: str, user_id: str):
         logger.info(f"Starting individual evaluation for {evaluation_id} with {len(answer_sheet_file_ids)} answer sheets")
         
         # Perform individual evaluation (processes each file separately)
-        extracted_mark_scheme = extract_mark_scheme(evaluation_id, user_id, evaluation["mark_scheme_file_id"])
-        extracted_answer_sheets = extract_answer_sheets_batched(evaluation_id, user_id, answer_sheet_file_ids)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
+            fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, answer_sheet_file_ids)
+            extracted_mark_scheme = fut_ms.result()
+            extracted_answer_sheets = fut_as.result()
         
         evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
         update_evaluation_with_result(evaluation_id, evaluation_result) 
