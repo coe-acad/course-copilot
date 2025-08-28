@@ -1,7 +1,12 @@
-from pymongo.mongo_client import MongoClient
+import logging
+from datetime import datetime
+from typing import List, Optional
+from pymongo import MongoClient
+from pymongo.database import Database
+from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
 from pymongo.server_api import ServerApi
 from uuid import uuid4
-import logging
 
 uri = "mongodb+srv://acad:nPyjuhmdeIgTxySD@creators-copilot-demo.aoq6p75.mongodb.net/?retryWrites=true&w=majority&appName=creators-copilot-demo&tls=true&tlsAllowInvalidCertificates=true"
 # Create a new client and connect to the server
@@ -109,7 +114,6 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     logger.info(f"Updating evaluation {evaluation_id} with results for {students_count} students")
     
     # Store the evaluation result with timestamp
-    from datetime import datetime
     update_data = {
         "evaluation_result": evaluation_result,
         "evaluation_completed_at": datetime.utcnow().isoformat(),
@@ -119,10 +123,125 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     update_in_collection("evaluations", {"evaluation_id": evaluation_id}, update_data)
     logger.info(f"Successfully updated evaluation {evaluation_id} in MongoDB")
 
+def update_student_result(evaluation_id: str, student_index: int, question_scores: List[int], feedback: str, total_score: int, status: str = "modified") -> bool:
+    """
+    Update individual student result with manual marks and feedback.
+    
+    Args:
+        evaluation_id: The evaluation ID
+        student_index: Index of the student in the students array
+        question_scores: List of scores for each question
+        feedback: General feedback for the student
+        total_score: Calculated total score
+        status: New status for the student (default: "modified")
+        
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get the current evaluation
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation or "evaluation_result" not in evaluation:
+            logger.error(f"Evaluation {evaluation_id} not found or has no results")
+            return False
+        
+        evaluation_result = evaluation["evaluation_result"]
+        if "students" not in evaluation_result or student_index >= len(evaluation_result["students"]):
+            logger.error(f"Student index {student_index} out of range for evaluation {evaluation_id}")
+            return False
+        
+        # Update the specific student's data
+        student = evaluation_result["students"][student_index]
+        student["question_scores"] = question_scores
+        student["feedback"] = feedback
+        student["total_score"] = total_score
+        student["status"] = status
+        student["manually_updated"] = True
+        student["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Update the evaluation in MongoDB
+        update_evaluation_with_result(evaluation_id, evaluation_result)
+        
+        logger.info(f"Successfully updated student {student_index} result for evaluation {evaluation_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating student result for evaluation {evaluation_id}, student {student_index}: {str(e)}")
+        return False
+
+def update_student_status(evaluation_id: str, student_index: int, status: str) -> bool:
+    """
+    Update only the status of a specific student.
+    
+    Args:
+        evaluation_id: The evaluation ID
+        student_index: Index of the student in the students array
+        status: New status for the student
+        
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get the current evaluation
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation or "evaluation_result" not in evaluation:
+            logger.error(f"Evaluation {evaluation_id} not found or has no results")
+            return False
+        
+        evaluation_result = evaluation["evaluation_result"]
+        if "students" not in evaluation_result or student_index >= len(evaluation_result["students"]):
+            logger.error(f"Student index {student_index} out of range for evaluation {evaluation_id}")
+            return False
+        
+        # Update only the status
+        student = evaluation_result["students"][student_index]
+        student["status"] = status
+        student["status_updated_at"] = datetime.utcnow().isoformat()
+        
+        # Update the evaluation in MongoDB
+        update_evaluation_with_result(evaluation_id, evaluation_result)
+        
+        logger.info(f"Successfully updated student {student_index} status to '{status}' for evaluation {evaluation_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating student status for evaluation {evaluation_id}, student {student_index}: {str(e)}")
+        return False
+
+def get_student_evaluation_details(evaluation_id: str, student_index: int) -> dict:
+    """
+    Get detailed evaluation data for a specific student.
+    
+    Args:
+        evaluation_id: The evaluation ID
+        student_index: Index of the student in the students array
+        
+    Returns:
+        dict: Student evaluation details or None if not found
+    """
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation or "evaluation_result" not in evaluation:
+            return None
+        
+        evaluation_result = evaluation["evaluation_result"]
+        if "students" not in evaluation_result or student_index >= len(evaluation_result["students"]):
+            return None
+        
+        return evaluation_result["students"][student_index]
+        
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting student evaluation details for evaluation {evaluation_id}, student {student_index}: {str(e)}")
+        return None
+
 # Evaluation Schemes
 def create_evaluation_scheme(course_id: str, scheme_name: str, scheme_description: str, evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str):
     """Create a new evaluation scheme (mark scheme) for a course"""
-    from datetime import datetime
     scheme_id = str(uuid4())
     scheme_data = {
         "scheme_id": scheme_id,
@@ -144,3 +263,46 @@ def get_evaluation_schemes_by_course_id(course_id: str):
     schemes.sort(key=lambda x: x.get('created_at', ''), reverse=True)
     return schemes
 
+def update_question_score_feedback(evaluation_id: str, file_id: str, question_number: str, score: float, feedback: str) -> bool:
+    """
+    Update a specific question's score and feedback for a specific student.
+    
+    Args:
+        evaluation_id: The evaluation ID
+        file_id: The student's file ID
+        question_number: The question number to update
+        score: The new score for the question
+        feedback: The new feedback for the question
+        
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        collection = db["evaluations"]
+        
+        # Update the specific question score and feedback
+        result = collection.update_one(
+            {"evaluation_id": evaluation_id},
+            {"$set": {
+                "evaluation_result.students.$[s].answers.$[a].score": score,
+                "evaluation_result.students.$[s].answers.$[a].feedback": feedback
+            }},
+            array_filters=[
+                {"s.file_id": file_id},
+                {"a.question_number": str(question_number)}
+            ]
+        )
+        
+        if result.modified_count > 0:
+            logger.info(f"Successfully updated question {question_number} for file {file_id} in evaluation {evaluation_id}")
+            return True
+        else:
+            logger.warning(f"No documents were modified for question {question_number} in file {file_id} for evaluation {evaluation_id}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error updating question score and feedback for evaluation {evaluation_id}, file {file_id}, question {question_number}: {str(e)}")
+        return False
+    
