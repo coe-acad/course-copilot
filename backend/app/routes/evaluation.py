@@ -6,8 +6,9 @@ from typing import List, Optional
 import logging
 import json
 from uuid import uuid4
+from flask import request
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation, update_evaluation_with_result
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, db
 from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,6 +24,13 @@ class UploadFilesRequest(BaseModel):
 class EvaluationResponse(BaseModel):
     evaluation_id: str
     evaluation_result: dict
+
+class EditresultRequest(BaseModel):
+    evaluation_id: str
+    file_id: str
+    question_number: str
+    score: float
+    feedback: str
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
@@ -83,7 +91,7 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
 @router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
-def extracting_answersheets_and_mark_scheme(evaluation_id: str, user_id: str):
+def evaluate_files(evaluation_id: str, user_id: str):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
@@ -113,4 +121,36 @@ def extracting_answersheets_and_mark_scheme(evaluation_id: str, user_id: str):
         logger.error(f"Error extracting answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error extracting answer sheets: {str(e)}")
 
+
+@router.put("/evaluation/edit-results")
+def edit_results(request: EditresultRequest, user_id: str):
+    try:
+        # Update the question score and feedback
+        update_question_score_feedback(request.evaluation_id, request.file_id, request.question_number, request.score, request.feedback)
+        
+        # Get current evaluation to calculate new total score
+        evaluation = get_evaluation_by_evaluation_id(request.evaluation_id)
+        if evaluation and "evaluation_result" in evaluation:
+            for student in evaluation["evaluation_result"].get("students", []):
+                if student.get("file_id") == request.file_id:
+                    # Calculate new total score
+                    total_score = sum(
+                        answer.get("score", 0) 
+                        for answer in student.get("answers", [])
+                        if answer.get("score") is not None
+                    )
+                    
+                    # Update the total score using MongoDB directly with proper positional operator
+                    db["evaluations"].update_one(
+                        {"evaluation_id": request.evaluation_id, "evaluation_result.students.file_id": request.file_id},
+                        {"$set": {"evaluation_result.students.$.total_score": total_score}}
+                    )
+                    break
+        
+        # Update evaluation status
+        update_evaluation(request.evaluation_id, {"status": "updated"})
+        
+        return {"message": "Results updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

@@ -313,10 +313,10 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
 
     if not unique_ids:
         raise HTTPException(status_code=400, detail="No valid answer sheet file_ids provided")
-    
+
     logger.info(f"Processing {len(unique_ids)} unique answer sheet files")
 
-    # Ensure vector store is ready with retry
+        # Ensure vector store is ready with retry
     max_vector_store_retries = 3
     for vs_attempt in range(max_vector_store_retries):
         vector_store = client.vector_stores.retrieve(vector_store_id)
@@ -330,7 +330,7 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
                 time.sleep(5 * (vs_attempt + 1))  # Progressive wait: 5s, 10s, 15s
     else:
         raise HTTPException(status_code=500, detail=f"Vector store not ready after {max_vector_store_retries} attempts")
-
+    
     # Extract each file individually using ThreadPoolExecutor with retry
     results = []
     failed_files = []
@@ -457,7 +457,6 @@ Return JSON format: {{"file_id": "{file_id}", "student_name": "...", "answers": 
             while run.status in ["queued", "in_progress"]:
                 if time.time() - start_time > max_wait_time:
                     raise HTTPException(status_code=408, detail=f"Extraction timeout for file {file_id}")
-                
                 time.sleep(1)
                 run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
@@ -502,7 +501,8 @@ Return JSON format: {{"file_id": "{file_id}", "student_name": "...", "answers": 
             if attempt == max_retries - 1:  # Last attempt
                 logger.error(f"All {max_retries} attempts failed for file {file_id}. Final error: {error_type}: {error_msg}")
                 raise e
-    
+
+    # This should never be reached, but just in case
     raise HTTPException(status_code=500, detail=f"Unexpected error in extraction for file {file_id}")
 
 

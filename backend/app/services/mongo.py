@@ -119,28 +119,18 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     update_in_collection("evaluations", {"evaluation_id": evaluation_id}, update_data)
     logger.info(f"Successfully updated evaluation {evaluation_id} in MongoDB")
 
-# Evaluation Schemes
-def create_evaluation_scheme(course_id: str, scheme_name: str, scheme_description: str, evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str):
-    """Create a new evaluation scheme (mark scheme) for a course"""
-    from datetime import datetime
-    scheme_id = str(uuid4())
-    scheme_data = {
-        "scheme_id": scheme_id,
-        "course_id": course_id,
-        "scheme_name": scheme_name,
-        "scheme_description": scheme_description,
-        "evaluation_assistant_id": evaluation_assistant_id,
-        "vector_store_id": vector_store_id,
-        "mark_scheme_file_id": mark_scheme_file_id,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    add_to_collection("evaluation_schemes", scheme_data)
-    return scheme_id
+# Minimal helper: update one question's score and feedback
 
-def get_evaluation_schemes_by_course_id(course_id: str):
-    """Get all evaluation schemes for a course"""
-    schemes = get_many_from_collection("evaluation_schemes", {"course_id": course_id})
-    # Sort by creation date, newest first
-    schemes.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-    return schemes
-
+def update_question_score_feedback(evaluation_id: str, file_id: str, question_number: str, score, feedback):
+    collection = db["evaluations"]
+    collection.update_one(
+        {"evaluation_id": evaluation_id},
+        {"$set": {
+            "evaluation_result.students.$[s].answers.$[a].score": score,
+            "evaluation_result.students.$[s].answers.$[a].feedback": feedback
+        }},
+        array_filters=[
+            {"s.file_id": file_id},
+            {"a.question_number": str(question_number)}
+        ]
+    )
