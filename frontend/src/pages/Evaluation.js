@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
@@ -9,6 +9,7 @@ export default function Evaluation() {
   const navigate = useNavigate();
   const [isGridView, setIsGridView] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [answerSheetFiles, setAnswerSheetFiles] = useState([]);
   const [isUploadingMarkScheme, setIsUploadingMarkScheme] = useState(false);
@@ -83,7 +84,6 @@ export default function Evaluation() {
       alert("Please select a mark scheme file.");
       return;
     }
-
     try {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
@@ -98,6 +98,7 @@ export default function Evaluation() {
       alert(error.message || "Failed to upload mark scheme");
     } finally {
       setIsUploadingMarkScheme(false);
+      setIsUploadingMarkScheme(false);
     }
   };
 
@@ -107,10 +108,9 @@ export default function Evaluation() {
       return;
     }
     if (!answerSheetFiles || answerSheetFiles.length === 0) {
-      alert("Please select at least one answer sheet.");
+      alert("Please select at least one Answer Sheet.");
       return;
     }
-
     try {
       setIsUploadingAnswerSheets(true);
       
@@ -122,8 +122,7 @@ export default function Evaluation() {
       setAnswerSheetsUploaded(true);
       alert(`Answer sheets uploaded successfully! Ready to start evaluation.`);
     } catch (err) {
-      console.error('Upload error:', err);
-      alert(err?.message || 'Upload failed');
+      alert(err?.message || 'Answer sheets upload failed');
     } finally {
       setIsUploadingAnswerSheets(false);
     }

@@ -19,3 +19,4 @@ pymongo==4.13.2
 PyMuPDF==1.26.3
 markdown==3.8.2
 html2text==2025.4.15
+flask==3.0.3

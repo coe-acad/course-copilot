@@ -14,6 +14,7 @@ function getToken() {
 
 export const evaluationService = {
   async uploadMarkScheme({ courseId, markSchemeFile }) {
+  async uploadMarkScheme({ courseId, markSchemeFile }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
     formData.append('mark_scheme', markSchemeFile);
@@ -35,6 +36,7 @@ export const evaluationService = {
     }
   },
 
+  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
   async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
     const formData = new FormData();
     formData.append('evaluation_id', evaluationId);
