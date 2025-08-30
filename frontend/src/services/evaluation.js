@@ -14,7 +14,6 @@ function getToken() {
 
 export const evaluationService = {
   async uploadMarkScheme({ courseId, markSchemeFile }) {
-  async uploadMarkScheme({ courseId, markSchemeFile }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
     formData.append('mark_scheme', markSchemeFile);
@@ -30,13 +29,12 @@ export const evaluationService = {
     } catch (error) {
       console.error('Upload mark scheme error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to upload mark scheme');
     }
   },
 
-  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
   async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
     const formData = new FormData();
     formData.append('evaluation_id', evaluationId);
@@ -57,7 +55,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Upload answer sheets error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to upload answer sheets');
     }
@@ -81,7 +79,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Evaluation error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Evaluation failed');
     }
@@ -94,17 +92,15 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
-      // Create FormData for the request
-      const formData = new FormData();
-      formData.append('evaluation_id', evaluationId);
-      formData.append('student_index', studentIndex.toString());
-      formData.append('question_scores', JSON.stringify(questionScores));
-      formData.append('feedback', feedback);
-
-      const res = await axios.put(`${API_BASE}/evaluation/update-student-result`, formData, {
+      const res = await axios.put(`${API_BASE}/evaluation/update-student-result`, {
+        evaluation_id: evaluationId,
+        student_index: studentIndex,
+        question_scores: questionScores,
+        feedback: feedback
+      }, {
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'application/json'
         }
       });
       
@@ -112,7 +108,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Update student result error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to update student result');
     }
@@ -125,16 +121,14 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
-      // Create FormData for the request
-      const formData = new FormData();
-      formData.append('evaluation_id', evaluationId);
-      formData.append('student_index', studentIndex.toString());
-      formData.append('status', status);
-
-      const res = await axios.put(`${API_BASE}/evaluation/update-student-status`, formData, {
+      const res = await axios.put(`${API_BASE}/evaluation/update-student-status`, {
+        evaluation_id: evaluationId,
+        student_index: studentIndex,
+        status: status
+      }, {
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'application/json'
         }
       });
       
@@ -142,7 +136,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Update student status error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to update student status');
     }
@@ -155,6 +149,14 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
+      console.log('Sending data to backend:', {
+        evaluation_id: evaluationId,
+        file_id: fileId,
+        question_number: questionNumber,
+        score: score,
+        feedback: feedback
+      });
+      
       const res = await axios.put(`${API_BASE}/evaluation/edit-results`, {
         evaluation_id: evaluationId,
         file_id: fileId,
@@ -172,7 +174,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Edit question result error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to edit question result');
     }
@@ -198,7 +200,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Get student details error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to get student details');
     }

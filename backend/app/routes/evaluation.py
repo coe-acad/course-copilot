@@ -43,6 +43,10 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
     mark_scheme_check_result = mark_scheme_check(evaluation_assistant_id, user_id, mark_scheme_file_id)
     logger.info(f"Mark scheme check result: {mark_scheme_check_result}")
     
+    # Check if mark scheme format is correct
+    if "not in the correct format" in mark_scheme_check_result:
+        raise HTTPException(status_code=400, detail=mark_scheme_check_result)
+    
     create_evaluation(
         evaluation_id=evaluation_id,
         course_id=course_id,
@@ -52,7 +56,7 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         answer_sheet_file_ids=[]
     )
     
-    return {"evaluation_id": evaluation_id, "mark_scheme_file_id": mark_scheme_file_id}
+    return {"evaluation_id": evaluation_id, "mark_scheme_file_id": mark_scheme_file_id, "message": mark_scheme_check_result}
 
 @router.post("/evaluation/upload-answer-sheets")
 def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
@@ -110,13 +114,10 @@ def evaluate_files(evaluation_id: str, user_id: str):
         
         evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
         
-        # Transform the evaluation result to match frontend expectations
-        transformed_result = transform_evaluation_result_for_frontend(evaluation_result)
-        
-        update_evaluation_with_result(evaluation_id, transformed_result) 
+        update_evaluation_with_result(evaluation_id, evaluation_result) 
 
         logger.info(f"Successfully completed and saved evaluation {evaluation_id}")
-        return {"evaluation_id": evaluation_id, "evaluation_result": transformed_result}
+        return {"evaluation_id": evaluation_id, "evaluation_result": evaluation_result}
         
     except HTTPException:
         raise
@@ -126,7 +127,7 @@ def evaluate_files(evaluation_id: str, user_id: str):
 
 
 @router.put("/evaluation/edit-results")
-def edit_results(request: EditresultRequest, user_id: str):
+def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token)):
     try:
         # Update the question score and feedback
         update_question_score_feedback(request.evaluation_id, request.file_id, request.question_number, request.score, request.feedback)
