@@ -404,11 +404,15 @@ def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: 
                     "role": "user",
                     "content": f"""Extract ALL questions and answers from this answer sheet file. 
 
-CRITICAL REQUIREMENTS:
-1. Extract EVERY question from the file - do not skip any questions
-2. Include the complete question text for each question
-3. For missing/blank/'N/A' answers, set 'student_answer' to null
-4. Return the exact format specified
+CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY – NO EXCEPTIONS):
+
+Extract EVERY single question from the file. Do not skip, merge, or omit ANY question under any circumstance.
+
+Include the full and complete question text exactly as it appears in the source (no truncation, paraphrasing, or alteration).
+
+If an answer is missing, blank, or written as 'N/A', you must set "student_answer": null. Do not leave it as an empty string or remove the field.
+
+Return the output strictly in the exact format provided. No extra fields, no missing fields, no reordering, no commentary, no explanations — only the structured data exactly as specified.
 
 Return JSON format: {{"file_id": "{file_id}", "student_name": "...", "answers": [{{"question_number": "1", "question_text": "...", "student_answer": "..."}}]}}""",
                     "attachments": [{"file_id": file_id, "tools": [{"type": "file_search"}]}]

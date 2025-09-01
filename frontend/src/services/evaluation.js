@@ -13,26 +13,9 @@ function getToken() {
 }
 
 export const evaluationService = {
-  async getEvaluationSchemes(courseId) {
-    try {
-      const res = await axios.get(`${API_BASE}/evaluation/schemes/${courseId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
-      return res.data.schemes || [];
-    } catch (error) {
-      console.error('Get evaluation schemes error:', error);
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to get evaluation schemes');
-    }
-  },
-
-  async uploadEvaluationScheme({ courseId, schemeName, schemeDescription, markSchemeFile }) {
+  async uploadMarkScheme({ courseId, markSchemeFile }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
-    formData.append('scheme_name', schemeName);
-    formData.append('scheme_description', schemeDescription);
     formData.append('mark_scheme', markSchemeFile);
     
     try {
@@ -52,7 +35,7 @@ export const evaluationService = {
     }
   },
 
-  async uploadEvaluationFiles({ userId, courseId, markSchemeFile, answerSheetFiles, schemeId = null }) {
+  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
     const formData = new FormData();
     formData.append('evaluation_id', evaluationId);
     if (Array.isArray(answerSheetFiles)) {
@@ -223,4 +206,3 @@ export const evaluationService = {
     }
   }
 }; 
-

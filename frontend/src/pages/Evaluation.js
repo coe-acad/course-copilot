@@ -8,9 +8,7 @@ export default function Evaluation() {
   const navigate = useNavigate();
   const [isGridView] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [evaluationSchemes, setEvaluationSchemes] = useState([]);
-  const [selectedScheme, setSelectedScheme] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [answerSheetFiles, setAnswerSheetFiles] = useState([]);
   const [isUploadingMarkScheme, setIsUploadingMarkScheme] = useState(false);
   const [isUploadingAnswerSheets, setIsUploadingAnswerSheets] = useState(false);
@@ -99,7 +97,6 @@ export default function Evaluation() {
     if (!fileToUpload) {
       return; // No need to show alert for auto-upload
     }
-
     try {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
@@ -138,7 +135,6 @@ export default function Evaluation() {
     if (!filesToUpload || filesToUpload.length === 0) {
       return; // No need to show alert for auto-upload
     }
-
     try {
       setIsUploadingAnswerSheets(true);
       
@@ -151,8 +147,7 @@ export default function Evaluation() {
       // No success popup - just proceed silently
       // The UI will show "✓ Answer Sheets Uploaded" status
     } catch (err) {
-      console.error('Upload error:', err);
-      alert(err?.message || 'Upload failed');
+      alert(err?.message || 'Answer sheets upload failed');
     } finally {
       setIsUploadingAnswerSheets(false);
     }
