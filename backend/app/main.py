@@ -10,6 +10,7 @@ from .config.settings import settings
 from .routes.auth import google_callback
 import logging
 import uvicorn
+import time
 from .routes import evaluation
 
 # Configure logging
@@ -19,6 +20,22 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    """Middleware to log request timing"""
+    
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # Log request timing
+        logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.4f}s")
+        
+        # Add timing header
+        response.headers["X-Process-Time"] = str(process_time)
+        
+        return response
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses"""
@@ -52,6 +69,9 @@ app.add_middleware(
     expose_headers=settings.CORS_EXPOSE_HEADERS,
     max_age=settings.CORS_MAX_AGE,
 )
+
+# Add timing middleware
+app.add_middleware(TimingMiddleware)
 
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
