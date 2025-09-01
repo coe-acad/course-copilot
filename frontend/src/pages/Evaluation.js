@@ -25,14 +25,12 @@ export default function Evaluation() {
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editedQuestionScores, setEditedQuestionScores] = useState([]);
-  const [editedFeedback, setEditedFeedback] = useState([]); // Array for per-question feedback
-  const [isSaving, setIsSaving] = useState(false); // Loading state for save operation
-  const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
+  const [editedFeedback, setEditedFeedback] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
-  
-
 
   // Force re-render when status changes
   useEffect(() => {
@@ -245,17 +243,17 @@ export default function Evaluation() {
         (student.answers && Array.isArray(student.answers) && student.answers.length > 0)
       );
       console.log('Has required data for review page:', hasRequiredData);
-             console.log('Student data available:', {
-         question_scores: !!student.question_scores,
-         questions: !!student.questions,
-         answers: !!student.answers,
-         ai_feedback: !!student.ai_feedback,
-         total_score: student.total_score,
-         feedback: student.feedback,
-         status: student.status
-       });
-       console.log('Backend data structure - answers:', student.answers);
-       console.log('Backend data structure - question_scores:', student.question_scores);
+      console.log('Student data available:', {
+        question_scores: !!student.question_scores,
+        questions: !!student.questions,
+        answers: !!student.answers,
+        ai_feedback: !!student.ai_feedback,
+        total_score: student.total_score,
+        feedback: student.feedback,
+        status: student.status
+      });
+      console.log('Backend data structure - answers:', student.answers);
+      console.log('Backend data structure - question_scores:', student.question_scores);
       console.log('Full student object:', student);
       
       if (!hasRequiredData) {
@@ -315,15 +313,13 @@ export default function Evaluation() {
     }
   };
 
-
-
   const handleBackToResults = () => {
     setShowReview(false);
     setSelectedStudentIndex(null);
     setSelectedQuestionIndex(0);
     setIsEditing(false);
     setEditedQuestionScores([]);
-    setEditedFeedback([]); // Reset feedback array
+    setEditedFeedback([]);
   };
 
   const handleEdit = () => {
@@ -332,35 +328,35 @@ export default function Evaluation() {
       const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
       console.log('Setting up edit mode for student:', student);
       
-             // Initialize with current values - use helper function to extract scores
-       const currentScores = extractQuestionScores(student);
-       if (currentScores.length > 0) {
-         // Ensure 0 values are properly handled by converting to strings
-         const scoresForEditing = currentScores.map(score => {
-           if (score === 0) return '0';
-           if (score === null || score === undefined) return '';
-           return score.toString();
-         });
-         setEditedQuestionScores(scoresForEditing);
-       } else {
-         console.warn('No question scores available, initializing with empty array');
-         setEditedQuestionScores([]);
-       }
-       
-                      // Get feedback for each question individually
-        const currentFeedbackArray = [];
-        if (student.answers && Array.isArray(student.answers)) {
-          student.answers.forEach(answer => {
-            currentFeedbackArray.push(answer.feedback || '');
-          });
-        }
-        setEditedFeedback(currentFeedbackArray);
+      // Initialize with current values - use helper function to extract scores
+      const currentScores = extractQuestionScores(student);
+      if (currentScores.length > 0) {
+        // Ensure 0 values are properly handled by converting to strings
+        const scoresForEditing = currentScores.map(score => {
+          if (score === 0) return '0';
+          if (score === null || score === undefined) return '';
+          return score.toString();
+        });
+        setEditedQuestionScores(scoresForEditing);
+      } else {
+        console.warn('No question scores available, initializing with empty array');
+        setEditedQuestionScores([]);
+      }
+      
+      // Get feedback for each question individually
+      const currentFeedbackArray = [];
+      if (student.answers && Array.isArray(student.answers)) {
+        student.answers.forEach(answer => {
+          currentFeedbackArray.push(answer.feedback || '');
+        });
+      }
+      setEditedFeedback(currentFeedbackArray);
       
       setIsEditing(true);
-             console.log('Edit mode activated with:', {
-         questionScores: student.question_scores,
-         feedback: currentFeedbackArray
-       });
+      console.log('Edit mode activated with:', {
+        questionScores: student.question_scores,
+        feedback: currentFeedbackArray
+      });
     } else {
       console.log('Cannot edit - missing data:', { evaluationResult, selectedStudentIndex });
     }
@@ -373,7 +369,7 @@ export default function Evaluation() {
       return;
     }
     
-    setIsSaving(true); // Start loading state
+    setIsSaving(true);
     
     try {
       // Validate question scores
@@ -415,112 +411,110 @@ export default function Evaluation() {
       const totalScore = validScores.reduce((sum, score) => sum + score, 0);
       console.log('Calculated total score:', totalScore);
       
-              // Validate and clean the feedback for each question
-        const cleanFeedbackArray = [];
-        if (Array.isArray(editedFeedback)) {
-          editedFeedback.forEach((feedback, index) => {
-            const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
-            cleanFeedbackArray.push(cleanFeedback);
-          });
-        }
-        
-        // Log the feedback processing for debugging
-        console.log('Feedback processing:', {
-          original: editedFeedback,
-          cleaned: cleanFeedbackArray,
-          questionCount: cleanFeedbackArray.length,
-          type: typeof editedFeedback
+      // Validate and clean the feedback for each question
+      const cleanFeedbackArray = [];
+      if (Array.isArray(editedFeedback)) {
+        editedFeedback.forEach((feedback, index) => {
+          const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
+          cleanFeedbackArray.push(cleanFeedback);
         });
-                           console.log('Data being sent:', {
-          evaluationId,
-          studentIndex: selectedStudentIndex,
-          questionScores: validScores,
-          feedback: cleanFeedbackArray,
-          fileId: evaluationResult.evaluation_result.students[selectedStudentIndex].file_id
-        });
+      }
       
-                     // Call the backend to update each question result individually
-        // Backend expects individual question updates, not bulk updates
-        const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-        const fileId = student.file_id;
+      // Log the feedback processing for debugging
+      console.log('Feedback processing:', {
+        original: editedFeedback,
+        cleaned: cleanFeedbackArray,
+        questionCount: cleanFeedbackArray.length,
+        type: typeof editedFeedback
+      });
+      
+      console.log('Data being sent:', {
+        evaluationId,
+        studentIndex: selectedStudentIndex,
+        questionScores: validScores,
+        feedback: cleanFeedbackArray,
+        fileId: evaluationResult.evaluation_result.students[selectedStudentIndex].file_id
+      });
+      
+      // Call the backend to update each question result individually
+      const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
+      const fileId = student.file_id;
+      
+      console.log('Student object for debugging:', student);
+      console.log('File ID extracted:', fileId);
+      console.log('Student properties:', Object.keys(student));
+      
+      if (!fileId) {
+        throw new Error('Student file ID not found. Cannot update results.');
+      }
+      
+      // Update each question score and feedback
+      for (let i = 0; i < validScores.length; i++) {
+        const questionFeedback = cleanFeedbackArray[i] || '';
+        console.log(`Updating question ${i + 1}: score=${validScores[i]}, feedback="${questionFeedback}"`);
+        console.log(`Sending to backend: evaluationId=${evaluationId}, fileId=${fileId}, questionNumber=${i + 1}, score=${parseFloat(validScores[i])}`);
+        console.log(`Feedback being sent: "${questionFeedback}" (type: ${typeof questionFeedback}, length: ${questionFeedback.length})`);
         
-        console.log('Student object for debugging:', student);
-        console.log('File ID extracted:', fileId);
-        console.log('Student properties:', Object.keys(student));
-        
-        if (!fileId) {
-          throw new Error('Student file ID not found. Cannot update results.');
-        }
-       
-               // Update each question score and feedback
-        for (let i = 0; i < validScores.length; i++) {
-          const questionFeedback = cleanFeedbackArray[i] || '';
-          console.log(`Updating question ${i + 1}: score=${validScores[i]}, feedback="${questionFeedback}"`);
-          console.log(`Sending to backend: evaluationId=${evaluationId}, fileId=${fileId}, questionNumber=${i + 1}, score=${parseFloat(validScores[i])}`);
-          console.log(`Feedback being sent: "${questionFeedback}" (type: ${typeof questionFeedback}, length: ${questionFeedback.length})`);
+        try {
+          // Ensure feedback is not undefined or null
+          const feedbackToSend = questionFeedback || '';
+          console.log(`Sending feedback for question ${i + 1}: "${feedbackToSend}"`);
           
-          try {
-            // Ensure feedback is not undefined or null
-            const feedbackToSend = questionFeedback || '';
-            console.log(`Sending feedback for question ${i + 1}: "${feedbackToSend}"`);
-            
-            await evaluationService.editQuestionResult({
-              evaluationId,
-              fileId,
-              questionNumber: (i + 1).toString(),
-              score: parseFloat(validScores[i]), // Convert to float as backend expects
-              feedback: feedbackToSend
-            });
-            console.log(`Question ${i + 1} updated successfully`);
-          } catch (error) {
-            console.error(`Failed to update question ${i + 1}:`, error);
-            throw error; // Re-throw to stop the process
-          }
+          await evaluationService.editQuestionResult({
+            evaluationId,
+            fileId,
+            questionNumber: (i + 1).toString(),
+            score: parseFloat(validScores[i]),
+            feedback: feedbackToSend
+          });
+          console.log(`Question ${i + 1} updated successfully`);
+        } catch (error) {
+          console.error(`Failed to update question ${i + 1}:`, error);
+          throw error;
         }
+      }
       
-             console.log('All question results updated successfully');
+      console.log('All question results updated successfully');
       
-             // Update local state for immediate feedback
-       const updatedEvaluationResult = { ...evaluationResult };
-       const studentIndex = selectedStudentIndex;
-       
-       // Update the answers array with new scores and feedback
-       updatedEvaluationResult.evaluation_result.students[studentIndex].answers = 
-         updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
-           ...answer,
-           score: validScores[index], // Use the validated scores directly
-           feedback: cleanFeedbackArray[index] || answer.feedback
-         }));
-       
-               // Also update question_scores if it exists for backward compatibility
-        if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
-          updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
-        }
-       
-       // Update the student object
-       updatedEvaluationResult.evaluation_result.students[studentIndex] = {
-         ...updatedEvaluationResult.evaluation_result.students[studentIndex],
-         total_score: totalScore,
-         status: "modified"
-       };
-       
-       console.log('Updated student data:', {
-         scores: validScores,
-         feedback: cleanFeedbackArray,
-         totalScore: totalScore,
-         status: "modified",
-         updatedAnswers: updatedEvaluationResult.evaluation_result.students[studentIndex].answers
-       });
-     
-     // Force a re-render by creating a new object reference
-     setEvaluationResult({...updatedEvaluationResult});
-     setIsEditing(false);
-     
-     console.log('Local state updated successfully');
-     console.log('New evaluation result:', updatedEvaluationResult);
-     console.log('State update triggered');
-     
-     // Changes saved successfully - no popup needed
+      // Update local state for immediate feedback
+      const updatedEvaluationResult = { ...evaluationResult };
+      const studentIndex = selectedStudentIndex;
+      
+      // Update the answers array with new scores and feedback
+      updatedEvaluationResult.evaluation_result.students[studentIndex].answers = 
+        updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
+          ...answer,
+          score: validScores[index],
+          feedback: cleanFeedbackArray[index] || answer.feedback
+        }));
+      
+      // Also update question_scores if it exists for backward compatibility
+      if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
+        updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
+      }
+      
+      // Update the student object
+      updatedEvaluationResult.evaluation_result.students[studentIndex] = {
+        ...updatedEvaluationResult.evaluation_result.students[studentIndex],
+        total_score: totalScore,
+        status: "modified"
+      };
+      
+      console.log('Updated student data:', {
+        scores: validScores,
+        feedback: cleanFeedbackArray,
+        totalScore: totalScore,
+        status: "modified",
+        updatedAnswers: updatedEvaluationResult.evaluation_result.students[studentIndex].answers
+      });
+      
+      // Force a re-render by creating a new object reference
+      setEvaluationResult({...updatedEvaluationResult});
+      setIsEditing(false);
+      
+      console.log('Local state updated successfully');
+      console.log('New evaluation result:', updatedEvaluationResult);
+      console.log('State update triggered');
       
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -531,17 +525,15 @@ export default function Evaluation() {
       });
       alert('Failed to save changes: ' + error.message);
     } finally {
-      setIsSaving(false); // Reset loading state regardless of success/failure
+      setIsSaving(false);
     }
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
     setEditedQuestionScores([]);
-    setEditedFeedback([]); // Reset feedback array
+    setEditedFeedback([]);
   };
-
-
 
   const formatScore = (score, maxScore) => {
     const percentage = Math.round((score / maxScore) * 100);
@@ -551,17 +543,15 @@ export default function Evaluation() {
   const getStatusColor = (status) => {
     switch (status) {
       case 'unopened':
-        return '#6c757d'; // Gray
+        return '#6c757d';
       case 'opened':
-        return '#2563eb'; // Blue
+        return '#2563eb';
       case 'modified':
-        return '#dc3545'; // Red
+        return '#dc3545';
       default:
-        return '#6c757d'; // Gray
+        return '#6c757d';
     }
   };
-
-
 
   // Helper function to extract question scores from backend data structure
   const extractQuestionScores = (student) => {
@@ -598,7 +588,6 @@ export default function Evaluation() {
       console.error('Missing evaluation data:', evaluationResult);
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Header removed for review page - cleaner interface */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <h2 style={{ color: '#dc3545', marginBottom: '16px' }}>No Evaluation Data Available</h2>
@@ -640,7 +629,6 @@ export default function Evaluation() {
       console.error('Student data not found for index:', selectedStudentIndex);
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Header removed for review page - cleaner interface */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <h2 style={{ color: '#dc3545', marginBottom: '16px' }}>Student Data Not Found</h2>
@@ -699,37 +687,37 @@ export default function Evaluation() {
           <div style={{ flex: 1, maxWidth: 300, overflowY: 'auto', padding: '24px 0' }}>
             <div style={{ background: '#fff', borderRadius: 18, padding: '24px', boxShadow: '0 2px 7px #0002' }}>
               <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: '#1e40af' }}>Questions</h3>
-                             {(() => {
-                 const questionScores = extractQuestionScores(student);
-                 const maxScores = extractMaxScores(student);
-                 
-                 if (questionScores.length > 0) {
-                   return questionScores.map((score, index) => (
-                     <div
-                       key={index}
-                       style={{
-                         padding: '12px 16px',
-                         marginBottom: '8px',
-                         borderRadius: '8px',
-                         background: selectedQuestionIndex === index ? '#e0f2fe' : '#f8f9fa',
-                         border: selectedQuestionIndex === index ? '2px solid #0288d1' : '1px solid #e9ecef',
-                         cursor: 'pointer',
-                         transition: 'all 0.2s'
-                       }}
-                       onClick={() => setSelectedQuestionIndex(index)}
-                     >
-                       <div style={{ fontWeight: 600, marginBottom: '4px' }}>Question {index + 1}</div>
-                       <div style={{ fontSize: '14px', color: '#666' }}>{score}/{maxScores[index] || (score > 0 ? score : '?')}</div>
-                     </div>
-                   ));
-                 } else {
-                   return (
-                     <div style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
-                       No question scores available
-                     </div>
-                   );
-                 }
-               })()}
+              {(() => {
+                const questionScores = extractQuestionScores(student);
+                const maxScores = extractMaxScores(student);
+                
+                if (questionScores.length > 0) {
+                  return questionScores.map((score, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '12px 16px',
+                        marginBottom: '8px',
+                        borderRadius: '8px',
+                        background: selectedQuestionIndex === index ? '#e0f2fe' : '#f8f9fa',
+                        border: selectedQuestionIndex === index ? '2px solid #0288d1' : '1px solid #e9ecef',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onClick={() => setSelectedQuestionIndex(index)}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: '4px' }}>Question {index + 1}</div>
+                      <div style={{ fontSize: '14px', color: '#666' }}>{score}/{maxScores[index] || (score > 0 ? score : '?')}</div>
+                    </div>
+                  ));
+                } else {
+                  return (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
+                      No question scores available
+                    </div>
+                  );
+                }
+              })()}
             </div>
           </div>
 
@@ -740,26 +728,26 @@ export default function Evaluation() {
                 Question {selectedQuestionIndex + 1}
               </h3>
               
-                             <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
-                 <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
+                <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+                  {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
-                 <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
+                <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                  {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
-                 <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
+                <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
+                  {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -915,8 +903,6 @@ export default function Evaluation() {
                   </div>
                 )}
               </div>
-
-
             </div>
           </div>
         </div>
@@ -1139,8 +1125,6 @@ export default function Evaluation() {
           </div>
         </div>
 
-
-
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
       </div>
     );
@@ -1298,43 +1282,43 @@ export default function Evaluation() {
                   </div>
                 )}
 
-            {answerSheetsUploaded && (
-              <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
-                <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Answer Sheets Uploaded</div>
-                <div style={{ fontSize: '14px', color: '#666' }}>Ready to start evaluation</div>
+                {answerSheetsUploaded && (
+                  <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
+                    <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Answer Sheets Uploaded</div>
+                    <div style={{ fontSize: '14px', color: '#666' }}>Ready to start evaluation</div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleEvaluate}
+                  disabled={isEvaluating || !answerSheetsUploaded}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    cursor: isEvaluating || !answerSheetsUploaded ? 'not-allowed' : 'pointer',
+                    opacity: isEvaluating || !answerSheetsUploaded ? 0.5 : 1
+                  }}
+                >
+                  {isEvaluating ? 'Evaluating...' : 'Evaluate →'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
+                <div style={{ fontSize: '18px', marginBottom: '8px' }}>Upload mark scheme first</div>
+                <div style={{ fontSize: '14px' }}>Complete the left side to upload answer sheets</div>
               </div>
             )}
-
-            <button
-              onClick={handleEvaluate}
-              disabled={isEvaluating || !answerSheetsUploaded}
-              style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: '8px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '16px',
-                cursor: isEvaluating || !answerSheetsUploaded ? 'not-allowed' : 'pointer',
-                opacity: isEvaluating || !answerSheetsUploaded ? 0.5 : 1
-              }}
-            >
-              {isEvaluating ? 'Evaluating...' : 'Evaluate →'}
-            </button>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
-            <div style={{ fontSize: '18px', marginBottom: '8px' }}>Upload mark scheme first</div>
-            <div style={{ fontSize: '14px' }}>Complete the left side to upload answer sheets</div>
-          </div>
-        )}
+        </div>
       </div>
-    </div>
-  </div>
 
-  <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-</div>
+      <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+    </div>
   );
 } 
