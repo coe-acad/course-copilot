@@ -50,3 +50,9 @@ class PromptParser:
             self._get_prompt_path(f"prompts/asset/{asset_name}.json"), input_variables
         )
         return full_asset_prompt
+
+    def get_evaluation_prompt(self, evaluation_id: str, input_variables: dict):
+        full_evaluation_prompt = self.render_prompt(
+            self._get_prompt_path("prompts/evaluation/evaluation.json"), input_variables
+        )
+        return full_evaluation_prompt

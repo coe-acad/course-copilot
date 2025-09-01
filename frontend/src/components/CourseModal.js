@@ -9,6 +9,16 @@ export default function CourseModal({
   courseDesc, setCourseDesc,
   onSubmit, loading, error
 }) {
+  const [clicked, setClicked] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) setClicked(false);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!loading) setClicked(false);
+  }, [loading]);
+
   return (
     <>
       <Modal open={open} onClose={onClose} modalStyle={{ minWidth: 0, maxWidth: 800, width: '100%', borderRadius: 18, boxShadow: '0 8px 32px rgba(37,99,235,0.10)', background: '#fff', padding: 0 }}>
@@ -69,20 +79,37 @@ export default function CourseModal({
           {error && <div style={{ color: "#e11d48", marginBottom: 10, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
             <button onClick={onClose} style={{ padding: "9px 22px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 15, color: '#222', fontWeight: 500, transition: 'border 0.18s, background 0.18s', cursor: 'pointer' }}>Close</button>
-            <button onClick={onSubmit} disabled={!courseName.trim() || !courseDesc.trim() || loading}
+            <button onClick={() => { if (!loading && !clicked) { setClicked(true); onSubmit(); } }} disabled={!courseName.trim() || !courseDesc.trim() || loading || clicked}
               style={{
                 padding: "9px 22px",
                 borderRadius: 8,
                 border: "none",
-                background: (!courseName || !courseDesc || loading) ? "#b6cdfa" : "#2563eb",
+                background: (!courseName || !courseDesc || loading || clicked) ? "#b6cdfa" : "#2563eb",
                 color: "#fff",
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: (!courseName || !courseDesc || loading) ? 'not-allowed' : 'pointer',
-                boxShadow: (!courseName || !courseDesc || loading) ? 'none' : '0 2px 8px #2563eb22',
+                cursor: (!courseName || !courseDesc || loading || clicked) ? 'not-allowed' : 'pointer',
+                boxShadow: (!courseName || !courseDesc || loading || clicked) ? 'none' : '0 2px 8px #2563eb22',
                 transition: 'background 0.18s, box-shadow 0.18s',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8
               }}>
-              Get Started
+              {(loading || clicked) && (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 14,
+                    height: 14,
+                    border: '2px solid rgba(255,255,255,0.6)',
+                    borderTop: '2px solid #fff',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }}
+                />
+              )}
+              <span>{(loading || clicked) ? 'Creating...' : 'Get Started'}</span>
+              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             </button>
           </div>
         </div>

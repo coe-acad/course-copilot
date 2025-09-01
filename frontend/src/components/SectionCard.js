@@ -2,7 +2,7 @@ import React, { useRef } from "react";
 import AssetSubCard from "./AssetSubCard";
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
-export default function SectionCard({ title, description, buttonLabel, style, onButtonClick, assets = [] }) {
+export default function SectionCard({ title, description, buttonLabel, style, onButtonClick, assets = [], courseId }) {
   const scrollContainerRef = useRef(null);
 
   const scrollLeft = () => {
@@ -114,6 +114,7 @@ export default function SectionCard({ title, description, buttonLabel, style, on
                   name={asset.name}
                   timestamp={asset.timestamp}
                   updatedBy={asset.updatedBy}
+                  courseId={courseId}
                 />
               </div>
             ))}
