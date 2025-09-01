@@ -13,36 +13,98 @@ function getToken() {
 }
 
 export const evaluationService = {
-  async uploadMarkScheme({ courseId, markSchemeFile }) {
+  async getEvaluationSchemes(courseId) {
+    try {
+      const res = await axios.get(`${API_BASE}/evaluation/schemes/${courseId}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      return res.data.schemes || [];
+    } catch (error) {
+      console.error('Get evaluation schemes error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to get evaluation schemes');
+    }
+  },
+
+  async uploadEvaluationScheme({ courseId, schemeName, schemeDescription, markSchemeFile }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
+    formData.append('scheme_name', schemeName);
+    formData.append('scheme_description', schemeDescription);
     formData.append('mark_scheme', markSchemeFile);
     
-    const res = await axios.post(`${API_BASE}/evaluation/upload-mark-scheme`, formData, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    return res.data; // { evaluation_id: "id", mark_scheme_file_id: "id" }
+    try {
+      const res = await axios.post(`${API_BASE}/evaluation/upload-scheme`, formData, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return res.data;
+    } catch (error) {
+      console.error('Upload evaluation scheme error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to upload evaluation scheme');
+    }
   },
 
-  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
+  async uploadEvaluationFiles({ userId, courseId, markSchemeFile, answerSheetFiles, schemeId = null }) {
     const formData = new FormData();
-    formData.append('evaluation_id', evaluationId);
-    
+    formData.append('user_id', userId);
+    formData.append('courseId', courseId);
+    if (schemeId) {
+      formData.append('scheme_id', schemeId);
+    } else if (markSchemeFile) {
+      formData.append('mark_scheme', markSchemeFile);
+    }
     if (Array.isArray(answerSheetFiles)) {
       answerSheetFiles.forEach(f => formData.append('answer_sheets', f));
+    } else if (answerSheetFiles) {
+      formData.append('answer_sheets', answerSheetFiles);
     }
     
-    const res = await axios.post(`${API_BASE}/evaluation/upload-answer-sheets`, formData, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    return res.data; // { evaluation_id: "id", answer_sheet_file_ids: ["id1", "id2", ...] }
+    try {
+      const res = await axios.post(`${API_BASE}/evaluation/upload-files`, formData, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return res.data; // { evaluation_id: "uuid" }
+    } catch (error) {
+      console.error('Upload error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Upload failed');
+    }
   },
 
-  async evaluateFiles({ evaluationId }) {
-    const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
-      params: { evaluation_id: evaluationId },
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    return res.data;
+  async evaluateFiles(evaluationId) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        params: {
+          evaluation_id: evaluationId,
+          user_id: user.id
+        }
+      });
+      return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
+    } catch (error) {
+      console.error('Evaluation error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Evaluation failed');
+    }
   }
 }; 
