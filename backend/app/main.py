@@ -4,13 +4,13 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from .routes import auth, course, resources, asset
 from .config.settings import settings
 from .routes.auth import google_callback
 import logging
 import uvicorn
 import time
+from .routes import evaluation
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +19,22 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    """Middleware to log request timing"""
+    
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # Log request timing
+        logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.4f}s")
+        
+        # Add timing header
+        response.headers["X-Process-Time"] = str(process_time)
+        
+        return response
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses"""
@@ -78,6 +94,9 @@ app.add_middleware(
     max_age=settings.CORS_MAX_AGE,
 )
 
+# Add timing middleware
+app.add_middleware(TimingMiddleware)
+
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -89,6 +108,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(course.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
 app.include_router(asset.router, prefix="/api")
+app.include_router(evaluation.router, prefix="/api")
 
 # Google OAuth callback is now handled by the auth router at /api/callback
 
