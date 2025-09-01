@@ -1,4 +1,10 @@
-from pymongo.mongo_client import MongoClient
+import logging
+from datetime import datetime
+from typing import List, Optional
+from pymongo import MongoClient
+from pymongo.database import Database
+from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
 from pymongo.server_api import ServerApi
 from uuid import uuid4
 
@@ -80,3 +86,92 @@ def get_assets_by_course_id(course_id: str):
 
 def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+
+# Evaluation    
+def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str]):
+    evaluation = {"evaluation_id": evaluation_id, "course_id": course_id,"evaluation_assistant_id": evaluation_assistant_id, "vector_store_id": vector_store_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids}
+    add_to_collection("evaluations", evaluation)
+    return evaluation
+
+def get_evaluation_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id})
+
+def update_evaluation(evaluation_id: str, data: dict):
+    """Update an evaluation record with new data"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Updating evaluation {evaluation_id} with data: {list(data.keys())}")
+    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, data)
+    
+def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
+    """
+    Update an evaluation with the evaluation result.
+    Stores the complete evaluation result including all student scores and feedback.
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Log the update operation
+    students_count = len(evaluation_result.get('students', []))
+    logger.info(f"Updating evaluation {evaluation_id} with results for {students_count} students")
+    
+    # Store the evaluation result with timestamp
+    update_data = {
+        "evaluation_result": evaluation_result,
+        "evaluation_completed_at": datetime.utcnow().isoformat(),
+        "status": "completed"
+    }
+    
+    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, update_data)
+    logger.info(f"Successfully updated evaluation {evaluation_id} in MongoDB")
+
+# Minimal helper: update one question's score and feedback
+
+def update_question_score_feedback(evaluation_id: str, file_id: str, question_number: str, score, feedback):
+    collection = db["evaluations"]
+    
+    # First, try the correct array filter approach
+    result = collection.update_one(
+        {"evaluation_id": evaluation_id},
+        {"$set": {
+            "evaluation_result.students.$[s].answers.$[a].score": score,
+            "evaluation_result.students.$[s].answers.$[a].feedback": feedback
+        }},
+        array_filters=[
+            {"s.file_id": file_id},
+            {"a.question_number": {"$in": [question_number, int(question_number)]}}
+        ]
+    )
+    
+    # Log the result for debugging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Updated question {question_number} for file {file_id} in evaluation {evaluation_id}. Modified count: {result.modified_count}")
+    
+    if result.modified_count == 0:
+        logger.warning(f"No questions were updated with array filters. Trying alternative approach...")
+        
+        # Alternative approach: Update the specific student and answer directly
+        try:
+            # First, find the evaluation to get the exact structure
+            evaluation = collection.find_one({"evaluation_id": evaluation_id})
+            if evaluation and "evaluation_result" in evaluation:
+                for student_idx, student in enumerate(evaluation["evaluation_result"].get("students", [])):
+                    if student.get("file_id") == file_id:
+                        # Find the answer index
+                        for answer_idx, answer in enumerate(student.get("answers", [])):
+                            if str(answer.get("question_number")) == question_number or answer.get("question_number") == int(question_number):
+                                # Update using positional operators
+                                update_result = collection.update_one(
+                                    {"evaluation_id": evaluation_id},
+                                    {"$set": {
+                                        f"evaluation_result.students.{student_idx}.answers.{answer_idx}.score": score,
+                                        f"evaluation_result.students.{student_idx}.answers.{answer_idx}.feedback": feedback
+                                    }}
+                                )
+                                logger.info(f"Alternative update successful. Modified count: {update_result.modified_count}")
+                                return
+                
+                logger.warning(f"Could not find student with file_id {file_id} or question {question_number}")
+            else:
+                logger.warning(f"Evaluation {evaluation_id} not found or missing evaluation_result")
+        except Exception as e:
+            logger.error(f"Error in alternative update approach: {str(e)}")
+            raise

@@ -10,7 +10,8 @@ from .config.settings import settings
 from .routes.auth import google_callback
 import logging
 import uvicorn
-import time
+
+from .routes import evaluation
 
 # Configure logging
 logging.basicConfig(
@@ -89,6 +90,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(course.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
 app.include_router(asset.router, prefix="/api")
+app.include_router(evaluation.router, prefix="/api")
 
 # Google OAuth callback is now handled by the auth router at /api/callback
 

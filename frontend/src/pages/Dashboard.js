@@ -226,6 +226,7 @@ export default function Dashboard() {
             <SectionCard 
               title="Evaluation" 
               buttonLabel="Start Evaluation"
+              onButtonClick={() => navigate('/evaluation')}
               assets={assets.evaluation}
               courseId={localStorage.getItem('currentCourseId')}
             />
