@@ -4,7 +4,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from .routes import auth, course, resources, asset
 from .config.settings import settings
 from .routes.auth import google_callback
