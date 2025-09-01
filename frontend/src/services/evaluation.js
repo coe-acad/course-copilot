@@ -36,31 +36,25 @@ export const evaluationService = {
     formData.append('mark_scheme', markSchemeFile);
     
     try {
-      const res = await axios.post(`${API_BASE}/evaluation/upload-scheme`, formData, {
+      const res = await axios.post(`${API_BASE}/evaluation/upload-mark-scheme`, formData, {
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
           'Content-Type': 'multipart/form-data'
         }
       });
-      return res.data;
+      return res.data; // { evaluation_id: "uuid", mark_scheme_file_id: "uuid" }
     } catch (error) {
-      console.error('Upload evaluation scheme error:', error);
+      console.error('Upload mark scheme error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
-      throw new Error(error.response?.data?.detail || 'Failed to upload evaluation scheme');
+      throw new Error(error.response?.data?.detail || 'Failed to upload mark scheme');
     }
   },
 
   async uploadEvaluationFiles({ userId, courseId, markSchemeFile, answerSheetFiles, schemeId = null }) {
     const formData = new FormData();
-    formData.append('user_id', userId);
-    formData.append('courseId', courseId);
-    if (schemeId) {
-      formData.append('scheme_id', schemeId);
-    } else if (markSchemeFile) {
-      formData.append('mark_scheme', markSchemeFile);
-    }
+    formData.append('evaluation_id', evaluationId);
     if (Array.isArray(answerSheetFiles)) {
       answerSheetFiles.forEach(f => formData.append('answer_sheets', f));
     } else if (answerSheetFiles) {
@@ -68,19 +62,19 @@ export const evaluationService = {
     }
     
     try {
-      const res = await axios.post(`${API_BASE}/evaluation/upload-files`, formData, {
+      const res = await axios.post(`${API_BASE}/evaluation/upload-answer-sheets`, formData, {
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
           'Content-Type': 'multipart/form-data'
         }
       });
-      return res.data; // { evaluation_id: "uuid" }
+      return res.data; // { evaluation_id: "uuid", answer_sheet_file_ids: ["uuid1", "uuid2"] }
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Upload answer sheets error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
-      throw new Error(error.response?.data?.detail || 'Upload failed');
+      throw new Error(error.response?.data?.detail || 'Failed to upload answer sheets');
     }
   },
 
@@ -102,9 +96,131 @@ export const evaluationService = {
     } catch (error) {
       console.error('Evaluation error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
+        throw new Error('Authentication failed. Please try agian.');
       }
       throw new Error(error.response?.data?.detail || 'Evaluation failed');
     }
+  },
+
+  async updateStudentResult({ evaluationId, studentIndex, questionScores, feedback }) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const res = await axios.put(`${API_BASE}/evaluation/update-student-result`, {
+        evaluation_id: evaluationId,
+        student_index: studentIndex,
+        question_scores: questionScores,
+        feedback: feedback
+      }, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return res.data; // { message: "Student result updated successfully", total_score: 15, status: "modified" }
+    } catch (error) {
+      console.error('Update student result error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try agian.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to update student result');
+    }
+  },
+
+  async updateStudentStatus({ evaluationId, studentIndex, status }) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const res = await axios.put(`${API_BASE}/evaluation/update-student-status`, {
+        evaluation_id: evaluationId,
+        student_index: studentIndex,
+        status: status
+      }, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return res.data; // { message: "Student status updated successfully", status: "opened" }
+    } catch (error) {
+      console.error('Update student status error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try agian.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to update student status');
+    }
+  },
+
+  async editQuestionResult({ evaluationId, fileId, questionNumber, score, feedback }) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('Sending data to backend:', {
+        evaluation_id: evaluationId,
+        file_id: fileId,
+        question_number: questionNumber,
+        score: score,
+        feedback: feedback
+      });
+      
+      const res = await axios.put(`${API_BASE}/evaluation/edit-results`, {
+        evaluation_id: evaluationId,
+        file_id: fileId,
+        question_number: questionNumber,
+        score: score,
+        feedback: feedback
+      }, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return res.data; // { message: "Results updated successfully" }
+    } catch (error) {
+      console.error('Edit question result error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try agian.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to edit question result');
+    }
+  },
+
+  async getStudentEvaluationDetails({ evaluationId, studentIndex }) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const res = await axios.get(`${API_BASE}/evaluation/student-details`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        params: {
+          evaluation_id: evaluationId,
+          student_index: studentIndex,
+          user_id: user.id
+        }
+      });
+      
+      return res.data; // Student evaluation details
+    } catch (error) {
+      console.error('Get student details error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try agian.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to get student details');
+    }
   }
 }; 
+

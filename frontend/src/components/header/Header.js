@@ -8,7 +8,8 @@ export default function Header({
   onExport,
   onGridView,
   onListView,
-  isGridView = true
+  isGridView = true,
+  onBack
 }) {
   return (
     <header style={{
@@ -32,82 +33,111 @@ export default function Header({
         <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>{title}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        {/* Grid/List Toggle */}
-        <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#f5f8ff", borderRadius: 8, border: "1px solid #e0e7ef", overflow: "hidden", height: 38 }}>
+        {/* Back Button - Show when onBack is provided */}
+        {onBack && (
           <button
             style={{
-              background: isGridView ? "#2563eb" : "#fff",
-              color: isGridView ? "#fff" : "#222",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
               height: 38,
-              cursor: "pointer",
-              outline: "none",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
+              padding: "0 22px",
+              borderRadius: 8,
+              border: "1px solid #2563eb",
+              background: "#fff",
+              fontWeight: 500,
+              fontSize: 16,
+              color: "#2563eb",
+              cursor: "pointer"
             }}
-            onClick={onGridView}
+            onClick={onBack}
           >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>▦</span>
+            ← Back
           </button>
+        )}
+        
+        {/* Grid/List Toggle - Show when onGridView/onListView are provided */}
+        {onGridView && onListView && (
+          <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#f5f8ff", borderRadius: 8, border: "1px solid #e0e7ef", overflow: "hidden", height: 38 }}>
+            <button
+              style={{
+                background: isGridView ? "#2563eb" : "#fff",
+                color: isGridView ? "#fff" : "#222",
+                border: "none",
+                padding: "0 14px",
+                fontWeight: 600,
+                fontSize: 18,
+                height: 38,
+                cursor: "pointer",
+                outline: "none",
+                display: "flex",
+                alignItems: "center",
+                borderRadius: 0
+              }}
+              onClick={onGridView}
+            >
+              <span style={{ fontSize: 18, verticalAlign: "middle" }}>▦</span>
+            </button>
+            <button
+              style={{
+                background: !isGridView ? "#2563eb" : "#fff",
+                color: !isGridView ? "#fff" : "#222",
+                border: "none",
+                padding: "0 14px",
+                fontWeight: 600,
+                fontSize: 18,
+                height: 38,
+                cursor: "pointer",
+                outline: "none",
+                borderLeft: "1px solid #e0e7ef",
+                display: "flex",
+                alignItems: "center",
+                borderRadius: 0
+              }}
+              onClick={onListView}
+            >
+              <span style={{ fontSize: 18, verticalAlign: "middle" }}>≡</span>
+            </button>
+          </div>
+        )}
+        
+        {/* Settings Button - Show when onSettings is provided */}
+        {onSettings && (
           <button
             style={{
-              background: !isGridView ? "#2563eb" : "#fff",
-              color: !isGridView ? "#fff" : "#222",
-              border: "none",
-              padding: "0 14px",
-              fontWeight: 600,
-              fontSize: 18,
               height: 38,
-              cursor: "pointer",
-              outline: "none",
-              borderLeft: "1px solid #e0e7ef",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: 0
+              padding: "0 22px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontWeight: 500,
+              fontSize: 16,
+              color: "#222",
+              cursor: "pointer"
             }}
-            onClick={onListView}
+            onClick={onSettings}
           >
-            <span style={{ fontSize: 18, verticalAlign: "middle" }}>≡</span>
+            Settings
           </button>
-        </div>
-        {/* Settings Button */}
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "#fff",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#222",
-            cursor: "pointer"
-          }}
-          onClick={onSettings}
-        >
-          Settings
-        </button>
-        {/* Export to LMS Button */}
-        <button
-          style={{
-            height: 38,
-            padding: "0 22px",
-            borderRadius: 8,
-            border: "none",
-            background: "#2563eb",
-            fontWeight: 500,
-            fontSize: 16,
-            color: "#fff",
-            cursor: "pointer"
-          }}
-          onClick={onExport}
-        >
-          Export to LMS
-        </button>
+        )}
+        
+        {/* Export to LMS Button - Show when onExport is provided */}
+        {onExport && (
+          <button
+            style={{
+              height: 38,
+              padding: "0 22px",
+              borderRadius: 8,
+              border: "none",
+              background: "#2563eb",
+              fontWeight: 500,
+              fontSize: 16,
+              color: "#fff",
+              cursor: "pointer"
+            }}
+            onClick={onExport}
+          >
+            Export to LMS
+          </button>
+        )}
+        
         {/* Logout Button */}
         <button
           onClick={onLogout}

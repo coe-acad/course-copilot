@@ -1,7 +1,12 @@
-from pymongo.mongo_client import MongoClient
+import logging
+from datetime import datetime
+from typing import List, Optional
+from pymongo import MongoClient
+from pymongo.database import Database
+from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
 from pymongo.server_api import ServerApi
 from uuid import uuid4
-import logging
 
 uri = "mongodb+srv://acad:nPyjuhmdeIgTxySD@creators-copilot-demo.aoq6p75.mongodb.net/?retryWrites=true&w=majority&appName=creators-copilot-demo&tls=true&tlsAllowInvalidCertificates=true"
 # Create a new client and connect to the server
@@ -109,7 +114,6 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     logger.info(f"Updating evaluation {evaluation_id} with results for {students_count} students")
     
     # Store the evaluation result with timestamp
-    from datetime import datetime
     update_data = {
         "evaluation_result": evaluation_result,
         "evaluation_completed_at": datetime.utcnow().isoformat(),
@@ -123,7 +127,9 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
 
 def update_question_score_feedback(evaluation_id: str, file_id: str, question_number: str, score, feedback):
     collection = db["evaluations"]
-    collection.update_one(
+    
+    # First, try the correct array filter approach
+    result = collection.update_one(
         {"evaluation_id": evaluation_id},
         {"$set": {
             "evaluation_result.students.$[s].answers.$[a].score": score,
@@ -131,6 +137,41 @@ def update_question_score_feedback(evaluation_id: str, file_id: str, question_nu
         }},
         array_filters=[
             {"s.file_id": file_id},
-            {"a.question_number": str(question_number)}
+            {"a.question_number": {"$in": [question_number, int(question_number)]}}
         ]
     )
+    
+    # Log the result for debugging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Updated question {question_number} for file {file_id} in evaluation {evaluation_id}. Modified count: {result.modified_count}")
+    
+    if result.modified_count == 0:
+        logger.warning(f"No questions were updated with array filters. Trying alternative approach...")
+        
+        # Alternative approach: Update the specific student and answer directly
+        try:
+            # First, find the evaluation to get the exact structure
+            evaluation = collection.find_one({"evaluation_id": evaluation_id})
+            if evaluation and "evaluation_result" in evaluation:
+                for student_idx, student in enumerate(evaluation["evaluation_result"].get("students", [])):
+                    if student.get("file_id") == file_id:
+                        # Find the answer index
+                        for answer_idx, answer in enumerate(student.get("answers", [])):
+                            if str(answer.get("question_number")) == question_number or answer.get("question_number") == int(question_number):
+                                # Update using positional operators
+                                update_result = collection.update_one(
+                                    {"evaluation_id": evaluation_id},
+                                    {"$set": {
+                                        f"evaluation_result.students.{student_idx}.answers.{answer_idx}.score": score,
+                                        f"evaluation_result.students.{student_idx}.answers.{answer_idx}.feedback": feedback
+                                    }}
+                                )
+                                logger.info(f"Alternative update successful. Modified count: {update_result.modified_count}")
+                                return
+                
+                logger.warning(f"Could not find student with file_id {file_id} or question {question_number}")
+            else:
+                logger.warning(f"Evaluation {evaluation_id} not found or missing evaluation_result")
+        except Exception as e:
+            logger.error(f"Error in alternative update approach: {str(e)}")
+            raise

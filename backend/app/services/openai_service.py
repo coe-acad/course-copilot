@@ -154,10 +154,6 @@ Quality over speed - it's better to take longer and extract everything correctly
             tool_resources={
                 "file_search": {
                     "vector_store_ids": [vector_store.id],
-                    "ranking_options": {
-                        "ranker": "default-2024-08-21",
-                        "score_threshold": 0.0
-                    }
                 }
             }
         )
