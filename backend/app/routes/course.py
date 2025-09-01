@@ -3,11 +3,11 @@ from pydantic import BaseModel
 from ..services import openai_service
 import logging
 from ..utils.verify_token import verify_token
-from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course, delete_course as delete_course_in_db, create_evaluation_scheme
+from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course, delete_course as delete_course_in_db, create_evaluation
 from ..routes.resources import create_course_description_file
 from app.utils.openai_client import client
-from ..services.openai_service import create_vector_store
-
+from ..services.openai_service import create_vector_store, create_evaluation_assistant_and_vector_store
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,25 +62,21 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
         create_course_description_file(course_id, user_id)
         
         # Create a default evaluation scheme for the course
-        from ..services.mongo import create_evaluation_scheme
-        from ..services.openai_service import create_evaluation_assistant_and_vector_store
-        from uuid import uuid4
-        
         # Create evaluation assistant and vector store for the default scheme
-        eval_id = str(uuid4())
-        eval_info = create_evaluation_assistant_and_vector_store(eval_id)
-        eval_assistant_id = eval_info[0]
-        eval_vector_store_id = eval_info[1]
+        # eval_id = str(uuid4())
+        # eval_info = create_evaluation_assistant_and_vector_store(eval_id)
+        # eval_assistant_id = eval_info[0]
+        # eval_vector_store_id = eval_info[1]
         
         # Create default evaluation scheme
-        create_evaluation_scheme(
-            course_id=course_id,
-            scheme_name=f"{request.name}_Default_Scheme",
-            scheme_description=f"Default evaluation scheme for {request.name}",
-            evaluation_assistant_id=eval_assistant_id,
-            vector_store_id=eval_vector_store_id,
-            mark_scheme_file_id=""  # Will be set when mark scheme is uploaded
-        )
+        # create_evaluation(
+        #     course_id=course_id,
+        #     scheme_name=f"{request.name}_Default_Scheme",
+        #     scheme_description=f"Default evaluation scheme for {request.name}",
+        #     evaluation_assistant_id=eval_assistant_id,
+        #     vector_store_id=eval_vector_store_id,
+        #     mark_scheme_file_id=""  # Will be set when mark scheme is uploaded
+        # )
         
         return CourseResponse(name = request.name, id = course_id)
     except Exception as e:
