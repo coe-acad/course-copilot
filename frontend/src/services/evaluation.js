@@ -29,7 +29,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Upload mark scheme error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to upload mark scheme');
     }
@@ -55,7 +55,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Upload answer sheets error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to upload answer sheets');
     }
@@ -79,7 +79,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Evaluation error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Evaluation failed');
     }
@@ -108,7 +108,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Update student result error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to update student result');
     }
@@ -136,7 +136,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Update student status error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to update student status');
     }
@@ -174,7 +174,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Edit question result error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to edit question result');
     }
@@ -200,7 +200,7 @@ export const evaluationService = {
     } catch (error) {
       console.error('Get student details error:', error);
       if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try agian.');
+        throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to get student details');
     }

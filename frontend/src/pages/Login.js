@@ -43,7 +43,7 @@ export default function Login() {
     setError("");
 
     try {
-      const loginResp = await login(email, password);
+      await login(email, password);
       navigate("/courses");
     } catch (err) {
       setError(err.detail || "Login failed. Please check credentials.");
