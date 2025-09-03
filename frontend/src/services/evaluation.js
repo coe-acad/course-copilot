@@ -112,63 +112,6 @@ export const evaluationService = {
     }
   },
 
-  async updateStudentResult({ evaluationId, studentIndex, questionScores, feedback }) {
-    try {
-      const user = getCurrentUser();
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      const res = await axios.put(`${API_BASE}/evaluation/update-student-result`, {
-        evaluation_id: evaluationId,
-        student_index: studentIndex,
-        question_scores: questionScores,
-        feedback: feedback
-      }, {
-        headers: { 
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return res.data; // { message: "Student result updated successfully", total_score: 15, status: "modified" }
-    } catch (error) {
-      console.error('Update student result error:', error);
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try again.');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to update student result');
-    }
-  },
-
-  async updateStudentStatus({ evaluationId, studentIndex, status }) {
-    try {
-      const user = getCurrentUser();
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      const res = await axios.put(`${API_BASE}/evaluation/update-student-status`, {
-        evaluation_id: evaluationId,
-        student_index: studentIndex,
-        status: status
-      }, {
-        headers: { 
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return res.data; // { message: "Student status updated successfully", status: "opened" }
-    } catch (error) {
-      console.error('Update student status error:', error);
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try again.');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to update student status');
-    }
-  },
-
   async editQuestionResult({ evaluationId, fileId, questionNumber, score, feedback }) {
     try {
       const user = getCurrentUser();
@@ -197,39 +140,13 @@ export const evaluationService = {
         }
       });
       
-      return res.data; // { message: "Results updated successfully" }
+      return res.data; // { message: "Results updated" }
     } catch (error) {
       console.error('Edit question result error:', error);
       if (error.response?.status === 401) {
         throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to edit question result');
-    }
-  },
-
-  async getStudentEvaluationDetails({ evaluationId, studentIndex }) {
-    try {
-      const user = getCurrentUser();
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      const res = await axios.get(`${API_BASE}/evaluation/student-details`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-        params: {
-          evaluation_id: evaluationId,
-          student_index: studentIndex,
-          user_id: user.id
-        }
-      });
-      
-      return res.data; // Student evaluation details
-    } catch (error) {
-      console.error('Get student details error:', error);
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try again.');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to get student details');
     }
   }
 }; 

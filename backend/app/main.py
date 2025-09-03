@@ -109,7 +109,6 @@ app.include_router(course.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
 app.include_router(asset.router, prefix="/api")
 app.include_router(evaluation.router, prefix="/api")
-app.include_router(evaluation.router, prefix="/api")
 
 # Google OAuth callback is now handled by the auth router at /api/callback
 

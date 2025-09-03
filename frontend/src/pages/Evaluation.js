@@ -30,6 +30,8 @@ export default function Evaluation() {
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
   const manualProgressRef = React.useRef(false);
   const evaluationCompletedRef = React.useRef(false);
+  const retryTimeoutRef = React.useRef(null);
+  const retryAttemptedRef = React.useRef(false);
 
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
@@ -134,7 +136,6 @@ export default function Evaluation() {
       }
     } finally {
       setIsUploadingMarkScheme(false);
-      setIsUploadingMarkScheme(false);
     }
   };
 
@@ -204,23 +205,38 @@ export default function Evaluation() {
       }, 1000);
 
       // Trigger backend evaluation; whenever it finishes, jump to 100%
+      const finishWithResult = (result) => {
+        evaluationCompletedRef.current = true;
+        setEvaluationResult(result);
+        setEvaluationProgress(100);
+        setEvaluationStatus('Evaluation completed!');
+        setIsEvaluating(false);
+        manualProgressRef.current = false;
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
+      };
+
       evaluationService.evaluateFiles(evaluationId)
-        .then(result => {
-          evaluationCompletedRef.current = true;
-          setEvaluationResult(result);
-          setEvaluationProgress(100);
-          setEvaluationStatus('Evaluation completed!');
-          setIsEvaluating(false);
-          manualProgressRef.current = false;
-        })
+        .then(finishWithResult)
         .catch(err => {
-          console.error('Evaluation error:', err);
-          evaluationCompletedRef.current = true;
-          setIsEvaluating(false);
-          setEvaluationStatus('Evaluation failed');
-          // Keep the last progress (likely 95%) to avoid abrupt drop
-          alert(err?.message || 'Evaluation failed');
-          manualProgressRef.current = false;
+          console.warn('Long evaluation call error (will defer one retry):', err?.message || err);
+          // Do NOT mark failed. Assume backend continues processing. Keep progress ~95%.
+          setEvaluationStatus('Backend is still processing... waiting for completion');
+          // Single deferred retry after a grace period (e.g., 2 minutes). No loop.
+          if (!retryAttemptedRef.current) {
+            retryAttemptedRef.current = true;
+            retryTimeoutRef.current = setTimeout(() => {
+              evaluationService.evaluateFiles(evaluationId)
+                .then(finishWithResult)
+                .catch(err2 => {
+                  console.warn('Deferred retry also failed:', err2?.message || err2);
+                  // Still do not hard-fail; user can retry manually by clicking Evaluate again.
+                  setEvaluationStatus('Still processing on backend... it may take a bit longer');
+                });
+            }, 120000); // 2 minutes
+          }
         });
        
     } catch (err) {
@@ -231,6 +247,15 @@ export default function Evaluation() {
       alert(err?.message || 'Evaluation failed');
     }
   };
+
+  // Cleanup any scheduled retry on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleStudentClick = async (studentIndex) => {
     console.log('Student clicked:', {
@@ -302,11 +327,7 @@ export default function Evaluation() {
         console.log('Updating status from unopened to opened for student:', studentIndex);
         console.log('Current student status:', student.status);
         
-        // Force immediate state update by creating a completely new object
-        const newEvaluationResult = JSON.parse(JSON.stringify(evaluationResult));
-        newEvaluationResult.evaluation_result.students[studentIndex].status = "opened";
-        
-        // Update the state immediately using callback approach
+        // Update status locally
         setEvaluationResult(prevState => {
           const updatedState = JSON.parse(JSON.stringify(prevState));
           updatedState.evaluation_result.students[studentIndex].status = "opened";
@@ -315,23 +336,6 @@ export default function Evaluation() {
         
         // Force a re-render by updating a separate state variable
         setForceUpdate(prev => prev + 1);
-        
-        console.log('Status updated to opened in local state');
-        console.log('New evaluation result state:', newEvaluationResult);
-        console.log('Updated student status:', newEvaluationResult.evaluation_result.students[studentIndex].status);
-        
-        // Also update the status in the backend
-        try {
-          await evaluationService.updateStudentStatus({
-            evaluationId: evaluationId,
-            studentIndex: studentIndex,
-            status: "opened"
-          });
-          console.log('Status updated in backend successfully');
-        } catch (error) {
-          console.error('Failed to update status in backend:', error);
-          // Don't show error to user, just log it
-        }
       }
       
       console.log('Student data found:', student);
@@ -340,7 +344,7 @@ export default function Evaluation() {
       setSelectedQuestionIndex(0);
       setIsEditing(false);
       setEditedQuestionScores([]);
-      setEditedFeedback('');
+      setEditedFeedback([]);
     } catch (error) {
       console.error('Error accessing student data:', error);
       alert('Error accessing student data. Please try again.');
@@ -1001,7 +1005,7 @@ export default function Evaluation() {
               marginBottom: '8px'
             }}>
               <span style={{ fontSize: '16px', fontWeight: 600, color: '#495057' }}>
-                {isEvaluating ? 'Evaluation in Progress...' : 'Evaluation Complete'}
+                {isEvaluating ? 'Evaluation in Progress' : 'Evaluation Complete'}
               </span>
               <span style={{ fontSize: '14px', fontWeight: 600, color: '#2563eb' }}>
                 {Math.round(evaluationProgress)}%
@@ -1330,43 +1334,43 @@ export default function Evaluation() {
                   </div>
                 )}
 
-            {answerSheetsUploaded && (
-              <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
-                <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Answer Sheets Uploaded</div>
-                <div style={{ fontSize: '14px', color: '#666' }}>Ready to start evaluation</div>
+                {answerSheetsUploaded && (
+                  <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
+                    <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Answer Sheets Uploaded</div>
+                    <div style={{ fontSize: '14px', color: '#666' }}>Ready to start evaluation</div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleEvaluate}
+                  disabled={isEvaluating || !answerSheetsUploaded}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    cursor: isEvaluating || !answerSheetsUploaded ? 'not-allowed' : 'pointer',
+                    opacity: isEvaluating || !answerSheetsUploaded ? 0.5 : 1
+                  }}
+                >
+                  {isEvaluating ? 'Evaluating...' : 'Evaluate →'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
+                <div style={{ fontSize: '18px', marginBottom: '8px' }}>Upload mark scheme first</div>
+                <div style={{ fontSize: '14px' }}>Complete the left side to upload answer sheets</div>
               </div>
             )}
-
-            <button
-              onClick={handleEvaluate}
-              disabled={isEvaluating || !answerSheetsUploaded}
-              style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: '8px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '16px',
-                cursor: isEvaluating || !answerSheetsUploaded ? 'not-allowed' : 'pointer',
-                opacity: isEvaluating || !answerSheetsUploaded ? 0.5 : 1
-              }}
-            >
-              {isEvaluating ? 'Evaluating...' : 'Evaluate →'}
-            </button>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
-            <div style={{ fontSize: '18px', marginBottom: '8px' }}>Upload mark scheme first</div>
-            <div style={{ fontSize: '14px' }}>Complete the left side to upload answer sheets</div>
-          </div>
-        )}
+        </div>
       </div>
-    </div>
-  </div>
 
-  <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-</div>
+      <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+    </div>
   );
 } 
