@@ -68,20 +68,47 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
+      console.log(`Starting evaluation for ID: ${evaluationId}`);
+
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         params: {
           evaluation_id: evaluationId,
           user_id: user.id
-        }
+        },
+        timeout: 1800000 // 30 minute timeout for production with multiple files
       });
+      
+      console.log('Evaluation completed successfully:', res.data);
       return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
     } catch (error) {
-      console.error('Evaluation error:', error);
+      console.error('Evaluation error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        evaluationId: evaluationId,
+        code: error.code
+      });
+      
       if (error.response?.status === 401) {
         throw new Error('Authentication failed. Please try again.');
       }
-      throw new Error(error.response?.data?.detail || 'Evaluation failed');
+      
+      if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
+        throw new Error('Processing is taking longer than expected. The evaluation may still be running in the background. Please check back in a few minutes or contact support.');
+      }
+      
+      if (error.response?.status >= 500) {
+        const errorDetail = error.response?.data?.detail || 'Server error during evaluation';
+        throw new Error(`Server error: ${errorDetail}. The backend may still be processing. Please try again in a few minutes.`);
+      }
+      
+      if (error.response?.status === 404) {
+        throw new Error('Evaluation session not found. Please restart the evaluation process.');
+      }
+      
+      throw new Error(error.response?.data?.detail || `Evaluation failed: ${error.message}`);
     }
   },
 

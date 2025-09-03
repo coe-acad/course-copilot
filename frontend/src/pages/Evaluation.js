@@ -47,15 +47,30 @@ export default function Evaluation() {
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
       
-      // Calculate timing: 90 seconds per file to reach 95%
-      const totalTimeToReach95 = answerSheetFiles.length * 90 * 1000; // 90 seconds per file in milliseconds
-      const progressStep = 95 / (totalTimeToReach95 / 1000); // Progress per second to reach 95%
-      
-      console.log(`Progress setup: ${answerSheetFiles.length} files, ${totalTimeToReach95/1000} seconds to 95%`);
+      // More conservative timing for production - slower progress that gives backend more time
+      let currentProgress = 0;
       
       progressInterval = setInterval(() => {
         setEvaluationProgress(prev => {
-          const newProgress = prev + progressStep;
+          currentProgress = prev;
+          
+          // Adaptive progress speed - slower as we approach 95%
+          let progressIncrement;
+          if (currentProgress < 50) {
+            progressIncrement = 2; // Fast initially (2% per second)
+          } else if (currentProgress < 80) {
+            progressIncrement = 1; // Medium speed (1% per second)
+          } else if (currentProgress < 90) {
+            progressIncrement = 0.5; // Slow down (0.5% per second)
+          } else if (currentProgress < 95) {
+            progressIncrement = 0.2; // Very slow approach to 95% (0.2% per second)
+          } else {
+            // Stop at 95% and wait for backend
+            setEvaluationStatus('Backend processing files... Please wait...');
+            return 95;
+          }
+          
+          const newProgress = currentProgress + progressIncrement;
           
           // Update status based on progress
           if (newProgress < 20) {
@@ -66,11 +81,10 @@ export default function Evaluation() {
             setEvaluationStatus('Evaluating student responses...');
           } else if (newProgress < 80) {
             setEvaluationStatus('Calculating scores...');
-          } else if (newProgress < 95) {
+          } else if (newProgress < 90) {
             setEvaluationStatus('Finalizing evaluation...');
-          } else {
-            setEvaluationStatus('Waiting for backend to complete...');
-            return 95; // Stop exactly at 95%
+          } else if (newProgress < 95) {
+            setEvaluationStatus(`Processing ${answerSheetFiles.length} files...`);
           }
           
           return Math.min(newProgress, 95);
