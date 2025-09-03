@@ -28,6 +28,8 @@ export default function Evaluation() {
   const [editedFeedback, setEditedFeedback] = useState([]); // Array for per-question feedback
   const [isSaving, setIsSaving] = useState(false); // Loading state for save operation
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
+  const manualProgressRef = React.useRef(false);
+  const evaluationCompletedRef = React.useRef(false);
 
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
@@ -43,7 +45,7 @@ export default function Evaluation() {
   useEffect(() => {
     let progressInterval;
     
-    if (isEvaluating && showResults) {
+    if (isEvaluating && showResults && !manualProgressRef.current) {
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
       
@@ -174,16 +176,53 @@ export default function Evaluation() {
       setShowResults(true); // Show results page immediately
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
-      
-      // Wait for the backend evaluation to complete
-      const result = await evaluationService.evaluateFiles(evaluationId);
-      
-      // Backend completed successfully - set to 100%
-      setEvaluationResult(result);
-      setIsEvaluating(false); // Stop the progress simulation
-      setEvaluationProgress(100);
-      setEvaluationStatus('Evaluation completed!');
-      
+
+      // Start precise progress simulation up to 95%: 90 seconds per file
+      manualProgressRef.current = true;
+      evaluationCompletedRef.current = false;
+      const totalSecondsTo95 = Math.max(1, (answerSheetFiles?.length || 1) * 90);
+      let elapsedSeconds = 0;
+      const progressTimer = setInterval(() => {
+        if (evaluationCompletedRef.current) {
+          clearInterval(progressTimer);
+          return;
+        }
+        elapsedSeconds += 1;
+        const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
+        setEvaluationProgress(prev => (target > prev ? target : prev));
+        // Update status bands
+        if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
+        else if (target < 40) setEvaluationStatus('Processing answer sheets...');
+        else if (target < 60) setEvaluationStatus('Evaluating student responses...');
+        else if (target < 80) setEvaluationStatus('Calculating scores...');
+        else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
+        else setEvaluationStatus('Waiting for backend to complete...');
+
+        if (target >= 95) {
+          clearInterval(progressTimer); // Stop at exactly 95% and wait for backend
+        }
+      }, 1000);
+
+      // Trigger backend evaluation; whenever it finishes, jump to 100%
+      evaluationService.evaluateFiles(evaluationId)
+        .then(result => {
+          evaluationCompletedRef.current = true;
+          setEvaluationResult(result);
+          setEvaluationProgress(100);
+          setEvaluationStatus('Evaluation completed!');
+          setIsEvaluating(false);
+          manualProgressRef.current = false;
+        })
+        .catch(err => {
+          console.error('Evaluation error:', err);
+          evaluationCompletedRef.current = true;
+          setIsEvaluating(false);
+          setEvaluationStatus('Evaluation failed');
+          // Keep the last progress (likely 95%) to avoid abrupt drop
+          alert(err?.message || 'Evaluation failed');
+          manualProgressRef.current = false;
+        });
+       
     } catch (err) {
       console.error('Evaluation error:', err);
       setIsEvaluating(false); // Stop the progress simulation
