@@ -611,7 +611,7 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     try:
         evaluation_result = json.loads(structured_output)
         if "properties" in evaluation_result and "type" in evaluation_result:
-            raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results")
+            raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results, please try again")
         if "evaluation_id" not in evaluation_result:
             evaluation_result["evaluation_id"] = evaluation_id
         if "students" not in evaluation_result:

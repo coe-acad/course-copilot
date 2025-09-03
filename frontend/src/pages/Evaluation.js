@@ -42,47 +42,44 @@ export default function Evaluation() {
   // Simulate evaluation progress
   useEffect(() => {
     let progressInterval;
-    let statusInterval;
     
     if (isEvaluating && showResults) {
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
       
-      // Simple progress simulation - goes from 0 to 95% over time
-      const totalSimulationTime = answerSheetFiles.length * 60 * 1000; // 60 seconds per file
-      const progressStep = 95 / (totalSimulationTime / 500); // Update every 500ms
+      // Calculate timing: 90 seconds per file to reach 95%
+      const totalTimeToReach95 = answerSheetFiles.length * 90 * 1000; // 90 seconds per file in milliseconds
+      const progressStep = 95 / (totalTimeToReach95 / 1000); // Progress per second to reach 95%
+      
+      console.log(`Progress setup: ${answerSheetFiles.length} files, ${totalTimeToReach95/1000} seconds to 95%`);
       
       progressInterval = setInterval(() => {
         setEvaluationProgress(prev => {
-          if (prev >= 95) {
-            return 95; // Stop at 95% and let the backend completion handle 100%
-          }
-          return Math.min(prev + progressStep, 95);
-        });
-      }, 500);
-
-      // Update status messages periodically
-      statusInterval = setInterval(() => {
-        setEvaluationProgress(prev => {
-          if (prev < 20) {
+          const newProgress = prev + progressStep;
+          
+          // Update status based on progress
+          if (newProgress < 20) {
             setEvaluationStatus('Analyzing mark scheme...');
-          } else if (prev < 40) {
+          } else if (newProgress < 40) {
             setEvaluationStatus('Processing answer sheets...');
-          } else if (prev < 60) {
+          } else if (newProgress < 60) {
             setEvaluationStatus('Evaluating student responses...');
-          } else if (prev < 80) {
+          } else if (newProgress < 80) {
             setEvaluationStatus('Calculating scores...');
-          } else if (prev >= 80) {
+          } else if (newProgress < 95) {
             setEvaluationStatus('Finalizing evaluation...');
+          } else {
+            setEvaluationStatus('Waiting for backend to complete...');
+            return 95; // Stop exactly at 95%
           }
-          return prev;
+          
+          return Math.min(newProgress, 95);
         });
-      }, 3000);
+      }, 1000); // Update every second
     }
 
     return () => {
       if (progressInterval) clearInterval(progressInterval);
-      if (statusInterval) clearInterval(statusInterval);
     };
   }, [isEvaluating, showResults, answerSheetFiles.length]);
 
@@ -164,22 +161,18 @@ export default function Evaluation() {
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
       
-      // Simple approach: Just wait for the backend, no complex timing
+      // Wait for the backend evaluation to complete
       const result = await evaluationService.evaluateFiles(evaluationId);
       
-      // Backend completed successfully - immediately set everything to completed state
+      // Backend completed successfully - set to 100%
       setEvaluationResult(result);
-      setIsEvaluating(false); // Stop the progress simulation first
-      
-      // Small delay to ensure progress simulation stops, then set to 100%
-      setTimeout(() => {
-        setEvaluationProgress(100);
-        setEvaluationStatus('Evaluation completed!');
-      }, 100);
+      setIsEvaluating(false); // Stop the progress simulation
+      setEvaluationProgress(100);
+      setEvaluationStatus('Evaluation completed!');
       
     } catch (err) {
       console.error('Evaluation error:', err);
-      setIsEvaluating(false); // Stop the progress simulation first
+      setIsEvaluating(false); // Stop the progress simulation
       setEvaluationStatus('Evaluation failed');
       setEvaluationProgress(0);
       alert(err?.message || 'Evaluation failed');
