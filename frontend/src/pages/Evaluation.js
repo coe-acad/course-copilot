@@ -30,8 +30,8 @@ export default function Evaluation() {
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
   const manualProgressRef = React.useRef(false);
   const evaluationCompletedRef = React.useRef(false);
-  const retryTimeoutRef = React.useRef(null);
-  const retryAttemptedRef = React.useRef(false);
+
+  const evaluationInProgressRef = React.useRef(false);
 
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
@@ -111,6 +111,13 @@ export default function Evaluation() {
     if (!fileToUpload) {
       return; // No need to show alert for auto-upload
     }
+    
+    // Prevent duplicate uploads of the same file
+    if (isUploadingMarkScheme) {
+      console.log('Mark scheme upload already in progress, ignoring duplicate call');
+      return;
+    }
+    
     try {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
@@ -148,6 +155,13 @@ export default function Evaluation() {
     if (!filesToUpload || filesToUpload.length === 0) {
       return; // No need to show alert for auto-upload
     }
+    
+    // Prevent duplicate uploads
+    if (isUploadingAnswerSheets) {
+      console.log('Answer sheets upload already in progress, ignoring duplicate call');
+      return;
+    }
+    
     try {
       setIsUploadingAnswerSheets(true);
       
@@ -171,6 +185,14 @@ export default function Evaluation() {
       alert('Please upload both mark scheme and answer sheets first.');
       return;
     }
+    
+    // Prevent duplicate evaluation calls
+    if (evaluationInProgressRef.current || isEvaluating) {
+      console.log('Evaluation already in progress, ignoring duplicate call');
+      return;
+    }
+    
+    evaluationInProgressRef.current = true;
     
     try {
       setIsEvaluating(true);
@@ -207,40 +229,30 @@ export default function Evaluation() {
       // Trigger backend evaluation; whenever it finishes, jump to 100%
       const finishWithResult = (result) => {
         evaluationCompletedRef.current = true;
+        evaluationInProgressRef.current = false; // Reset the flag
         setEvaluationResult(result);
         setEvaluationProgress(100);
         setEvaluationStatus('Evaluation completed!');
         setIsEvaluating(false);
         manualProgressRef.current = false;
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = null;
-        }
+
       };
 
       evaluationService.evaluateFiles(evaluationId)
         .then(finishWithResult)
         .catch(err => {
-          console.warn('Long evaluation call error (will defer one retry):', err?.message || err);
-          // Do NOT mark failed. Assume backend continues processing. Keep progress ~95%.
-          setEvaluationStatus('Backend is still processing... waiting for completion');
-          // Single deferred retry after a grace period (e.g., 2 minutes). No loop.
-          if (!retryAttemptedRef.current) {
-            retryAttemptedRef.current = true;
-            retryTimeoutRef.current = setTimeout(() => {
-              evaluationService.evaluateFiles(evaluationId)
-                .then(finishWithResult)
-                .catch(err2 => {
-                  console.warn('Deferred retry also failed:', err2?.message || err2);
-                  // Still do not hard-fail; user can retry manually by clicking Evaluate again.
-                  setEvaluationStatus('Still processing on backend... it may take a bit longer');
-                });
-            }, 120000); // 2 minutes
-          }
+          console.warn('Evaluation call error:', err?.message || err);
+          evaluationInProgressRef.current = false; // Reset the flag to allow manual retry
+          setIsEvaluating(false);
+          setEvaluationStatus('Evaluation failed - please try again');
+          setEvaluationProgress(0);
+          manualProgressRef.current = false;
+          alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
         });
        
     } catch (err) {
       console.error('Evaluation error:', err);
+      evaluationInProgressRef.current = false; // Reset the flag
       setIsEvaluating(false); // Stop the progress simulation
       setEvaluationStatus('Evaluation failed');
       setEvaluationProgress(0);
@@ -248,14 +260,7 @@ export default function Evaluation() {
     }
   };
 
-  // Cleanup any scheduled retry on unmount
-  useEffect(() => {
-    return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
-    };
-  }, []);
+
 
   const handleStudentClick = async (studentIndex) => {
     console.log('Student clicked:', {
@@ -1343,7 +1348,7 @@ export default function Evaluation() {
 
                 <button
                   onClick={handleEvaluate}
-                  disabled={isEvaluating || !answerSheetsUploaded}
+                  disabled={isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current}
                   style={{
                     width: '100%',
                     padding: '16px',
@@ -1353,8 +1358,8 @@ export default function Evaluation() {
                     color: '#fff',
                     fontWeight: 600,
                     fontSize: '16px',
-                    cursor: isEvaluating || !answerSheetsUploaded ? 'not-allowed' : 'pointer',
-                    opacity: isEvaluating || !answerSheetsUploaded ? 0.5 : 1
+                    cursor: isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current ? 'not-allowed' : 'pointer',
+                    opacity: isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current ? 0.5 : 1
                   }}
                 >
                   {isEvaluating ? 'Evaluating...' : 'Evaluate →'}

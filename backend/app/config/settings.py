@@ -32,10 +32,15 @@ class Settings:
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     
     # CORS Configuration
-    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8000,http://localhost:8501").split(",")
+    CORS_ORIGINS: List[str] = [
+        origin.strip() for origin in os.getenv(
+            "CORS_ORIGINS", 
+            "http://localhost:3000,http://localhost:8000,http://localhost:8501,https://course-copilot.atriauniversity.ai"
+        ).split(",") if origin.strip()
+    ]
     CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "True").lower() == "true"
     CORS_ALLOW_METHODS: List[str] = os.getenv("CORS_ALLOW_METHODS", "GET,POST,PUT,DELETE,OPTIONS").split(",")
-    CORS_ALLOW_HEADERS: List[str] = os.getenv("CORS_ALLOW_HEADERS", "Authorization,Content-Type,Accept,Origin,User-Agent").split(",")
+    CORS_ALLOW_HEADERS: List[str] = os.getenv("CORS_ALLOW_HEADERS", "Authorization,Content-Type,Accept,Origin,User-Agent,X-Requested-With").split(",")
     CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range").split(",")
     CORS_MAX_AGE: int = int(os.getenv("CORS_MAX_AGE", "3600"))
     

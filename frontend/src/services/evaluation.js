@@ -4,6 +4,11 @@ import { getCurrentUser } from './auth';
 const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 const API_BASE = new URL('/api', baseUrl).toString();
 
+// Track ongoing evaluation requests to prevent duplicates
+const ongoingEvaluations = new Set();
+// Track last evaluation request timestamps to prevent rapid duplicates
+const lastEvaluationTime = new Map();
+
 function getToken() {
   const user = getCurrentUser();
   if (!user || !user.token) {
@@ -62,9 +67,28 @@ export const evaluationService = {
   },
 
   async evaluateFiles(evaluationId) {
+    const now = Date.now();
+    const lastRequestTime = lastEvaluationTime.get(evaluationId) || 0;
+    
+    // Prevent duplicate requests for the same evaluation
+    if (ongoingEvaluations.has(evaluationId)) {
+      console.log(`Evaluation for ${evaluationId} already in progress, ignoring duplicate request`);
+      throw new Error('Evaluation already in progress for this ID');
+    }
+    
+    // NUCLEAR PROTECTION: Prevent rapid successive requests (within 3 seconds)
+    if (now - lastRequestTime < 3000) {
+      console.log(`🚫 SERVICE BLOCKED: Evaluation request for ${evaluationId} made too soon (${now - lastRequestTime}ms ago)`);
+      throw new Error('Duplicate request blocked - please wait');
+    }
+    
+    ongoingEvaluations.add(evaluationId);
+    lastEvaluationTime.set(evaluationId, now);
+    
     try {
       const user = getCurrentUser();
       if (!user?.id) {
+        ongoingEvaluations.delete(evaluationId);
         throw new Error('User not authenticated');
       }
 
@@ -80,6 +104,7 @@ export const evaluationService = {
       });
       
       console.log('Evaluation completed successfully:', res.data);
+      ongoingEvaluations.delete(evaluationId); // Clean up tracking
       return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
     } catch (error) {
       console.error('Evaluation error details:', {
@@ -108,6 +133,8 @@ export const evaluationService = {
         throw new Error('Evaluation session not found. Please restart the evaluation process.');
       }
       
+      // Always clean up tracking in catch block
+      ongoingEvaluations.delete(evaluationId);
       throw new Error(error.response?.data?.detail || `Evaluation failed: ${error.message}`);
     }
   },
