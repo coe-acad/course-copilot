@@ -14,7 +14,16 @@ from concurrent.futures import ThreadPoolExecutor
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Endpoints will be implemented here later. 
+def _process_evaluation(evaluation_id, user_id, evaluation):
+    """Process evaluation in background"""
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
+        fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, evaluation["answer_sheet_file_ids"])
+        extracted_mark_scheme = fut_ms.result()
+        extracted_answer_sheets = fut_as.result()
+    
+    evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
+    update_evaluation_with_result(evaluation_id, evaluation_result)# Endpoints will be implemented here later. 
 class UploadFilesRequest(BaseModel):
     user_id: str
     course_id: str
@@ -93,24 +102,21 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
-@router.options("/evaluation/evaluate-files")
-def evaluate_files_options():
-    """Handle CORS preflight for evaluate-files endpoint"""
-    return {"message": "OK"}
-
 @router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
-def evaluate_files(evaluation_id: str, user_id: str):
+async def evaluate_files(evaluation_id: str, user_id: str):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
             raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
         
         answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
-        logger.info(f"Found {len(answer_sheet_file_ids)} answer sheets for evaluation {evaluation_id}")
+        # Multiple files = background processing to avoid Cloudflare timeout
+        if len(answer_sheet_file_ids) > 1:
+            import asyncio
+            asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
+            return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
         
-        logger.info(f"Starting individual evaluation for {evaluation_id} with {len(answer_sheet_file_ids)} answer sheets")
-        
-        # Perform individual evaluation (processes each file separately)
+        # Single file = process normally
         with ThreadPoolExecutor(max_workers=2) as executor:
             fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
             fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, answer_sheet_file_ids)

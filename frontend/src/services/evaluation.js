@@ -100,10 +100,17 @@ export const evaluationService = {
           evaluation_id: evaluationId,
           user_id: user.id
         },
-        timeout: 1800000 // 30 minute timeout for production with multiple files
+        timeout: 30000 // 30 seconds - backend returns immediately for multiple files
       });
       
-      console.log('Evaluation completed successfully:', res.data);
+            console.log('Evaluation response received:', res.data);
+      
+      // If backend is processing in background, poll for completion
+      if (res.data.evaluation_result?.status === 'processing') {
+        ongoingEvaluations.delete(evaluationId);
+        return await this.waitForCompletion(evaluationId);
+      }
+      
       ongoingEvaluations.delete(evaluationId); // Clean up tracking
       return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
     } catch (error) {
@@ -136,7 +143,25 @@ export const evaluationService = {
       // Always clean up tracking in catch block
       ongoingEvaluations.delete(evaluationId);
       throw new Error(error.response?.data?.detail || `Evaluation failed: ${error.message}`);
+        }
+  },
+
+  async waitForCompletion(evaluationId) {
+    // Simple polling - check every 10 seconds for up to 15 minutes
+    for (let i = 0; i < 90; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+      
+      const res = await axios.get(`${API_BASE}/evaluation/check/${evaluationId}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        timeout: 10000
+      });
+      
+      if (res.data.status === 'completed') {
+        return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
+      }
     }
+    
+    throw new Error('Evaluation timed out after 15 minutes');
   },
 
   async editQuestionResult({ evaluationId, fileId, questionNumber, score, feedback }) {
