@@ -93,6 +93,11 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
+@router.options("/evaluation/evaluate-files")
+def evaluate_files_options():
+    """Handle CORS preflight for evaluate-files endpoint"""
+    return {"message": "OK"}
+
 @router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
 def evaluate_files(evaluation_id: str, user_id: str):
     try:

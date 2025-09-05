@@ -35,7 +35,7 @@ class Settings:
     CORS_ORIGINS: List[str] = [
         origin.strip() for origin in os.getenv(
             "CORS_ORIGINS", 
-            "http://localhost:3000,http://localhost:8000,http://localhost:8501,https://course-copilot.atriauniversity.ai"
+            "http://localhost:3000,http://localhost:8000,http://localhost:8501,https://course-copilot.atriauniversity.ai,https://course-copilot-api.atriauniversity.ai"
         ).split(",") if origin.strip()
     ]
     CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "True").lower() == "true"
