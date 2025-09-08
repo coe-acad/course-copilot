@@ -94,20 +94,22 @@ export const evaluationService = {
 
       console.log(`Starting evaluation for ID: ${evaluationId}`);
 
+      // Use a longer timeout for initial request, but still handle background processing
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         params: {
           evaluation_id: evaluationId,
           user_id: user.id
         },
-        timeout: 30000 // 30 seconds - backend returns immediately for multiple files
+        timeout: 120000 // Increased to 2 minutes for initial request
       });
       
-            console.log('Evaluation response received:', res.data);
+      console.log('Evaluation response received:', res.data);
       
       // If backend is processing in background, poll for completion
       if (res.data.evaluation_result?.status === 'processing') {
         ongoingEvaluations.delete(evaluationId);
+        console.log('Backend returned processing status, starting polling...');
         return await this.waitForCompletion(evaluationId);
       }
       
@@ -127,8 +129,17 @@ export const evaluationService = {
         throw new Error('Authentication failed. Please try again.');
       }
       
+      // Handle timeout by switching to polling mode
       if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
-        throw new Error('Processing is taking longer than expected. The evaluation may still be running in the background. Please check back in a few minutes or contact support.');
+        console.log('Request timed out, switching to polling mode...');
+        ongoingEvaluations.delete(evaluationId);
+        
+        // Start polling immediately when timeout occurs
+        try {
+          return await this.waitForCompletion(evaluationId);
+        } catch (pollingError) {
+          throw new Error('Evaluation is taking longer than expected. The process may still be running. Please check back later or contact support if the issue persists.');
+        }
       }
       
       if (error.response?.status >= 500) {
@@ -147,21 +158,58 @@ export const evaluationService = {
   },
 
   async waitForCompletion(evaluationId) {
-    // Simple polling - check every 10 seconds for up to 15 minutes
-    for (let i = 0; i < 90; i++) {
-      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+    // Enhanced polling - check every 5 seconds for up to 20 minutes
+    for (let i = 0; i < 240; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
       
-      const res = await axios.get(`${API_BASE}/evaluation/check/${evaluationId}`, {
+      try {
+        const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` },
+          timeout: 10000
+        });
+        
+        console.log(`Polling attempt ${i + 1}: Status check response:`, res.data);
+        
+        if (res.data.status === 'completed') {
+          console.log('Evaluation completed! Returning results');
+          return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
+        }
+        
+        // Log progress for debugging
+        if (i % 6 === 0) { // Every 30 seconds
+          console.log(`Still polling... Attempt ${i + 1}/240 (${Math.round((i + 1) / 240 * 100)}% of max polling time)`);
+        }
+      } catch (error) {
+        console.warn(`Polling attempt ${i + 1} failed:`, error.message);
+        // Continue polling even if individual requests fail
+        if (error.response?.status === 401) {
+          throw new Error('Authentication failed during polling');
+        }
+      }
+    }
+    
+    throw new Error('Evaluation timed out after 20 minutes. Please check the evaluation status manually.');
+  },
+
+  async checkEvaluationStatus(evaluationId) {
+    try {
+      const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         timeout: 10000
       });
       
-      if (res.data.status === 'completed') {
-        return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
+      console.log('Status check response:', res.data);
+      return res.data; // { status: "completed" | "processing", evaluation_result?: {...} }
+    } catch (error) {
+      console.error('Status check error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
       }
+      if (error.response?.status === 404) {
+        throw new Error('Evaluation not found.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to check evaluation status');
     }
-    
-    throw new Error('Evaluation timed out after 15 minutes');
   },
 
   async editQuestionResult({ evaluationId, fileId, questionNumber, score, feedback }) {

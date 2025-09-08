@@ -223,6 +223,8 @@ export default function Evaluation() {
 
         if (target >= 95) {
           clearInterval(progressTimer); // Stop at exactly 95% and wait for backend
+          // Start polling for completion after reaching 95%
+          startPollingForCompletion();
         }
       }, 1000);
 
@@ -235,19 +237,81 @@ export default function Evaluation() {
         setEvaluationStatus('Evaluation completed!');
         setIsEvaluating(false);
         manualProgressRef.current = false;
-
       };
 
+      // Start polling function that monitors status after 95%
+      const startPollingForCompletion = async () => {
+        if (evaluationCompletedRef.current) return;
+        
+        console.log('Starting polling for completion at 95%...');
+        setEvaluationStatus('Backend processing complete files... Please wait...');
+        
+        try {
+          // Poll every 5 seconds until completion
+          const pollInterval = setInterval(async () => {
+            if (evaluationCompletedRef.current) {
+              clearInterval(pollInterval);
+              return;
+            }
+            
+            try {
+              console.log('Polling evaluation status...');
+              const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId);
+              
+              if (statusResponse.status === 'completed' && statusResponse.evaluation_result) {
+                console.log('Evaluation completed via polling!');
+                clearInterval(pollInterval);
+                finishWithResult({
+                  evaluation_id: evaluationId,
+                  evaluation_result: statusResponse.evaluation_result
+                });
+              } else {
+                console.log('Still processing, continuing to poll...');
+                setEvaluationStatus('Backend still processing... Please wait...');
+              }
+            } catch (pollError) {
+              console.warn('Polling error (will retry):', pollError.message);
+              // Continue polling even if individual requests fail
+            }
+          }, 5000); // Poll every 5 seconds
+          
+          // Safety timeout after 20 minutes of polling
+          setTimeout(() => {
+            if (!evaluationCompletedRef.current) {
+              clearInterval(pollInterval);
+              evaluationInProgressRef.current = false;
+              setIsEvaluating(false);
+              setEvaluationStatus('Evaluation timed out - please try again');
+              setEvaluationProgress(0);
+              manualProgressRef.current = false;
+              alert('Evaluation timed out after 20 minutes. Please try refreshing and checking again, or contact support.');
+            }
+          }, 20 * 60 * 1000); // 20 minutes
+          
+        } catch (error) {
+          console.error('Error starting polling:', error);
+          evaluationInProgressRef.current = false;
+          setIsEvaluating(false);
+          setEvaluationStatus('Polling failed - please try again');
+          alert('Failed to monitor evaluation status: ' + error.message);
+        }
+      };
+
+      // Also try the original evaluation service call (for single files or immediate completion)
       evaluationService.evaluateFiles(evaluationId)
         .then(finishWithResult)
         .catch(err => {
-          console.warn('Evaluation call error:', err?.message || err);
-          evaluationInProgressRef.current = false; // Reset the flag to allow manual retry
-          setIsEvaluating(false);
-          setEvaluationStatus('Evaluation failed - please try again');
-          setEvaluationProgress(0);
-          manualProgressRef.current = false;
-          alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
+          console.warn('Evaluation service call failed, relying on polling:', err?.message || err);
+          // Don't fail here - let polling handle the completion
+          // Only fail if it's a clear authentication or setup error
+          if (err?.message?.includes('Authentication failed') || err?.message?.includes('not found')) {
+            evaluationInProgressRef.current = false;
+            setIsEvaluating(false);
+            setEvaluationStatus('Evaluation failed - please try again');
+            setEvaluationProgress(0);
+            manualProgressRef.current = false;
+            alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
+          }
         });
        
     } catch (err) {

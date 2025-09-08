@@ -5,6 +5,7 @@ from typing import List, Optional
 import logging
 import json
 from uuid import uuid4
+import asyncio
 from flask import request
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, db
@@ -14,16 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-def _process_evaluation(evaluation_id, user_id, evaluation):
-    """Process evaluation in background"""
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
-        fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, evaluation["answer_sheet_file_ids"])
-        extracted_mark_scheme = fut_ms.result()
-        extracted_answer_sheets = fut_as.result()
-    
-    evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
-    update_evaluation_with_result(evaluation_id, evaluation_result)# Endpoints will be implemented here later. 
 class UploadFilesRequest(BaseModel):
     user_id: str
     course_id: str
@@ -39,6 +30,17 @@ class EditresultRequest(BaseModel):
     question_number: str
     score: float
     feedback: str
+
+def _process_evaluation(evaluation_id, user_id, evaluation):
+    """Process evaluation in background"""
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
+        fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, evaluation["answer_sheet_file_ids"])
+        extracted_mark_scheme = fut_ms.result()
+        extracted_answer_sheets = fut_as.result()
+    
+    evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
+    update_evaluation_with_result(evaluation_id, evaluation_result)
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
@@ -112,7 +114,6 @@ async def evaluate_files(evaluation_id: str, user_id: str):
         answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
         # Multiple files = background processing to avoid Cloudflare timeout
         if len(answer_sheet_file_ids) > 1:
-            import asyncio
             asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
             return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
         
@@ -135,7 +136,6 @@ async def evaluate_files(evaluation_id: str, user_id: str):
     except Exception as e:
         logger.error(f"Error extracting answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error extracting answer sheets: {str(e)}")
-
 
 @router.put("/evaluation/edit-results")
 def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token)):
@@ -169,3 +169,9 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/evaluation/status/{evaluation_id}")
+def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
+    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    if evaluation and "evaluation_result" in evaluation:
+        return {"status": "completed", "evaluation_result": evaluation["evaluation_result"]}
+    return {"status": "processing"}
