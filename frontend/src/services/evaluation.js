@@ -8,6 +8,8 @@ const API_BASE = new URL('/api', baseUrl).toString();
 const ongoingEvaluations = new Set();
 // Track last evaluation request timestamps to prevent rapid duplicates
 const lastEvaluationTime = new Map();
+// Track completed evaluations to prevent re-evaluation
+const completedEvaluations = new Set();
 
 function getToken() {
   const user = getCurrentUser();
@@ -18,6 +20,13 @@ function getToken() {
 }
 
 export const evaluationService = {
+  // Clear completed evaluations tracking (useful when starting fresh)
+  clearCompletedEvaluations() {
+    completedEvaluations.clear();
+    ongoingEvaluations.clear();
+    console.log('Cleared all evaluation tracking state');
+  },
+
   async uploadMarkScheme({ courseId, markSchemeFile }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
@@ -70,6 +79,12 @@ export const evaluationService = {
     const now = Date.now();
     const lastRequestTime = lastEvaluationTime.get(evaluationId) || 0;
     
+    // Check if this evaluation is already completed
+    if (completedEvaluations.has(evaluationId)) {
+      console.log(`Evaluation ${evaluationId} already completed, rejecting duplicate request`);
+      throw new Error('This evaluation has already been completed. Please refresh the page.');
+    }
+    
     // Prevent duplicate requests for the same evaluation
     if (ongoingEvaluations.has(evaluationId)) {
       console.log(`Evaluation for ${evaluationId} already in progress, ignoring duplicate request`);
@@ -111,6 +126,12 @@ export const evaluationService = {
         ongoingEvaluations.delete(evaluationId);
         console.log('Backend returned processing status, starting polling...');
         return await this.waitForCompletion(evaluationId);
+      }
+      
+      // Mark as completed to prevent re-evaluation
+      if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
+        completedEvaluations.add(evaluationId);
+        console.log(`Marking evaluation ${evaluationId} as completed`);
       }
       
       ongoingEvaluations.delete(evaluationId); // Clean up tracking
@@ -172,6 +193,9 @@ export const evaluationService = {
         
         if (res.data.status === 'completed') {
           console.log('Evaluation completed! Returning results');
+          // Mark as completed to prevent re-evaluation
+          completedEvaluations.add(evaluationId);
+          console.log(`Marking evaluation ${evaluationId} as completed via waitForCompletion`);
           return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
         }
         
@@ -199,16 +223,71 @@ export const evaluationService = {
       });
       
       console.log('Status check response:', res.data);
+      
+      // Mark as completed if we get a completed status
+      if (res.data.status === 'completed') {
+        completedEvaluations.add(evaluationId);
+        console.log(`Marking evaluation ${evaluationId} as completed via checkEvaluationStatus`);
+      }
+      
       return res.data; // { status: "completed" | "processing", evaluation_result?: {...} }
     } catch (error) {
       console.error('Status check error:', error);
+      
       if (error.response?.status === 401) {
         throw new Error('Authentication failed. Please try again.');
       }
+      
       if (error.response?.status === 404) {
-        throw new Error('Evaluation not found.');
+        // 404 might mean the evaluation was not created properly or was deleted
+        // Let's provide more context
+        console.warn(`Evaluation ${evaluationId} not found (404). This might be a timing issue or the evaluation was not created properly.`);
+        throw new Error('Evaluation not found. Please try restarting the evaluation process.');
       }
+      
+      if (error.response?.status >= 500) {
+        throw new Error('Server error while checking evaluation status. Please try again.');
+      }
+      
+      // For other errors, provide a generic message but don't fail completely
+      console.warn('Status check failed, but continuing to retry:', error.message);
       throw new Error(error.response?.data?.detail || 'Failed to check evaluation status');
+    }
+  },
+
+  async checkCompletedEvaluation(evaluationId) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log(`Checking completed evaluation for ID: ${evaluationId}`);
+      
+      // Try the original evaluate-files endpoint to see if results are ready
+      const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+        params: {
+          evaluation_id: evaluationId,
+          user_id: user.id
+        },
+        timeout: 10000
+      });
+      
+      console.log('Fallback evaluation check response:', res.data);
+      
+      // If we get results, return them
+      if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
+        // Mark as completed to prevent re-evaluation
+        completedEvaluations.add(evaluationId);
+        console.log(`Marking evaluation ${evaluationId} as completed via checkCompletedEvaluation`);
+        return { status: 'completed', evaluation_result: res.data.evaluation_result };
+      }
+      
+      return { status: 'processing' };
+    } catch (error) {
+      console.error('Fallback evaluation check error:', error);
+      throw error;
     }
   },
 

@@ -192,6 +192,9 @@ export default function Evaluation() {
       return;
     }
     
+    // Clear any previous evaluation tracking state
+    evaluationService.clearCompletedEvaluations();
+    
     evaluationInProgressRef.current = true;
     
     try {
@@ -237,19 +240,30 @@ export default function Evaluation() {
         setEvaluationStatus('Evaluation completed!');
         setIsEvaluating(false);
         manualProgressRef.current = false;
+        
+        // Clear any ongoing polling to prevent duplicate requests
+        console.log('Evaluation completed, clearing all timers and flags');
       };
 
       // Start polling function that monitors status after 95%
       const startPollingForCompletion = async () => {
-        if (evaluationCompletedRef.current) return;
+        if (evaluationCompletedRef.current) {
+          console.log('Evaluation already completed, skipping polling setup');
+          return;
+        }
         
         console.log('Starting polling for completion at 95%...');
         setEvaluationStatus('Backend processing complete files... Please wait...');
         
+        let consecutiveFailures = 0;
+        const maxConsecutiveFailures = 3;
+        let pollInterval;
+        
         try {
           // Poll every 5 seconds until completion
-          const pollInterval = setInterval(async () => {
+          pollInterval = setInterval(async () => {
             if (evaluationCompletedRef.current) {
+              console.log('Evaluation completed, stopping polling interval');
               clearInterval(pollInterval);
               return;
             }
@@ -258,6 +272,9 @@ export default function Evaluation() {
               console.log('Polling evaluation status...');
               const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId);
               
+              // Reset failure counter on successful response
+              consecutiveFailures = 0;
+              
               if (statusResponse.status === 'completed' && statusResponse.evaluation_result) {
                 console.log('Evaluation completed via polling!');
                 clearInterval(pollInterval);
@@ -265,19 +282,55 @@ export default function Evaluation() {
                   evaluation_id: evaluationId,
                   evaluation_result: statusResponse.evaluation_result
                 });
+                return; // Exit immediately after completion
               } else {
                 console.log('Still processing, continuing to poll...');
                 setEvaluationStatus('Backend still processing... Please wait...');
               }
             } catch (pollError) {
-              console.warn('Polling error (will retry):', pollError.message);
-              // Continue polling even if individual requests fail
+              consecutiveFailures++;
+              console.warn(`Polling error (attempt ${consecutiveFailures}/${maxConsecutiveFailures}):`, pollError.message);
+              
+              // If it's a 404 error and we've had consecutive failures, try fallback
+              if (pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
+                console.log('Status endpoint failing, trying fallback evaluation check...');
+                try {
+                  const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId);
+                  if (fallbackResponse.status === 'completed' && fallbackResponse.evaluation_result) {
+                    console.log('Evaluation completed via fallback check!');
+                    clearInterval(pollInterval);
+                    finishWithResult({
+                      evaluation_id: evaluationId,
+                      evaluation_result: fallbackResponse.evaluation_result
+                    });
+                    return; // Exit immediately after completion
+                  }
+                  // Reset failure counter if fallback works
+                  consecutiveFailures = 0;
+                  setEvaluationStatus('Using fallback monitoring... Please wait...');
+                } catch (fallbackError) {
+                  console.error('Fallback check also failed:', fallbackError.message);
+                  // If fallback also fails, stop polling
+                  clearInterval(pollInterval);
+                  evaluationInProgressRef.current = false;
+                  setIsEvaluating(false);
+                  setEvaluationStatus('Evaluation session lost - please try again');
+                  setEvaluationProgress(0);
+                  manualProgressRef.current = false;
+                  alert('The evaluation session was lost and could not be recovered. This might be due to a server restart or timeout. Please try restarting the evaluation process.');
+                  return;
+                }
+              } else {
+                // For other errors or first few 404s, just log and continue
+                setEvaluationStatus(`Checking status... (${consecutiveFailures} retries)`);
+              }
             }
           }, 5000); // Poll every 5 seconds
           
           // Safety timeout after 20 minutes of polling
           setTimeout(() => {
             if (!evaluationCompletedRef.current) {
+              console.log('Polling safety timeout reached, stopping evaluation');
               clearInterval(pollInterval);
               evaluationInProgressRef.current = false;
               setIsEvaluating(false);
@@ -290,6 +343,7 @@ export default function Evaluation() {
           
         } catch (error) {
           console.error('Error starting polling:', error);
+          if (pollInterval) clearInterval(pollInterval);
           evaluationInProgressRef.current = false;
           setIsEvaluating(false);
           setEvaluationStatus('Polling failed - please try again');
@@ -299,7 +353,10 @@ export default function Evaluation() {
 
       // Also try the original evaluation service call (for single files or immediate completion)
       evaluationService.evaluateFiles(evaluationId)
-        .then(finishWithResult)
+        .then((result) => {
+          console.log('Direct evaluation service completed');
+          finishWithResult(result);
+        })
         .catch(err => {
           console.warn('Evaluation service call failed, relying on polling:', err?.message || err);
           // Don't fail here - let polling handle the completion

@@ -67,6 +67,14 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         answer_sheet_file_ids=[]
     )
     
+    # Verify the evaluation was created successfully
+    created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    if not created_evaluation:
+        logger.error(f"Failed to create evaluation {evaluation_id} - not found after creation")
+        raise HTTPException(status_code=500, detail="Failed to create evaluation record")
+    
+    logger.info(f"Successfully created evaluation {evaluation_id} with fields: {list(created_evaluation.keys())}")
+    
     return {"evaluation_id": evaluation_id, "mark_scheme_file_id": mark_scheme_file_id, "message": mark_scheme_check_result}
 
 @router.post("/evaluation/upload-answer-sheets")
@@ -171,7 +179,25 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
 
 @router.get("/evaluation/status/{evaluation_id}")
 def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    if evaluation and "evaluation_result" in evaluation:
-        return {"status": "completed", "evaluation_result": evaluation["evaluation_result"]}
-    return {"status": "processing"}
+    try:
+        logger.info(f"Checking status for evaluation_id: {evaluation_id}")
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        
+        if not evaluation:
+            logger.warning(f"Evaluation {evaluation_id} not found in database")
+            raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+        
+        logger.info(f"Found evaluation {evaluation_id}, checking for evaluation_result...")
+        
+        if "evaluation_result" in evaluation:
+            logger.info(f"Evaluation {evaluation_id} has results, returning completed status")
+            return {"status": "completed", "evaluation_result": evaluation["evaluation_result"]}
+        else:
+            logger.info(f"Evaluation {evaluation_id} exists but no evaluation_result yet, returning processing status")
+            return {"status": "processing"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking evaluation status for {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking evaluation status: {str(e)}")
