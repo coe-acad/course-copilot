@@ -7,10 +7,12 @@ import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
 import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
+import { getCourseSettings } from "../services/course";
 import { assetService } from "../services/asset";
 import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
 import AddResourceModal from '../components/AddReferencesModal';
+import SettingsPromptModal from '../components/SettingsPromptModal';
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -26,6 +28,9 @@ export default function Dashboard() {
   const [assets, setAssets] = useState({ curriculum: [], assessments: [], evaluation: [] });
   const [, setLoadingAssets] = useState(true);
   const [showAddResourceModal, setShowAddResourceModal] = useState(false);
+  const [isUploadingResources, setIsUploadingResources] = useState(false);
+  const [showSettingsPrompt, setShowSettingsPrompt] = useState(false);
+  const [pendingContentType, setPendingContentType] = useState('');
   const navigate = useNavigate();
 
   // Fetch resources on component mount
@@ -106,13 +111,23 @@ export default function Dashboard() {
   }, []);
 
   const handleCurriculumCreate = () => {
-    setSelectedOption(0);
-    setShowCurriculumModal(true);
+    handleContentCreation('curriculum', () => {
+      setSelectedOption(0);
+      setShowCurriculumModal(true);
+    });
   };
 
   const handleAssessmentCreate = () => {
-    setSelectedAssessmentOption(0);
-    setShowAssessmentModal(true);
+    handleContentCreation('assessments', () => {
+      setSelectedAssessmentOption(0);
+      setShowAssessmentModal(true);
+    });
+  };
+
+  const handleEvaluationCreate = () => {
+    handleContentCreation('evaluation', () => {
+      navigate('/evaluation');
+    });
   };
 
   const handleCurriculumSubmit = (selected) => {
@@ -132,21 +147,75 @@ export default function Dashboard() {
     navigate("/login");
   };
 
+  // Check if settings are configured (any setting is enough)
+  const checkSettings = async () => {
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return false;
+      
+      const settings = await getCourseSettings(courseId);
+      return settings && (
+        (settings.course_level && settings.course_level.length > 0) ||
+        (settings.study_area && settings.study_area.length > 0) ||
+        (settings.pedagogical_components && settings.pedagogical_components.length > 0) ||
+        settings.ask_clarifying_questions !== undefined
+      );
+    } catch (error) {
+      console.error('Error checking settings:', error);
+      return false;
+    }
+  };
+
+  // Handle content creation with settings check
+  const handleContentCreation = async (contentType, createFunction) => {
+    const hasSettings = await checkSettings();
+    if (!hasSettings) {
+      setPendingContentType(contentType);
+      setShowSettingsPrompt(true);
+    } else {
+      createFunction();
+    }
+  };
+
+  // Handle settings prompt actions
+  const handleSettingsPromptClose = () => {
+    setShowSettingsPrompt(false);
+    // Continue with the pending content creation
+    if (pendingContentType === 'curriculum') {
+      setSelectedOption(0);
+      setShowCurriculumModal(true);
+    } else if (pendingContentType === 'assessments') {
+      setSelectedAssessmentOption(0);
+      setShowAssessmentModal(true);
+    } else if (pendingContentType === 'evaluation') {
+      navigate('/evaluation');
+    }
+  };
+
   // Add this handler to refresh resources after adding
   const handleAddResources = async (files) => {
     setShowAddResourceModal(false);
     const courseId = localStorage.getItem('currentCourseId');
     if (!courseId || !files.length) return;
-    await uploadCourseResources(courseId, files); // upload to backend
-    // Refresh resources
-    const data = await getAllResources(courseId);
-    const transformedResources = (data.resources || []).map(resource => ({
-      id: resource.resourceName,
-      fileName: resource.resourceName,
-      title: resource.resourceName,
-      url: `#${resource.resourceName}`
-    }));
-    setResources(transformedResources);
+    
+    setIsUploadingResources(true);
+    try {
+      await uploadCourseResources(courseId, files); // upload to backend
+      // Refresh resources
+      const data = await getAllResources(courseId);
+      const transformedResources = (data.resources || []).map(resource => ({
+        id: resource.resourceName,
+        fileName: resource.resourceName,
+        title: resource.resourceName,
+        url: `#${resource.resourceName}`
+      }));
+      setResources(transformedResources);
+    } catch (error) {
+      console.error('Error uploading resources:', error);
+      alert('Failed to upload resources. Please try again.');
+    } finally {
+      setIsUploadingResources(false);
+    }
   };
 
   const handleDeleteResource = async (resourceId) => {
@@ -226,7 +295,7 @@ export default function Dashboard() {
             <SectionCard 
               title="Evaluation" 
               buttonLabel="Start Evaluation"
-              onButtonClick={() => navigate('/evaluation')}
+              onButtonClick={handleEvaluationCreate}
               assets={assets.evaluation}
               courseId={localStorage.getItem('currentCourseId')}
             />
@@ -251,6 +320,7 @@ export default function Dashboard() {
               onSelect={() => {}}
               onAddResource={() => setShowAddResourceModal(true)}
               onDelete={handleDeleteResource}
+              isUploading={isUploadingResources}
             />
           </div>
         </div>
@@ -294,6 +364,15 @@ export default function Dashboard() {
           open={showAddResourceModal}
           onClose={() => setShowAddResourceModal(false)}
           onAdd={handleAddResources}
+        />
+        <SettingsPromptModal
+          open={showSettingsPrompt}
+          onClose={handleSettingsPromptClose}
+          onOpenSettings={() => {
+            setShowSettingsPrompt(false);
+            setShowSettingsModal(true);
+          }}
+          contentType={pendingContentType}
         />
       </div>
     </>

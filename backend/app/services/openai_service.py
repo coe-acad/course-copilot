@@ -128,27 +128,12 @@ def create_evaluation_assistant_and_vector_store(evaluation_id: str):
         # Create vector store first
         vector_store = client.vector_stores.create(name=f"Evaluation_{evaluation_id}_files")
         logger.info(f"Created vector store {vector_store.id}")
-        
+        prompt = PromptParser().render_prompt("app/prompts/system/evaluation-assistant.json", {})
+        logger.info(f"Prompt: {prompt}")
         # Create assistant with vector store linked
         assistant = client.beta.assistants.create(
             name="Evaluation Assistant",
-            instructions="""You are an expert document extraction assistant specialized in educational assessments.
-
-Your task is to extract COMPLETE and ACCURATE information from mark schemes and answer sheets.
-
-CRITICAL INSTRUCTIONS:
-1. Extract EVERY SINGLE question from documents - never skip any questions
-2. When extracting mark schemes, ensure you capture ALL questions, answers, and marking criteria
-3. When extracting answer sheets, ensure you capture ALL student responses
-4. Always number questions sequentially (1, 2, 3, etc.)
-5. If you see questions numbered differently (like 1a, 1b, 2a), treat each as a separate question
-6. For missing or blank answers, use null (not empty string)
-7. Double-check your work before responding
-8. Always respond with valid JSON only
-9. If a document is long, take your time to process every section completely
-
-Quality over speed - it's better to take longer and extract everything correctly than to miss questions.""",
-
+            instructions=prompt,
             model=settings.OPENAI_MODEL,
             tools=[{"type": "file_search"}],
             tool_resources={
@@ -210,7 +195,7 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
     assistant_id = evaluation["evaluation_assistant_id"]
     vector_store_id = evaluation["vector_store_id"]
     logger.info(f"Using assistant {assistant_id} for mark scheme extraction")
-    
+    prompt = PromptParser().render_prompt("app/prompts/evaluation/mark-scheme-extraction.json", {})
     # Quick check that vector store is ready
     vector_store = client.vector_stores.retrieve(vector_store_id)
     if vector_store.status != "completed":
@@ -221,7 +206,7 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
     thread = client.beta.threads.create(
         messages=[{
             "role": "user",
-            "content": "Extract questions, answers, and marking scheme. Return JSON format: {\"mark_scheme\": [{\"question_number\": \"1\", \"question_text\": \"...\", \"correct_answer\": \"...\", \"mark_scheme\": \"...\"}]}",
+            "content": prompt,
             "attachments": [{"file_id": mark_scheme_file_id, "tools": [{"type": "file_search"}]}]
         }]
     )
@@ -395,6 +380,7 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
 
 def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: str, vector_store_id: str, file_id: str) -> dict:
     """Extract a single answer sheet file with retry logic"""
+    prompt = PromptParser().render_prompt("app/prompts/evaluation/answer-sheet-extraction.json", {"file_id": file_id})
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -402,19 +388,7 @@ def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: 
             thread = client.beta.threads.create(
                 messages=[{
                     "role": "user",
-                    "content": f"""Extract ALL questions and answers from this answer sheet file. 
-
-CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY – NO EXCEPTIONS):
-
-Extract EVERY single question from the file. Do not skip, merge, or omit ANY question under any circumstance.
-
-Include the full and complete question text exactly as it appears in the source (no truncation, paraphrasing, or alteration).
-
-If an answer is missing, blank, or written as 'N/A', you must set "student_answer": null. Do not leave it as an empty string or remove the field.
-
-Return the output strictly in the exact format provided. No extra fields, no missing fields, no reordering, no commentary, no explanations — only the structured data exactly as specified.
-
-Return JSON format: {{"file_id": "{file_id}", "student_name": "...", "answers": [{{"question_number": "1", "question_text": "...", "student_answer": "..."}}]}}""",
+                    "content": prompt,
                     "attachments": [{"file_id": file_id, "tools": [{"type": "file_search"}]}]
                 }]
             )
@@ -651,4 +625,16 @@ def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_fi
     if not assistant_message:
         raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
     return assistant_message.content[0].text.value
+
+def course_description(description: str, course_name: str):
+    #take the description and clean and improve it using chat completion
+    chat_completion = client.chat.completions.create(
+        model=settings.OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that rewrites rough course descriptions into clear, realistic, and professional course descriptions written in the style a teacher would use when describing a course. Use the course name and provided description as context. The description should focus only on what the course covers and what students will learn, without marketing language, exaggeration, or phrases like 'join us' or 'your journey'. Only return the improved description as plain text, with no labels or extra commentary."},
+            {"role": "user", "content": f"Course name: {course_name}\nCourse description: {description}"}
+        ]
+    )
+    description = chat_completion.choices[0].message.content
+    return description
 

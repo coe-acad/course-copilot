@@ -171,6 +171,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         "activity": "assessments",
         "quiz": "assessments",
         "question-paper": "assessments",
+        "mark-scheme": "assessments",
         "mock-interview": "assessments",
     }
     # Default to a safe category so saving never fails due to unmapped type

@@ -28,6 +28,8 @@ export default function Evaluation() {
   const [editedFeedback, setEditedFeedback] = useState([]); // Array for per-question feedback
   const [isSaving, setIsSaving] = useState(false); // Loading state for save operation
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
+  const [showFormatError, setShowFormatError] = useState(false); // Show format error modal
+  const [formatErrorMessage, setFormatErrorMessage] = useState(''); // Format error message
   const manualProgressRef = React.useRef(false);
   const evaluationCompletedRef = React.useRef(false);
 
@@ -114,7 +116,6 @@ export default function Evaluation() {
     
     // Prevent duplicate uploads of the same file
     if (isUploadingMarkScheme) {
-      console.log('Mark scheme upload already in progress, ignoring duplicate call');
       return;
     }
     
@@ -132,18 +133,30 @@ export default function Evaluation() {
       // No popup for successful format - just proceed silently
       // The UI will show "✓ Mark Scheme Uploaded" status
     } catch (error) {
-      // Show the specific backend message for wrong format, or fallback to generic message
-      if (error.response?.data?.detail) {
-        // Backend returns the format check result in error.detail
-        alert(error.response.data.detail);
+      // Check if it's a format error
+      if (error.response?.data?.detail && error.response.data.detail.includes("not in the correct format")) {
+        setFormatErrorMessage(error.response.data.detail);
+        setShowFormatError(true);
       } else if (error.message && error.message.includes("not in the correct format")) {
-        alert("Mark scheme is not in the correct format.");
+        setFormatErrorMessage("Mark scheme is not in the correct format.");
+        setShowFormatError(true);
       } else {
         alert(error.message || "Failed to upload mark scheme");
       }
     } finally {
       setIsUploadingMarkScheme(false);
     }
+  };
+
+  const handleReuploadMarkScheme = () => {
+    setShowFormatError(false);
+    setFormatErrorMessage('');
+    // Reset the file input to allow re-selection
+    const fileInput = document.querySelector('input[type="file"][accept=".pdf,.doc,.docx,.txt"]');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    setMarkSchemeFile(null);
   };
 
   const handleUploadAnswerSheets = async (files = null) => {
@@ -158,7 +171,6 @@ export default function Evaluation() {
     
     // Prevent duplicate uploads
     if (isUploadingAnswerSheets) {
-      console.log('Answer sheets upload already in progress, ignoring duplicate call');
       return;
     }
     
@@ -188,7 +200,6 @@ export default function Evaluation() {
     
     // Prevent duplicate evaluation calls
     if (evaluationInProgressRef.current || isEvaluating) {
-      console.log('Evaluation already in progress, ignoring duplicate call');
       return;
     }
     
@@ -242,17 +253,14 @@ export default function Evaluation() {
         manualProgressRef.current = false;
         
         // Clear any ongoing polling to prevent duplicate requests
-        console.log('Evaluation completed, clearing all timers and flags');
       };
 
       // Start polling function that monitors status after 95%
       const startPollingForCompletion = async () => {
         if (evaluationCompletedRef.current) {
-          console.log('Evaluation already completed, skipping polling setup');
           return;
         }
         
-        console.log('Starting polling for completion at 95%...');
         setEvaluationStatus('Backend processing complete files... Please wait...');
         
         let consecutiveFailures = 0;
@@ -260,23 +268,20 @@ export default function Evaluation() {
         let pollInterval;
         
         try {
-          // Poll every 5 seconds until completion
+          // Poll every 15 seconds until completion
           pollInterval = setInterval(async () => {
             if (evaluationCompletedRef.current) {
-              console.log('Evaluation completed, stopping polling interval');
               clearInterval(pollInterval);
               return;
             }
             
             try {
-              console.log('Polling evaluation status...');
               const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId);
               
               // Reset failure counter on successful response
               consecutiveFailures = 0;
               
               if (statusResponse.status === 'completed' && statusResponse.evaluation_result) {
-                console.log('Evaluation completed via polling!');
                 clearInterval(pollInterval);
                 finishWithResult({
                   evaluation_id: evaluationId,
@@ -284,7 +289,6 @@ export default function Evaluation() {
                 });
                 return; // Exit immediately after completion
               } else {
-                console.log('Still processing, continuing to poll...');
                 setEvaluationStatus('Backend still processing... Please wait...');
               }
             } catch (pollError) {
@@ -293,11 +297,9 @@ export default function Evaluation() {
               
               // If it's a 404 error and we've had consecutive failures, try fallback
               if (pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
-                console.log('Status endpoint failing, trying fallback evaluation check...');
                 try {
                   const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId);
                   if (fallbackResponse.status === 'completed' && fallbackResponse.evaluation_result) {
-                    console.log('Evaluation completed via fallback check!');
                     clearInterval(pollInterval);
                     finishWithResult({
                       evaluation_id: evaluationId,
@@ -325,21 +327,20 @@ export default function Evaluation() {
                 setEvaluationStatus(`Checking status... (${consecutiveFailures} retries)`);
               }
             }
-          }, 5000); // Poll every 5 seconds
+          }, 15000); // Poll every 15 seconds
           
-          // Safety timeout after 20 minutes of polling
+          // Safety timeout after 1 hour of polling
           setTimeout(() => {
             if (!evaluationCompletedRef.current) {
-              console.log('Polling safety timeout reached, stopping evaluation');
               clearInterval(pollInterval);
               evaluationInProgressRef.current = false;
               setIsEvaluating(false);
               setEvaluationStatus('Evaluation timed out - please try again');
               setEvaluationProgress(0);
               manualProgressRef.current = false;
-              alert('Evaluation timed out after 20 minutes. Please try refreshing and checking again, or contact support.');
+              alert('Evaluation timed out after 1 hour. Please try refreshing and checking again, or contact support.');
             }
-          }, 20 * 60 * 1000); // 20 minutes
+          }, 60 * 60 * 1000); // 1 hour
           
         } catch (error) {
           console.error('Error starting polling:', error);
@@ -354,7 +355,6 @@ export default function Evaluation() {
       // Also try the original evaluation service call (for single files or immediate completion)
       evaluationService.evaluateFiles(evaluationId)
         .then((result) => {
-          console.log('Direct evaluation service completed');
           finishWithResult(result);
         })
         .catch(err => {
@@ -384,19 +384,7 @@ export default function Evaluation() {
 
 
   const handleStudentClick = async (studentIndex) => {
-    console.log('Student clicked:', {
-      studentIndex,
-      evaluationResult,
-      answerSheetFiles: answerSheetFiles.length,
-      hasEvaluationData: !!evaluationResult?.evaluation_result?.students
-    });
     
-    // Log the full evaluation result structure for debugging
-    console.log('Full evaluation result structure:', evaluationResult);
-    if (evaluationResult?.evaluation_result?.students) {
-      console.log('Students array length:', evaluationResult.evaluation_result.students.length);
-      console.log('Student at index:', evaluationResult.evaluation_result.students[studentIndex]);
-    }
     
     // Validate that we have the required data
     if (!evaluationResult || !evaluationResult.evaluation_result || !evaluationResult.evaluation_result.students) {
@@ -412,8 +400,6 @@ export default function Evaluation() {
     // Add additional validation
     try {
       const student = evaluationResult.evaluation_result.students[studentIndex];
-      console.log('Student data structure:', student);
-      console.log('Available student properties:', Object.keys(student));
       
       if (!student) {
         alert('Student data is missing. Please try again.');
@@ -427,31 +413,14 @@ export default function Evaluation() {
         (student.question_scores && Array.isArray(student.question_scores) && student.question_scores.length > 0) ||
         (student.answers && Array.isArray(student.answers) && student.answers.length > 0)
       );
-      console.log('Has required data for review page:', hasRequiredData);
-             console.log('Student data available:', {
-         question_scores: !!student.question_scores,
-         questions: !!student.questions,
-         answers: !!student.answers,
-         ai_feedback: !!student.ai_feedback,
-         total_score: student.total_score,
-         feedback: student.feedback,
-         status: student.status
-       });
-       console.log('Backend data structure - answers:', student.answers);
-       console.log('Backend data structure - question_scores:', student.question_scores);
-      console.log('Full student object:', student);
       
       if (!hasRequiredData) {
-        console.log('Missing required data structure for review page');
-        console.log('Available student data:', student);
         alert('The evaluation data structure is incomplete. Please contact support.');
         return;
       }
       
       // Update status to "opened" if it's currently "unopened"
       if (student.status === "unopened") {
-        console.log('Updating status from unopened to opened for student:', studentIndex);
-        console.log('Current student status:', student.status);
         
         // Update status locally
         setEvaluationResult(prevState => {
@@ -464,7 +433,6 @@ export default function Evaluation() {
         setForceUpdate(prev => prev + 1);
       }
       
-      console.log('Student data found:', student);
       setSelectedStudentIndex(studentIndex);
       setShowReview(true);
       setSelectedQuestionIndex(0);
@@ -489,10 +457,8 @@ export default function Evaluation() {
   };
 
   const handleEdit = () => {
-    console.log('Edit button clicked');
     if (evaluationResult && selectedStudentIndex !== null) {
       const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-      console.log('Setting up edit mode for student:', student);
       
              // Initialize with current values - use helper function to extract scores
        const currentScores = extractQuestionScores(student);
@@ -519,19 +485,12 @@ export default function Evaluation() {
         setEditedFeedback(currentFeedbackArray);
       
       setIsEditing(true);
-             console.log('Edit mode activated with:', {
-         questionScores: student.question_scores,
-         feedback: currentFeedbackArray
-       });
     } else {
-      console.log('Cannot edit - missing data:', { evaluationResult, selectedStudentIndex });
     }
   };
 
   const handleSave = async () => {
-    console.log('Save button clicked');
     if (!evaluationId || selectedStudentIndex === null) {
-      console.log('Cannot save - missing data:', { evaluationId, selectedStudentIndex });
       return;
     }
     
@@ -544,13 +503,6 @@ export default function Evaluation() {
         return;
       }
       
-      // Log the data being processed for debugging
-      console.log('Processing save with data:', {
-        editedQuestionScores,
-        editedFeedback,
-        studentIndex: selectedStudentIndex,
-        evaluationId
-      });
       
       // Ensure all scores are valid numbers and don't exceed max scores
       const validScores = editedQuestionScores.map((score, index) => {
@@ -575,7 +527,6 @@ export default function Evaluation() {
       });
       
       const totalScore = validScores.reduce((sum, score) => sum + score, 0);
-      console.log('Calculated total score:', totalScore);
       
               // Validate and clean the feedback for each question
         const cleanFeedbackArray = [];
@@ -585,30 +536,12 @@ export default function Evaluation() {
             cleanFeedbackArray.push(cleanFeedback);
           });
         }
-        
-        // Log the feedback processing for debugging
-        console.log('Feedback processing:', {
-          original: editedFeedback,
-          cleaned: cleanFeedbackArray,
-          questionCount: cleanFeedbackArray.length,
-          type: typeof editedFeedback
-        });
-                           console.log('Data being sent:', {
-          evaluationId,
-          studentIndex: selectedStudentIndex,
-          questionScores: validScores,
-          feedback: cleanFeedbackArray,
-          fileId: evaluationResult.evaluation_result.students[selectedStudentIndex].file_id
-        });
       
                      // Call the backend to update each question result individually
         // Backend expects individual question updates, not bulk updates
         const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
         const fileId = student.file_id;
         
-        console.log('Student object for debugging:', student);
-        console.log('File ID extracted:', fileId);
-        console.log('Student properties:', Object.keys(student));
         
         if (!fileId) {
           throw new Error('Student file ID not found. Cannot update results.');
@@ -617,14 +550,10 @@ export default function Evaluation() {
                // Update each question score and feedback
         for (let i = 0; i < validScores.length; i++) {
           const questionFeedback = cleanFeedbackArray[i] || '';
-          console.log(`Updating question ${i + 1}: score=${validScores[i]}, feedback="${questionFeedback}"`);
-          console.log(`Sending to backend: evaluationId=${evaluationId}, fileId=${fileId}, questionNumber=${i + 1}, score=${parseFloat(validScores[i])}`);
-          console.log(`Feedback being sent: "${questionFeedback}" (type: ${typeof questionFeedback}, length: ${questionFeedback.length})`);
           
           try {
             // Ensure feedback is not undefined or null
             const feedbackToSend = questionFeedback || '';
-            console.log(`Sending feedback for question ${i + 1}: "${feedbackToSend}"`);
             
             await evaluationService.editQuestionResult({
               evaluationId,
@@ -633,14 +562,12 @@ export default function Evaluation() {
               score: parseFloat(validScores[i]), // Convert to float as backend expects
               feedback: feedbackToSend
             });
-            console.log(`Question ${i + 1} updated successfully`);
           } catch (error) {
             console.error(`Failed to update question ${i + 1}:`, error);
             throw error; // Re-throw to stop the process
           }
         }
       
-             console.log('All question results updated successfully');
       
              // Update local state for immediate feedback
        const updatedEvaluationResult = { ...evaluationResult };
@@ -665,22 +592,11 @@ export default function Evaluation() {
          total_score: totalScore,
          status: "modified"
        };
-       
-       console.log('Updated student data:', {
-         scores: validScores,
-         feedback: cleanFeedbackArray,
-         totalScore: totalScore,
-         status: "modified",
-         updatedAnswers: updatedEvaluationResult.evaluation_result.students[studentIndex].answers
-       });
      
      // Force a re-render by creating a new object reference
      setEvaluationResult({...updatedEvaluationResult});
      setIsEditing(false);
      
-     console.log('Local state updated successfully');
-     console.log('New evaluation result:', updatedEvaluationResult);
-     console.log('State update triggered');
      
      // Changes saved successfully - no popup needed
       
@@ -789,14 +705,6 @@ export default function Evaluation() {
     }
     
     const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-    console.log('Review page - Student data:', student);
-    console.log('Review page - Student properties:', Object.keys(student));
-    console.log('Review page - Question scores:', student?.question_scores);
-    console.log('Review page - Questions:', student?.questions);
-    console.log('Review page - Answers:', student?.answers);
-    console.log('Review page - AI feedback:', student?.ai_feedback);
-    console.log('Review page - Current question scores from extractQuestionScores:', extractQuestionScores(student));
-    console.log('Review page - Current question index:', selectedQuestionIndex);
     
     if (!student) {
       console.error('Student data not found for index:', selectedStudentIndex);
@@ -850,6 +758,7 @@ export default function Evaluation() {
           <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
           <span style={{ color: '#888' }}>{'>'}</span>
           <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
+          <span style={{ color: '#888' }}>{'>'}</span>
           <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={handleBackToResults}>Evaluation</span>
           <span style={{ color: '#888' }}>{'>'}</span>
           <span style={{ fontWeight: 700 }}>Review - {fileName}</span>
@@ -1246,8 +1155,6 @@ export default function Evaluation() {
                     }
                   }}
                   onClick={() => {
-                    console.log('Filename clicked:', file.name, 'Index:', index);
-                    console.log('Evaluation result available:', !!evaluationResult);
                     if (evaluationResult) {
                       handleStudentClick(index);
                     }
@@ -1497,6 +1404,91 @@ export default function Evaluation() {
       </div>
 
       <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+      
+      {/* Format Error Modal */}
+      {showFormatError && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)'
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                background: '#fef2f2',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px auto'
+              }}>
+                <span style={{ fontSize: '32px', color: '#ef4444' }}>⚠️</span>
+              </div>
+              <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: '0 0 8px 0' }}>
+                Format Issue
+              </h3>
+              <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+                {formatErrorMessage}
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <button
+                onClick={handleReuploadMarkScheme}
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#3b82f6',
+                  color: '#fff',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s ease'
+                }}
+                onMouseOver={e => e.target.style.background = '#2563eb'}
+                onMouseOut={e => e.target.style.background = '#3b82f6'}
+              >
+                Upload New File
+              </button>
+              <button
+                onClick={() => setShowFormatError(false)}
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  color: '#6b7280',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'border 0.2s ease'
+                }}
+                onMouseOver={e => e.target.style.border = '1px solid #9ca3af'}
+                onMouseOut={e => e.target.style.border = '1px solid #d1d5db'}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

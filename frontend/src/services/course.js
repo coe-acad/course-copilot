@@ -56,4 +56,17 @@ export async function getCourseSettings(courseId) {
     headers: { 'Authorization': `Bearer ${getToken()}` }
   });
   return res.data;
+}
+
+export async function generateCourseDescription(description, courseName) {
+  const res = await axios.put(`${API_BASE}/courses/description`, {
+    description,
+    course_name: courseName
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`
+    }
+  });
+  return res.data;
 } 

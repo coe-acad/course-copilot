@@ -154,17 +154,9 @@ export default function AssetStudioContent() {
         throw new Error("No course ID found");
       }
 
-      console.log("Sending chat message:", {
-        courseId,
-        assetName: option,
-        threadId,
-        userPrompt: inputMessage
-      });
-
       // Continue the conversation with the backend
       const response = await assetService.continueAssetChat(courseId, option, threadId, inputMessage);
       
-      console.log("Backend response:", response);
       
       if (response && response.response) {
         const botResponse = {
@@ -220,7 +212,6 @@ export default function AssetStudioContent() {
       const assetType = option;
 
       await assetService.saveAsset(courseId, assetName, assetType, saveModalMessage);
-      console.log(`✅ Asset "${assetName}" saved successfully!`);
       
       // Close modal and reset
       setShowSaveModal(false);
@@ -282,7 +273,6 @@ export default function AssetStudioContent() {
 
   const handleFileUpload = () => {
     // For mock data, we'll just log the upload
-    console.log("File upload triggered - in real implementation this would refresh from API");
   };
 
   // Add this handler to refresh resources after adding

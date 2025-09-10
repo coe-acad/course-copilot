@@ -17,7 +17,6 @@ export default function Login() {
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
         // Handle successful Google login
-        console.log('Google login successful:', event.data.user);
         
         // Store complete user object
         localStorage.setItem('user', JSON.stringify({
