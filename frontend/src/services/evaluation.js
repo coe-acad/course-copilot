@@ -301,5 +301,27 @@ export const evaluationService = {
       }
       throw new Error(error.response?.data?.detail || 'Failed to edit question result');
     }
+  },
+
+  async saveEvaluation(evaluationId, assetName) {
+    try {
+      const formData = new FormData();
+      formData.append('asset_name', assetName);
+      
+      const res = await axios.post(`${API_BASE}/evaluation/save/${evaluationId}`, formData, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      return res.data;
+    } catch (error) {
+      console.error('Save evaluation error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to save evaluation');
+    }
   }
 }; 

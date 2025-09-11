@@ -6,9 +6,10 @@ import logging
 import json
 from uuid import uuid4
 import asyncio
+from datetime import datetime
 from flask import request
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, db
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db
 from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
 from concurrent.futures import ThreadPoolExecutor
 
@@ -201,3 +202,61 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
     except Exception as e:
         logger.error(f"Error checking evaluation status for {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error checking evaluation status: {str(e)}")
+
+@router.post("/evaluation/save/{evaluation_id}")
+def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: str = Depends(verify_token)):
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        
+        if "evaluation_result" not in evaluation:
+            raise HTTPException(status_code=400, detail="Cannot save evaluation without results")
+        
+        # Create formatted evaluation report
+        report = format_evaluation_report(evaluation)
+        
+        # Save as asset
+        create_asset(
+            course_id=evaluation["course_id"],
+            asset_name=asset_name,
+            asset_category="evaluation",
+            asset_type="evaluation-report",
+            asset_content=report,
+            asset_last_updated_by="You",
+            asset_last_updated_at=datetime.now().strftime("%d %B %Y %H:%M:%S")
+        )
+        
+        return {"message": "Evaluation saved successfully", "asset_name": asset_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error saving evaluation: {str(e)}")
+
+def format_evaluation_report(evaluation):
+    """Format evaluation data into a readable report"""
+    result = evaluation["evaluation_result"]
+    students = result.get("students", [])
+    
+    report = f"# Evaluation Report\n\n"
+    report += f"**Total Students:** {len(students)}\n"
+    report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
+    
+    for i, student in enumerate(students, 1):
+        report += f"## Student {i}\n"
+        report += f"**File:** {student.get('file_id', 'Unknown')}\n"
+        report += f"**Total Score:** {student.get('total_score', 0)}/{student.get('max_total_score', 0)}\n"
+        report += f"**Status:** {student.get('status', 'completed')}\n\n"
+        
+        answers = student.get('answers', [])
+        for j, answer in enumerate(answers, 1):
+            report += f"### Question {j}\n"
+            report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
+            report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
+            report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
+            report += f"**Feedback:** {answer.get('feedback', 'N/A')}\n\n"
+        
+        report += "---\n\n"
+    
+    return report

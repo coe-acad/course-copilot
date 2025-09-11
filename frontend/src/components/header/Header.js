@@ -9,7 +9,10 @@ export default function Header({
   onGridView,
   onListView,
   isGridView = true,
-  onBack
+  onBack,
+  onSave,
+  saveLabel = "Save",
+  backLabel = "Close"
 }) {
   return (
     <header style={{
@@ -33,6 +36,25 @@ export default function Header({
         <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>{title}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        {/* Save Button - Show when onSave is provided */}
+        {onSave && (
+          <button
+            style={{
+              height: 38,
+              padding: "0 22px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontWeight: 500,
+              fontSize: 16,
+              color: "#222",
+              cursor: "pointer"
+            }}
+            onClick={onSave}
+          >
+            {saveLabel}
+          </button>
+        )}
         {/* Back Button - Show when onBack is provided */}
         {onBack && (
           <button
@@ -40,16 +62,16 @@ export default function Header({
               height: 38,
               padding: "0 22px",
               borderRadius: 8,
-              border: "1px solid #2563eb",
+              border: "1px solid #ddd",
               background: "#fff",
               fontWeight: 500,
               fontSize: 16,
-              color: "#2563eb",
+              color: "#222",
               cursor: "pointer"
             }}
             onClick={onBack}
           >
-            ← Back
+            {backLabel}
           </button>
         )}
         

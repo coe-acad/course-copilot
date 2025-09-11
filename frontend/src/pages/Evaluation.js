@@ -30,6 +30,8 @@ export default function Evaluation() {
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when status changes
   const [showFormatError, setShowFormatError] = useState(false); // Show format error modal
   const [formatErrorMessage, setFormatErrorMessage] = useState(''); // Format error message
+  const [showSaveModal, setShowSaveModal] = useState(false); // Show save modal
+  const [assetName, setAssetName] = useState(''); // Asset name for saving
   const manualProgressRef = React.useRef(false);
   const evaluationCompletedRef = React.useRef(false);
 
@@ -619,6 +621,25 @@ export default function Evaluation() {
     setEditedFeedback([]); // Reset feedback array
   };
 
+  const handleSaveEvaluation = async () => {
+    if (!assetName.trim()) {
+      alert('Please enter a name for the evaluation');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await evaluationService.saveEvaluation(evaluationId, assetName.trim());
+      setShowSaveModal(false);
+      setAssetName('');
+    } catch (error) {
+      console.error('Error saving evaluation:', error);
+      alert('Failed to save evaluation: ' + error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
 
 
   const formatScore = (score, maxScore) => {
@@ -751,6 +772,7 @@ export default function Evaluation() {
           onListView={null}
           isGridView={isGridView}
           onBack={handleBackToResults}
+          backLabel="Close"
         />
 
         {/* Breadcrumb */}
@@ -1010,6 +1032,9 @@ export default function Evaluation() {
           onListView={null}
           isGridView={isGridView}
           onBack={() => navigate('/dashboard')}
+          onSave={!isEvaluating && evaluationResult ? () => setShowSaveModal(true) : null}
+          saveLabel="Save Evaluation"
+          backLabel="Close"
         />
 
         {/* Breadcrumb */}
@@ -1211,6 +1236,91 @@ export default function Evaluation() {
 
 
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+        
+        {/* Save Modal */}
+        {showSaveModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 12,
+              padding: 24,
+              width: '400px',
+              maxWidth: '90vw',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600 }}>
+                Save Evaluation
+              </h3>
+              
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>
+                  Evaluation Name:
+                </label>
+                <input
+                  type="text"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 6,
+                    border: '1px solid #ccc',
+                    fontSize: 14,
+                    boxSizing: 'border-box'
+                  }}
+                  placeholder="Enter evaluation name..."
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <button
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    setAssetName('');
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 6,
+                    border: '1px solid #ccc',
+                    background: '#fff',
+                    color: '#666',
+                    cursor: 'pointer',
+                    fontSize: 14
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEvaluation}
+                  disabled={isSaving || !assetName.trim()}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: isSaving || !assetName.trim() ? '#ccc' : '#2563eb',
+                    color: '#fff',
+                    cursor: isSaving || !assetName.trim() ? 'not-allowed' : 'pointer',
+                    fontSize: 14
+                  }}
+                >
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1227,6 +1337,7 @@ export default function Evaluation() {
         onListView={null}
         isGridView={isGridView}
         onBack={() => navigate('/dashboard')}
+        backLabel="Close"
       />
 
       {/* Breadcrumb */}
