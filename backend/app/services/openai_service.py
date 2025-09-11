@@ -128,34 +128,15 @@ def create_evaluation_assistant_and_vector_store(evaluation_id: str):
         # Create vector store first
         vector_store = client.vector_stores.create(name=f"Evaluation_{evaluation_id}_files")
         logger.info(f"Created vector store {vector_store.id}")
-        
-        # Create assistant with vector store linked
+        prompt = PromptParser().render_prompt("app/prompts/system/evaluation-assistant.json", {})
+        logger.info(f"Prompt: {prompt}")
+        # Create assistant without default vector store access (files will be attached at thread level)
         assistant = client.beta.assistants.create(
             name="Evaluation Assistant",
-            instructions="""You are an expert document extraction assistant specialized in educational assessments.
-
-Your task is to extract COMPLETE and ACCURATE information from mark schemes and answer sheets.
-
-CRITICAL INSTRUCTIONS:
-1. Extract EVERY SINGLE question from documents - never skip any questions
-2. When extracting mark schemes, ensure you capture ALL questions, answers, and marking criteria
-3. When extracting answer sheets, ensure you capture ALL student responses
-4. Always number questions sequentially (1, 2, 3, etc.)
-5. If you see questions numbered differently (like 1a, 1b, 2a), treat each as a separate question
-6. For missing or blank answers, use null (not empty string)
-7. Double-check your work before responding
-8. Always respond with valid JSON only
-9. If a document is long, take your time to process every section completely
-
-Quality over speed - it's better to take longer and extract everything correctly than to miss questions.""",
-
+            instructions=prompt,
             model=settings.OPENAI_MODEL,
-            tools=[{"type": "file_search"}],
-            tool_resources={
-                "file_search": {
-                    "vector_store_ids": [vector_store.id],
-                }
-            }
+            tools=[{"type": "file_search"}]
+            # Note: No tool_resources here - vector stores will be attached at thread level
         )
         logger.info(f"Created Evaluation Assistant {assistant.id}")
         
@@ -210,7 +191,7 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
     assistant_id = evaluation["evaluation_assistant_id"]
     vector_store_id = evaluation["vector_store_id"]
     logger.info(f"Using assistant {assistant_id} for mark scheme extraction")
-    
+    prompt = PromptParser().render_prompt("app/prompts/evaluation/mark-scheme-extraction.json", {})
     # Quick check that vector store is ready
     vector_store = client.vector_stores.retrieve(vector_store_id)
     if vector_store.status != "completed":
@@ -221,7 +202,7 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
     thread = client.beta.threads.create(
         messages=[{
             "role": "user",
-            "content": "Extract questions, answers, and marking scheme. Return JSON format: {\"mark_scheme\": [{\"question_number\": \"1\", \"question_text\": \"...\", \"correct_answer\": \"...\", \"mark_scheme\": \"...\"}]}",
+            "content": prompt,
             "attachments": [{"file_id": mark_scheme_file_id, "tools": [{"type": "file_search"}]}]
         }]
     )
@@ -395,112 +376,158 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
 
 def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: str, vector_store_id: str, file_id: str) -> dict:
     """Extract a single answer sheet file with retry logic"""
+    print(f"Processing file: {file_id}")
+    prompt = PromptParser().render_prompt("app/prompts/evaluation/answer-sheet-extraction.json", {"file_id": file_id})
     max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            # Create individual thread for this file
-            thread = client.beta.threads.create(
-                messages=[{
-                    "role": "user",
-                    "content": f"""Extract ALL questions and answers from this answer sheet file. 
-
-CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY – NO EXCEPTIONS):
-
-Extract EVERY single question from the file. Do not skip, merge, or omit ANY question under any circumstance.
-
-Include the full and complete question text exactly as it appears in the source (no truncation, paraphrasing, or alteration).
-
-If an answer is missing, blank, or written as 'N/A', you must set "student_answer": null. Do not leave it as an empty string or remove the field.
-
-Return the output strictly in the exact format provided. No extra fields, no missing fields, no reordering, no commentary, no explanations — only the structured data exactly as specified.
-
-Return JSON format: {{"file_id": "{file_id}", "student_name": "...", "answers": [{{"question_number": "1", "question_text": "...", "student_answer": "..."}}]}}""",
-                    "attachments": [{"file_id": file_id, "tools": [{"type": "file_search"}]}]
-                }]
-            )
-
-            run = client.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=assistant_id,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "single_answer_sheet_schema",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "file_id": {"type": "string"},
-                                "student_name": {"type": "string"},
-                                "answers": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "question_number": {"type": "string"},
-                                            "question_text": {"type": "string"},
-                                            "student_answer": {"type": ["string", "null"]}
-                                        },
-                                        "required": ["question_number", "question_text", "student_answer"]
-                                    }
-                                }
-                            },
-                            "required": ["file_id", "student_name", "answers"]
+    
+    # Create a separate vector store for this file
+    temp_vector_store = None
+    try:
+        # Step 1: Create a temporary vector store for this file only
+        temp_vector_store = client.vector_stores.create(name=f"temp_extraction_{file_id}")
+        logger.info(f"Created temporary vector store {temp_vector_store.id} for file {file_id}")
+        
+        # Step 2: Add only this file to the temporary vector store
+        client.vector_stores.files.create(
+            vector_store_id=temp_vector_store.id,
+            file_id=file_id
+        )
+        
+        # Step 3: Wait for vector store to be ready
+        while True:
+            vs_status = client.vector_stores.retrieve(temp_vector_store.id)
+            if vs_status.status == "completed":
+                break
+            elif vs_status.status == "failed":
+                raise HTTPException(status_code=500, detail=f"Temporary vector store failed for file {file_id}")
+            time.sleep(1)
+        
+        for attempt in range(max_retries):
+            try:
+                # Step 4: Create thread with the temporary vector store
+                thread = client.beta.threads.create(
+                    messages=[{
+                        "role": "user",
+                        "content": prompt,
+                        "attachments": [{"file_id": file_id, "tools": [{"type": "file_search"}]}]
+                    }],
+                    tool_resources={
+                        "file_search": {
+                            "vector_store_ids": [temp_vector_store.id]
                         }
                     }
-                }
-            )
+                )
+                logger.info(f"Created thread {thread.id} with temporary vector store {temp_vector_store.id} for file {file_id}")
+                
+                # Debug: Check vector store contents
+                vs_files = client.vector_stores.files.list(vector_store_id=temp_vector_store.id)
+                logger.info(f"Vector store {temp_vector_store.id} contains {len(vs_files.data)} files: {[f.id for f in vs_files.data]}")
 
-            # Wait for completion with timeout
-            max_wait_time = 300  # 5 minutes
-            start_time = time.time()
-            
-            while run.status in ["queued", "in_progress"]:
-                if time.time() - start_time > max_wait_time:
-                    raise HTTPException(status_code=408, detail=f"Extraction timeout for file {file_id}")
-                time.sleep(1)
-                run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+                run = client.beta.threads.runs.create(
+                    thread_id=thread.id,
+                    assistant_id=assistant_id,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "single_answer_sheet_schema",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "student_name": {"type": "string"},
+                                    "answers": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "question_number": {"type": "string"},
+                                                "question_text": {"type": "string"},
+                                                "student_answer": {"type": ["string", "null"]}
+                                            },
+                                            "required": ["question_number", "question_text", "student_answer"]
+                                        }
+                                    }
+                                },
+                                "required": ["student_name", "answers"]
+                            }
+                        }
+                    }
+                )
 
-            if run.status == "failed":
-                error_detail = run.last_error or "Unknown error"
-                raise HTTPException(status_code=500, detail=f"Extraction failed for file {file_id}: {error_detail}")
+                # Wait for completion with timeout
+                max_wait_time = 300  # 5 minutes
+                start_time = time.time()
+                
+                while run.status in ["queued", "in_progress"]:
+                    if time.time() - start_time > max_wait_time:
+                        raise HTTPException(status_code=408, detail=f"Extraction timeout for file {file_id}")
+                    time.sleep(1)
+                    run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
-            # Get response
-            messages = client.beta.threads.messages.list(thread_id=thread.id)
-            for msg in messages.data:
-                if msg.role == "assistant":
-                    try:
-                        result = json.loads(msg.content[0].text.value)
-                        # Validate the extraction
-                        if not result.get("file_id") or not result.get("answers"):
-                            raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: missing required fields")
-                        if not isinstance(result.get("answers"), list):
-                            raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: answers must be a list")
-                        return result
-                    except json.JSONDecodeError as json_e:
-                        raise HTTPException(status_code=500, detail=f"Invalid JSON response for file {file_id}: {str(json_e)}")
+                if run.status == "failed":
+                    error_detail = run.last_error or "Unknown error"
+                    raise HTTPException(status_code=500, detail=f"Extraction failed for file {file_id}: {error_detail}")
 
-            raise HTTPException(status_code=500, detail=f"No assistant response found for file {file_id}")
+                # Get response
+                messages = client.beta.threads.messages.list(thread_id=thread.id)
+                for msg in messages.data:
+                    if msg.role == "assistant":
+                        try:
+                            result = json.loads(msg.content[0].text.value)
+                            # Add the actual file_id to the result
+                            result["file_id"] = file_id
+                            
+                            # Debug: Log the extracted content for comparison
+                            logger.info(f"File {file_id} extracted student_name: {result.get('student_name', 'N/A')}")
+                            logger.info(f"File {file_id} extracted {len(result.get('answers', []))} answers")
+                            if result.get('answers'):
+                                first_answer = result['answers'][0] if result['answers'] else {}
+                                logger.info(f"File {file_id} first answer: {first_answer.get('student_answer', 'N/A')[:100]}...")
+                            
+                            # Validate the extraction
+                            if not result.get("answers"):
+                                raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: missing required fields")
+                            if not isinstance(result.get("answers"), list):
+                                raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: answers must be a list")
+                            
+                            return result
+                        except json.JSONDecodeError as json_e:
+                            raise HTTPException(status_code=500, detail=f"Invalid JSON response for file {file_id}: {str(json_e)}")
 
-        except Exception as e:
-            error_type = type(e).__name__
-            error_msg = str(e)
-            
-            # Handle specific OpenAI errors
-            if "rate_limit" in error_msg.lower() or "quota" in error_msg.lower():
-                wait_time = 10 * (attempt + 1)  # Longer wait for rate limits
-                logger.warning(f"Rate limit hit for file {file_id}, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
-                time.sleep(wait_time)
-            elif "timeout" in error_msg.lower():
-                logger.warning(f"Timeout for file {file_id}, attempt {attempt + 1}/{max_retries}")
-                time.sleep(2 ** attempt)  # Exponential backoff
-            else:
-                logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for file {file_id}: {error_type}: {error_msg}")
-                if attempt < max_retries - 1:  # Not the last attempt
+                raise HTTPException(status_code=500, detail=f"No assistant response found for file {file_id}")
+
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                
+                # Handle specific OpenAI errors
+                if "rate_limit" in error_msg.lower() or "quota" in error_msg.lower():
+                    wait_time = 10 * (attempt + 1)  # Longer wait for rate limits
+                    logger.warning(f"Rate limit hit for file {file_id}, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                elif "timeout" in error_msg.lower():
+                    logger.warning(f"Timeout for file {file_id}, attempt {attempt + 1}/{max_retries}")
                     time.sleep(2 ** attempt)  # Exponential backoff
-            
-            if attempt == max_retries - 1:  # Last attempt
-                logger.error(f"All {max_retries} attempts failed for file {file_id}. Final error: {error_type}: {error_msg}")
-                raise e
+                else:
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for file {file_id}: {error_type}: {error_msg}")
+                    if attempt < max_retries - 1:  # Not the last attempt
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                
+                if attempt == max_retries - 1:  # Last attempt
+                    logger.error(f"All {max_retries} attempts failed for file {file_id}. Final error: {error_type}: {error_msg}")
+                    raise e
+
+    except Exception as main_e:
+        logger.error(f"Main error processing file {file_id}: {str(main_e)}")
+        raise main_e
+    
+    finally:
+        # Always cleanup temporary vector store
+        if temp_vector_store:
+            try:
+                client.vector_stores.delete(temp_vector_store.id)
+                logger.info(f"Final cleanup: Deleted temporary vector store {temp_vector_store.id} for file {file_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Failed to cleanup temporary vector store in finally block for file {file_id}: {str(cleanup_e)}")
 
     # This should never be reached, but just in case
     raise HTTPException(status_code=500, detail=f"Unexpected error in extraction for file {file_id}")
@@ -651,4 +678,16 @@ def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_fi
     if not assistant_message:
         raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
     return assistant_message.content[0].text.value
+
+def course_description(description: str, course_name: str):
+    #take the description and clean and improve it using chat completion
+    chat_completion = client.chat.completions.create(
+        model=settings.OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that rewrites rough course descriptions into clear, realistic, and professional course descriptions written in the style a teacher would use when describing a course. Use the course name and provided description as context. The description should focus only on what the course covers and what students will learn, without marketing language, exaggeration, or phrases like 'join us' or 'your journey'. Only return the improved description as plain text, with no labels or extra commentary."},
+            {"role": "user", "content": f"Course name: {course_name}\nCourse description: {description}"}
+        ]
+    )
+    description = chat_completion.choices[0].message.content
+    return description
 

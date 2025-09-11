@@ -13,7 +13,8 @@ export default function KnowledgeBase({
   onSelectAll = () => {},
   onDelete = () => {}, // Callback to refresh resources after deletion
   onAddResource, // <-- new prop
-  courseId // <-- add courseId prop
+  courseId, // <-- add courseId prop
+  isUploading = false // <-- new prop for upload loading state
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
@@ -60,7 +61,6 @@ export default function KnowledgeBase({
         onFileChange(event);
       }
       
-      console.log(`Successfully uploaded ${files.length} file(s)`);
     } catch (error) {
       console.error('Error uploading files:', error);
       alert(`Failed to upload files: ${error.message}`);
@@ -68,15 +68,22 @@ export default function KnowledgeBase({
   };
 
   return (
-    <div style={{
-      background: "#fff",
-      borderRadius: 12,
-      boxShadow: "0 1px 4px #0001",
-      padding: 18,
-      minHeight: '60vh',
-      maxHeight: '65vh',
-      overflowY: 'auto'
-    }}>
+    <>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div style={{
+        background: "#fff",
+        borderRadius: 12,
+        boxShadow: "0 1px 4px #0001",
+        padding: 18,
+        minHeight: '60vh',
+        maxHeight: '65vh',
+        overflowY: 'auto'
+      }}>
       <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
       <div style={{ color: "#888", fontSize: 13, marginBottom: 10 }}>
         Add resources from the web or course documents you’ve already created — this helps AI give relevant results.
@@ -97,15 +104,43 @@ export default function KnowledgeBase({
           padding: "8px 0",
           borderRadius: 6,
           border: "1px solid #bbb",
-          background: "#fff",
+          background: isUploading ? "#f5f5f5" : "#fff",
           fontWeight: 500,
           fontSize: 15,
-          cursor: "pointer"
+          cursor: isUploading ? "not-allowed" : "pointer",
+          opacity: isUploading ? 0.6 : 1
         }}
         onClick={onAddResource}
+        disabled={isUploading}
       >
-        Add Resource
+        {isUploading ? "Uploading..." : "Add Resource"}
       </button>
+
+      {/* Upload Progress Indicator */}
+      {isUploading && (
+        <div style={{
+          marginBottom: 12,
+          padding: "8px 12px",
+          background: "#f0f9ff",
+          border: "1px solid #0ea5e9",
+          borderRadius: 6,
+          fontSize: 14,
+          color: "#0369a1",
+          display: "flex",
+          alignItems: "center",
+          gap: 8
+        }}>
+          <div style={{
+            width: 16,
+            height: 16,
+            border: "2px solid #0ea5e9",
+            borderTop: "2px solid transparent",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite"
+          }} />
+          Uploading resources...
+        </div>
+      )}
 
       {showCheckboxes && (
         <div style={{ marginBottom: 8 }}>
@@ -213,7 +248,8 @@ export default function KnowledgeBase({
           })
         )}
       </ul>
-    </div>
+      </div>
+    </>
   );
 }
 

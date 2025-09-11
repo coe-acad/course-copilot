@@ -89,7 +89,6 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={handleClose} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Close</button>
-          <button onClick={() => { onAdd(files); handleClose(); }} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }} disabled={files.length === 0 && discovered.length === 0}>Add</button>
         </div>
       </Modal>
     );
@@ -137,8 +136,8 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
           ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-          <button onClick={() => setStep(1)} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Back to Add Resources</button>
-          <button onClick={handleClose} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#e0e7ef', color: '#888', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => setStep(1)} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Back</button>
+          <button onClick={() => { onAdd(files); handleClose(); }} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }} disabled={files.length === 0}>Add Resource</button>
         </div>
       </Modal>
     );

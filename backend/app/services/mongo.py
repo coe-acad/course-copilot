@@ -96,6 +96,9 @@ def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id
 def get_evaluation_by_evaluation_id(evaluation_id: str):
     return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id})
 
+def get_evaluations_by_course_id(course_id: str):
+    return get_many_from_collection("evaluations", {"course_id": course_id})
+
 def update_evaluation(evaluation_id: str, data: dict):
     """Update an evaluation record with new data"""
     logger = logging.getLogger(__name__)

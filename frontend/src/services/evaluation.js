@@ -24,7 +24,6 @@ export const evaluationService = {
   clearCompletedEvaluations() {
     completedEvaluations.clear();
     ongoingEvaluations.clear();
-    console.log('Cleared all evaluation tracking state');
   },
 
   async uploadMarkScheme({ courseId, markSchemeFile }) {
@@ -81,19 +80,16 @@ export const evaluationService = {
     
     // Check if this evaluation is already completed
     if (completedEvaluations.has(evaluationId)) {
-      console.log(`Evaluation ${evaluationId} already completed, rejecting duplicate request`);
       throw new Error('This evaluation has already been completed. Please refresh the page.');
     }
     
     // Prevent duplicate requests for the same evaluation
     if (ongoingEvaluations.has(evaluationId)) {
-      console.log(`Evaluation for ${evaluationId} already in progress, ignoring duplicate request`);
       throw new Error('Evaluation already in progress for this ID');
     }
     
     // NUCLEAR PROTECTION: Prevent rapid successive requests (within 3 seconds)
     if (now - lastRequestTime < 3000) {
-      console.log(`🚫 SERVICE BLOCKED: Evaluation request for ${evaluationId} made too soon (${now - lastRequestTime}ms ago)`);
       throw new Error('Duplicate request blocked - please wait');
     }
     
@@ -107,7 +103,6 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
-      console.log(`Starting evaluation for ID: ${evaluationId}`);
 
       // Use a longer timeout for initial request, but still handle background processing
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
@@ -119,19 +114,16 @@ export const evaluationService = {
         timeout: 120000 // Increased to 2 minutes for initial request
       });
       
-      console.log('Evaluation response received:', res.data);
       
       // If backend is processing in background, poll for completion
       if (res.data.evaluation_result?.status === 'processing') {
         ongoingEvaluations.delete(evaluationId);
-        console.log('Backend returned processing status, starting polling...');
         return await this.waitForCompletion(evaluationId);
       }
       
       // Mark as completed to prevent re-evaluation
       if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
         completedEvaluations.add(evaluationId);
-        console.log(`Marking evaluation ${evaluationId} as completed`);
       }
       
       ongoingEvaluations.delete(evaluationId); // Clean up tracking
@@ -152,7 +144,6 @@ export const evaluationService = {
       
       // Handle timeout by switching to polling mode
       if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
-        console.log('Request timed out, switching to polling mode...');
         ongoingEvaluations.delete(evaluationId);
         
         // Start polling immediately when timeout occurs
@@ -189,19 +180,15 @@ export const evaluationService = {
           timeout: 10000
         });
         
-        console.log(`Polling attempt ${i + 1}: Status check response:`, res.data);
         
         if (res.data.status === 'completed') {
-          console.log('Evaluation completed! Returning results');
           // Mark as completed to prevent re-evaluation
           completedEvaluations.add(evaluationId);
-          console.log(`Marking evaluation ${evaluationId} as completed via waitForCompletion`);
           return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
         }
         
         // Log progress for debugging
         if (i % 6 === 0) { // Every 30 seconds
-          console.log(`Still polling... Attempt ${i + 1}/240 (${Math.round((i + 1) / 240 * 100)}% of max polling time)`);
         }
       } catch (error) {
         console.warn(`Polling attempt ${i + 1} failed:`, error.message);
@@ -222,12 +209,10 @@ export const evaluationService = {
         timeout: 10000
       });
       
-      console.log('Status check response:', res.data);
       
       // Mark as completed if we get a completed status
       if (res.data.status === 'completed') {
         completedEvaluations.add(evaluationId);
-        console.log(`Marking evaluation ${evaluationId} as completed via checkEvaluationStatus`);
       }
       
       return res.data; // { status: "completed" | "processing", evaluation_result?: {...} }
@@ -262,7 +247,6 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
 
-      console.log(`Checking completed evaluation for ID: ${evaluationId}`);
       
       // Try the original evaluate-files endpoint to see if results are ready
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
@@ -274,13 +258,11 @@ export const evaluationService = {
         timeout: 10000
       });
       
-      console.log('Fallback evaluation check response:', res.data);
       
       // If we get results, return them
       if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
         // Mark as completed to prevent re-evaluation
         completedEvaluations.add(evaluationId);
-        console.log(`Marking evaluation ${evaluationId} as completed via checkCompletedEvaluation`);
         return { status: 'completed', evaluation_result: res.data.evaluation_result };
       }
       
@@ -297,14 +279,6 @@ export const evaluationService = {
       if (!user?.id) {
         throw new Error('User not authenticated');
       }
-
-      console.log('Sending data to backend:', {
-        evaluation_id: evaluationId,
-        file_id: fileId,
-        question_number: questionNumber,
-        score: score,
-        feedback: feedback
-      });
       
       const res = await axios.put(`${API_BASE}/evaluation/edit-results`, {
         evaluation_id: evaluationId,
@@ -326,6 +300,28 @@ export const evaluationService = {
         throw new Error('Authentication failed. Please try again.');
       }
       throw new Error(error.response?.data?.detail || 'Failed to edit question result');
+    }
+  },
+
+  async saveEvaluation(evaluationId, assetName) {
+    try {
+      const formData = new FormData();
+      formData.append('asset_name', assetName);
+      
+      const res = await axios.post(`${API_BASE}/evaluation/save/${evaluationId}`, formData, {
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      return res.data;
+    } catch (error) {
+      console.error('Save evaluation error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to save evaluation');
     }
   }
 }; 

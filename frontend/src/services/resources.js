@@ -45,7 +45,6 @@ function handleAxiosError(error) {
 }
 
 export async function uploadCourseResources(courseId, files) {
-  console.log('uploadCourseResources called with:', { courseId, filesCount: files.length });
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
   try {
@@ -54,7 +53,6 @@ export async function uploadCourseResources(courseId, files) {
         'Authorization': `Bearer ${getToken()}`
       }
     });
-    console.log('Upload response:', res.data);
     return res.data;
   } catch (error) {
     console.error('Upload error:', error);
