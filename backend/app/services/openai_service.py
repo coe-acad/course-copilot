@@ -472,6 +472,15 @@ def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: 
                 for msg in messages.data:
                     if msg.role == "assistant":
                         try:
+                            # Check if content exists and has items
+                            if not msg.content or len(msg.content) == 0:
+                                logger.error(f"File {file_id}: Assistant message has no content")
+                                raise HTTPException(status_code=500, detail=f"Assistant response has no content for file {file_id}")
+                            
+                            if not hasattr(msg.content[0], 'text') or not msg.content[0].text:
+                                logger.error(f"File {file_id}: Assistant message content has no text")
+                                raise HTTPException(status_code=500, detail=f"Assistant response has no text for file {file_id}")
+                            
                             result = json.loads(msg.content[0].text.value)
                             # Add the actual file_id to the result
                             result["file_id"] = file_id
@@ -481,7 +490,13 @@ def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: 
                             logger.info(f"File {file_id} extracted {len(result.get('answers', []))} answers")
                             if result.get('answers'):
                                 first_answer = result['answers'][0] if result['answers'] else {}
-                                logger.info(f"File {file_id} first answer: {first_answer.get('student_answer', 'N/A')[:100]}...")
+                                student_answer = first_answer.get('student_answer', 'N/A')
+                                # Handle None values safely
+                                if student_answer is None:
+                                    student_answer = 'None'
+                                else:
+                                    student_answer = str(student_answer)
+                                logger.info(f"File {file_id} first answer: {student_answer[:100]}...")
                             
                             # Validate the extraction
                             if not result.get("answers"):
