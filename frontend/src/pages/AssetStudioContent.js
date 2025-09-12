@@ -53,6 +53,7 @@ export default function AssetStudioContent() {
   const [resourceSaveMessage, setResourceSaveMessage] = useState("");
   const hasInitializedRef = useRef(false);
   const isSendingRef = useRef(false);
+  const textareaRef = useRef(null);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -142,6 +143,10 @@ export default function AssetStudioContent() {
     const newMsg = { type: "user", text: inputMessage };
     setChatMessages((prev) => [...prev, newMsg]);
     setInputMessage("");
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setIsLoading(true);
 
     try {
@@ -477,14 +482,15 @@ export default function AssetStudioContent() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-        <input
+      <div style={{ display: "flex", gap: 12, marginTop: 16, alignItems: "flex-end" }}>
+        <textarea
+          ref={textareaRef}
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              if (!isLoading) {
+              if (!isLoading && inputMessage.trim()) {
                 handleSend();
               }
             }
@@ -495,7 +501,22 @@ export default function AssetStudioContent() {
             padding: "10px 12px",
             borderRadius: 8,
             border: "1px solid #ccc",
-            fontSize: 15
+            fontSize: 15,
+            minHeight: "20px",
+            maxHeight: "120px",
+            resize: "none",
+            overflow: "auto",
+            fontFamily: "inherit",
+            lineHeight: "1.4",
+            whiteSpace: "pre-wrap",
+            wordWrap: "break-word"
+          }}
+          rows={1}
+          onInput={(e) => {
+            // Auto-resize textarea based on content
+            e.target.style.height = 'auto';
+            const newHeight = Math.min(e.target.scrollHeight, 120);
+            e.target.style.height = newHeight + 'px';
           }}
         />
         <button
