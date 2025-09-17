@@ -40,7 +40,12 @@ class Settings:
     ]
     CORS_ALLOW_CREDENTIALS: bool = os.getenv("CORS_ALLOW_CREDENTIALS", "True").lower() == "true"
     CORS_ALLOW_METHODS: List[str] = os.getenv("CORS_ALLOW_METHODS", "GET,POST,PUT,DELETE,OPTIONS").split(",")
-    CORS_ALLOW_HEADERS: List[str] = os.getenv("CORS_ALLOW_HEADERS", "Authorization,Content-Type,Accept,Origin,User-Agent,X-Requested-With").split(",")
+    # Allow all headers by default to avoid preflight rejection due to header case mismatches (e.g., 'authorization' vs 'Authorization')
+    # You can override via env CORS_ALLOW_HEADERS if you need to restrict.
+    CORS_ALLOW_HEADERS: List[str] = os.getenv(
+        "CORS_ALLOW_HEADERS",
+        "*"
+    ).split(",")
     CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range").split(",")
     CORS_MAX_AGE: int = int(os.getenv("CORS_MAX_AGE", "3600"))
     
