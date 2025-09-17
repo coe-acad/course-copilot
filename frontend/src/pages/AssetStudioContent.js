@@ -132,7 +132,7 @@ export default function AssetStudioContent() {
       hasInitializedRef.current = true;
       createInitialMessage();
     }
-  }, [resourcesLoading, resources, option, chatMessages.length]);
+  }, [resourcesLoading, resources, option, chatMessages.length, selectedIds]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
