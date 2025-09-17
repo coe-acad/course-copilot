@@ -32,6 +32,7 @@ class EditresultRequest(BaseModel):
     score: float
     feedback: str
 
+
 def _process_evaluation(evaluation_id, user_id, evaluation):
     """Process evaluation in background"""
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -41,6 +42,36 @@ def _process_evaluation(evaluation_id, user_id, evaluation):
         extracted_answer_sheets = fut_as.result()
     
     evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
+    
+    # Always verify and potentially recalculate scores for each student
+    for student in evaluation_result.get("students", []):
+        answers = student.get("answers", [])
+        
+        # Calculate what the total should be based on individual question scores
+        calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+        calculated_max = sum((a.get("max_score") or 0) for a in answers)
+        
+        # Log the current vs calculated scores
+        current_total = student.get("total_score", 0)
+        current_max = student.get("max_total_score", 0)
+        
+        logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
+        
+        # Always use the calculated scores to ensure accuracy
+        student["total_score"] = calculated_total
+        student["max_total_score"] = calculated_max
+
+    # Calculate and save aggregate totals across all students
+    overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+    overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+    
+    # Add overall totals to the evaluation result
+    evaluation_result["total_score"] = overall_total
+    evaluation_result["max_total_score"] = overall_max
+    
+    logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
+    
+    # Store the final evaluation result (now includes overall totals)
     update_evaluation_with_result(evaluation_id, evaluation_result)
 
 @router.post("/evaluation/upload-mark-scheme")
@@ -65,7 +96,8 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         evaluation_assistant_id=evaluation_assistant_id,
         vector_store_id=vector_store_id,
         mark_scheme_file_id=mark_scheme_file_id,
-        answer_sheet_file_ids=[]
+        answer_sheet_file_ids=[],
+        answer_sheet_filenames=[]
     )
     
     # Verify the evaluation was created successfully
@@ -99,13 +131,16 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         vector_store_id = evaluation["vector_store_id"]
         
         # Upload answer sheets
-        answer_sheet_file_ids = upload_answer_sheet_files(answer_sheets, vector_store_id)
+        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets, vector_store_id)
         
         # Update evaluation record
-        update_evaluation(evaluation_id, {"answer_sheet_file_ids": answer_sheet_file_ids})
+        update_evaluation(evaluation_id, {
+            "answer_sheet_file_ids": answer_sheet_file_ids,
+            "answer_sheet_filenames": answer_sheet_filenames
+        })
         logger.info(f"Successfully uploaded {len(answer_sheet_file_ids)} answer sheets for evaluation {evaluation_id}")
 
-        return {"evaluation_id": evaluation_id, "answer_sheet_file_ids": answer_sheet_file_ids}
+        return {"evaluation_id": evaluation_id, "answer_sheet_file_ids": answer_sheet_file_ids, "answer_sheet_filenames": answer_sheet_filenames}
         
     except HTTPException:
         raise
@@ -134,10 +169,38 @@ async def evaluate_files(evaluation_id: str, user_id: str):
             extracted_answer_sheets = fut_as.result()
         
         evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
-        
-        update_evaluation_with_result(evaluation_id, evaluation_result) 
 
-        logger.info(f"Successfully completed and saved evaluation {evaluation_id}")
+        # Always verify and potentially recalculate scores for each student
+        for student in evaluation_result.get("students", []):
+            answers = student.get("answers", [])
+            
+            # Calculate what the total should be based on individual question scores
+            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+            calculated_max = sum((a.get("max_score") or 0) for a in answers)
+            
+            # Log the current vs calculated scores
+            current_total = student.get("total_score", 0)
+            current_max = student.get("max_total_score", 0)
+            
+            logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
+            
+            # Always use the calculated scores to ensure accuracy
+            student["total_score"] = calculated_total
+            student["max_total_score"] = calculated_max
+
+        # Calculate and save aggregate totals across all students
+        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+        
+        # Add overall totals to the evaluation result
+        evaluation_result["total_score"] = overall_total
+        evaluation_result["max_total_score"] = overall_max
+        
+        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
+        
+        # Store the final evaluation result (now includes overall totals)
+        update_evaluation_with_result(evaluation_id, evaluation_result)
+
         return {"evaluation_id": evaluation_id, "evaluation_result": evaluation_result}
         
     except HTTPException:
@@ -214,6 +277,7 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
             raise HTTPException(status_code=400, detail="Cannot save evaluation without results")
         
         # Create formatted evaluation report
+        logger.info(f"Saving evaluation {evaluation_id}")
         report = format_evaluation_report(evaluation)
         
         # Save as asset
@@ -238,14 +302,24 @@ def format_evaluation_report(evaluation):
     """Format evaluation data into a readable report"""
     result = evaluation["evaluation_result"]
     students = result.get("students", [])
-    
+    stored_filenames = evaluation.get("answer_sheet_filenames", [])
+    logger.info(f"Stored filenames: {stored_filenames}")
     report = f"# Evaluation Report\n\n"
     report += f"**Total Students:** {len(students)}\n"
     report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
     
     for i, student in enumerate(students, 1):
+        # Use stored filename if available, otherwise fall back to student_name or file_id
+        original_filename = "Unknown"
+        if i <= len(stored_filenames):
+            original_filename = stored_filenames[i-1]
+        elif student.get('student_name'):
+            original_filename = student.get('student_name')
+        elif student.get('file_id'):
+            original_filename = f"File_{student.get('file_id')}"
+            
         report += f"## Student {i}\n"
-        report += f"**File:** {student.get('file_id', 'Unknown')}\n"
+        report += f"**File:** {original_filename}\n"
         report += f"**Total Score:** {student.get('total_score', 0)}/{student.get('max_total_score', 0)}\n"
         report += f"**Status:** {student.get('status', 'completed')}\n\n"
         

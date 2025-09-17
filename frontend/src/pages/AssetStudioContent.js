@@ -108,8 +108,12 @@ export default function AssetStudioContent() {
           }
         }
 
-        // Create asset chat with all available files (or empty array if no files) for follow-up text
-        const fileNames = resources.map(file => file.resourceName || file.fileName || file.id);
+        // Create asset chat using ONLY selected resources; if none selected, fall back to all
+        const resolveId = (r) => r.id || r.resourceName || r.fileName;
+        const chosen = (selectedIds && selectedIds.length > 0)
+          ? resources.filter(r => selectedIds.includes(resolveId(r)))
+          : resources;
+        const fileNames = chosen.map(file => file.resourceName || file.fileName || resolveId(file));
         const response = await assetService.createAssetChat(courseId, option, fileNames);
         if (response && response.response) {
           setChatMessages(prev => [...prev, { type: "bot", text: response.response }]);

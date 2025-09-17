@@ -88,8 +88,8 @@ def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
 # Evaluation    
-def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str]):
-    evaluation = {"evaluation_id": evaluation_id, "course_id": course_id,"evaluation_assistant_id": evaluation_assistant_id, "vector_store_id": vector_store_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids}
+def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str], answer_sheet_filenames: list[str] = None):
+    evaluation = {"evaluation_id": evaluation_id, "course_id": course_id,"evaluation_assistant_id": evaluation_assistant_id, "vector_store_id": vector_store_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids, "answer_sheet_filenames": answer_sheet_filenames or []}
     add_to_collection("evaluations", evaluation)
     return evaluation
 
@@ -115,7 +115,6 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     # Log the update operation
     students_count = len(evaluation_result.get('students', []))
     logger.info(f"Updating evaluation {evaluation_id} with results for {students_count} students")
-    
     # Store the evaluation result with timestamp
     update_data = {
         "evaluation_result": evaluation_result,

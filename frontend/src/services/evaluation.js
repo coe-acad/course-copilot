@@ -303,11 +303,11 @@ export const evaluationService = {
     }
   },
 
-  async saveEvaluation(evaluationId, assetName) {
+  async saveEvaluation(evaluationId, assetName, fileName) {
     try {
       const formData = new FormData();
       formData.append('asset_name', assetName);
-      
+      formData.append('file_name', fileName);
       const res = await axios.post(`${API_BASE}/evaluation/save/${evaluationId}`, formData, {
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
