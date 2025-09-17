@@ -23,7 +23,7 @@ export default function CourseModal({
       setCourseName("");
       setCourseDesc("");
     }
-  }, [open]);
+  }, [open, setCourseName, setCourseDesc]);
 
   React.useEffect(() => {
     if (!loading) setClicked(false);

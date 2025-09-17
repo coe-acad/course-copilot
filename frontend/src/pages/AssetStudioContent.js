@@ -89,7 +89,6 @@ export default function AssetStudioContent() {
   useEffect(() => {
     const createInitialMessage = async () => {
       try {
-        setIsLoading(true);
         const courseId = localStorage.getItem('currentCourseId');
         if (!courseId) {
           console.error('No course ID found');
@@ -108,11 +107,16 @@ export default function AssetStudioContent() {
           }
         }
 
-        // Create asset chat using ONLY selected resources; if none selected, fall back to all
+        // If no files were selected, do not create an initial message
+        if (!selectedIds || selectedIds.length === 0) {
+          return;
+        }
+
+        setIsLoading(true);
+
+        // Create asset chat using ONLY selected resources (no fallback)
         const resolveId = (r) => r.id || r.resourceName || r.fileName;
-        const chosen = (selectedIds && selectedIds.length > 0)
-          ? resources.filter(r => selectedIds.includes(resolveId(r)))
-          : resources;
+        const chosen = resources.filter(r => selectedIds.includes(resolveId(r)));
         const fileNames = chosen.map(file => file.resourceName || file.fileName || resolveId(file));
         const response = await assetService.createAssetChat(courseId, option, fileNames);
         if (response && response.response) {
@@ -132,7 +136,7 @@ export default function AssetStudioContent() {
       hasInitializedRef.current = true;
       createInitialMessage();
     }
-  }, [resourcesLoading, resources, option, chatMessages.length]);
+  }, [resourcesLoading, resources, option, chatMessages.length, selectedIds]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
