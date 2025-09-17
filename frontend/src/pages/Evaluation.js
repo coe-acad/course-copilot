@@ -627,9 +627,14 @@ export default function Evaluation() {
       return;
     }
 
+    // Create a combined filename for the evaluation report
+    const fileName = answerSheetFiles.length > 0 
+      ? `${answerSheetFiles.length}_students_evaluation_report`
+      : 'evaluation_report';
+
     setIsSaving(true);
     try {
-      await evaluationService.saveEvaluation(evaluationId, assetName.trim());
+      await evaluationService.saveEvaluation(evaluationId, assetName.trim(), fileName);
       setShowSaveModal(false);
       setAssetName('');
     } catch (error) {

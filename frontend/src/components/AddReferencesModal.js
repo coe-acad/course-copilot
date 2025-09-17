@@ -115,7 +115,7 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
         >
           <FiUploadCloud size={32} style={{ color: '#2563eb', marginBottom: 8 }} />
           <div style={{ fontSize: 15, marginBottom: 6 }}>Drag and drop or <span style={{ color: '#2563eb', textDecoration: 'underline' }}>browse</span> files to upload</div>
-          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .docx .jpg .png .xlsx .pptx</span></div>
+          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .docx .txt .md .xlsx .pptx</span></div>
           <input
             type="file"
             multiple

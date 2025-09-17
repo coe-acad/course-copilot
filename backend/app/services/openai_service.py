@@ -165,14 +165,16 @@ def upload_mark_scheme_file(mark_scheme: UploadFile, vector_store_id: str) -> st
     """Upload mark scheme file"""
     return upload_file_to_vector_store(mark_scheme, vector_store_id)
 
-def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: str) -> List[str]:
-    """Upload multiple answer sheet files"""
+def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: str) -> tuple[List[str], List[str]]:
+    """Upload multiple answer sheet files and return both file IDs and filenames"""
     answer_sheet_ids = []
+    answer_sheet_filenames = []
     
     for answer_sheet in answer_sheets:
         try:
             file_id = upload_file_to_vector_store(answer_sheet, vector_store_id)
             answer_sheet_ids.append(file_id)
+            answer_sheet_filenames.append(answer_sheet.filename)
         except Exception as e:
             logger.error(f"Failed to upload {answer_sheet.filename}: {str(e)}")
             continue
@@ -180,7 +182,7 @@ def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: 
     if not answer_sheet_ids:
         raise HTTPException(status_code=400, detail="No answer sheet files were uploaded successfully")
     
-    return answer_sheet_ids
+    return answer_sheet_ids, answer_sheet_filenames
 
 def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
@@ -225,8 +227,10 @@ def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: s
                                 "properties": {
                                     "question_number": {"type": "string"},
                                     "question_text": {"type": "string"},
-                                    "correct_answer": {"type": "string"},
-                                    "mark_scheme": {"type": "string"}
+                                    "answer_template": {"type": "string"},
+                                    "mark_scheme": {"type": "string"},
+                                    "deductions": {"type": "string"},
+                                    "notes": {"type": "string"}
                                 }
                             }
                         }
@@ -665,7 +669,7 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
 
 def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
     thread = client.beta.threads.create(
-        messages=[{"role": "user", "content": "Check if the mark scheme follows the correct format where each question has a Question, an Answer/Correct Answer (wording may vary), and a Marking Scheme/Mark Scheme (wording may vary); if correct return only 'The format is correct, you can move forward', if not return only 'Mark scheme is not in the correct format'."}]
+        messages=[{"role": "user", "content": "Check if the mark scheme follows the correct format where each question has a Question, an Answer/Correct Answer/Answer Template (wording may vary), and a Marking Scheme/Mark Scheme (wording may vary); There might and might not have notes and deductions, either is excepted; if correct return only 'The format is correct, you can move forward', if not return only 'Mark scheme is not in the correct format'."}]
     )
     run = client.beta.threads.runs.create(
         thread_id=thread.id,
