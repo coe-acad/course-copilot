@@ -1,7 +1,7 @@
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from .routes import auth, course, resources, asset
@@ -117,6 +117,11 @@ app.include_router(asset.router, prefix="/api")
 app.include_router(evaluation.router, prefix="/api")
 
 # Google OAuth callback is now handled by the auth router at /api/callback
+
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    # Return empty 204; CORSMiddleware will append the proper CORS headers
+    return Response(status_code=204)
 
 @app.get("/")
 async def root():
