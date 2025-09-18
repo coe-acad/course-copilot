@@ -128,10 +128,8 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         if not evaluation.get("mark_scheme_file_id"):
             raise HTTPException(status_code=400, detail="Mark scheme must be uploaded first")
         
-        vector_store_id = evaluation["vector_store_id"]
-        
         # Upload answer sheets
-        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets, vector_store_id)
+        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets)
         
         # Update evaluation record
         update_evaluation(evaluation_id, {

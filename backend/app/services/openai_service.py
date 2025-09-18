@@ -165,14 +165,18 @@ def upload_mark_scheme_file(mark_scheme: UploadFile, vector_store_id: str) -> st
     """Upload mark scheme file"""
     return upload_file_to_vector_store(mark_scheme, vector_store_id)
 
-def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: str) -> tuple[List[str], List[str]]:
+def upload_answer_sheet_files(answer_sheets: List[UploadFile]) -> tuple[List[str], List[str]]:
     """Upload multiple answer sheet files and return both file IDs and filenames"""
     answer_sheet_ids = []
     answer_sheet_filenames = []
     
     for answer_sheet in answer_sheets:
         try:
-            file_id = upload_file_to_vector_store(answer_sheet, vector_store_id)
+            file_content = answer_sheet.file.read()
+            file_obj = io.BytesIO(file_content)
+            file_obj.name = answer_sheet.filename
+
+            file_id = create_file(file_obj)
             answer_sheet_ids.append(file_id)
             answer_sheet_filenames.append(answer_sheet.filename)
         except Exception as e:
