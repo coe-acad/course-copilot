@@ -331,7 +331,7 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
             # Collect results as they complete
             for future in future_to_file_id:
                 try:
-                    result = future.result(timeout=300)  # 5 minute timeout per file
+                    result = future.result(timeout=900)  # 5 minute timeout per file
                     results.append(result)
                     logger.info(f"Successfully extracted file {future_to_file_id[future]}")
                 except Exception as e:
@@ -556,120 +556,366 @@ def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: 
     raise HTTPException(status_code=500, detail=f"Unexpected error in extraction for file {file_id}")
 
 
-def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict) -> dict:
-    """
-    Evaluate all students in one go using Chat Completions.
-    Uses the already extracted mark scheme and answer sheets JSON to compute scores.
-    Returns: { evaluation_id, extracted_file_ids, students: [...] }
-    """
-    # Build prompt payload
-    payload = {
-        "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
-        "answer_sheets": json.dumps(extracted_answer_sheets, indent=2),
-        "evaluation_id": evaluation_id
-    }
+def evaluate_batch(batch: list, batch_num: int, evaluation_id: str, evaluation_assistant_id: str, extracted_mark_scheme: dict) -> list:
+    """Helper function to evaluate a single batch of answer sheets"""
+    try:
+        logger.info(f"Started processing batch {batch_num} with {len(batch)} answer sheets")
+        
+        # Build prompt payload for this batch
+        batch_payload = {
+            "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
+            "answer_sheets": json.dumps({"answer_sheets": batch}, indent=2),
+            "evaluation_id": evaluation_id
+        }
 
-    evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
-    print(evaluation_prompt)
+        # Get evaluation prompt for this batch
+        evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
 
-    # Schema: covers all files, grouped in students with file_id attribution
-    evaluation_schema = {
-        "type": "object",
-        "properties": {
-            "evaluation_id": {"type": "string"},
-            "students": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "file_id": {"type": "string"},
-                        "answers": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_number": {"type": "string"},
-                                    "question_text": {"type": "string"},
-                                    "student_answer": {"type": ["string", "null"]},
-                                    "correct_answer": {"type": ["string", "null"]},
-                                    "score": {"type": "number"},
-                                    "max_score": {"type": "number"},
-                                    "feedback": {"type": "string"}
-                                },
-                                "required": [
-                                    "question_number",
-                                    "question_text",
-                                    "student_answer",
-                                    "correct_answer",
-                                    "score",
-                                    "max_score",
-                                    "feedback"
-                                ]
+        # Create thread and run for batch evaluation
+        thread = client.beta.threads.create(
+            messages=[{"role": "user", "content": evaluation_prompt}]
+        )
+
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=evaluation_assistant_id,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "evaluation_schema",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "evaluation_id": {"type": "string"},
+                            "students": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file_id": {"type": "string"},
+                                        "answers": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "question_number": {"type": "string"},
+                                                    "question_text": {"type": "string"},
+                                                    "student_answer": {"type": ["string", "null"]},
+                                                    "correct_answer": {"type": ["string", "null"]},
+                                                    "score": {"type": "number"},
+                                                    "max_score": {"type": "number"},
+                                                    "feedback": {"type": "string"}
+                                                },
+                                                "required": ["question_number", "question_text", "student_answer", 
+                                                           "correct_answer", "score", "max_score", "feedback"]
+                                            }
+                                        },
+                                        "total_score": {"type": "number"},
+                                        "max_total_score": {"type": "number"}
+                                    },
+                                    "required": ["file_id", "answers", "total_score", "max_total_score"]
+                                }
                             }
                         },
-                        "total_score": {"type": "number"},
-                        "max_total_score": {"type": "number"}
-                    },
-                    "required": ["file_id", "answers", "total_score", "max_total_score"]
+                        "required": ["evaluation_id", "students"]
+                    }
                 }
             }
-        },
-        "required": ["evaluation_id", "students"]
-    }
+        )
 
-    # Use Assistants API for evaluation again
+        # Wait for batch evaluation completion with timeout
+        start_time = time.time()
+        timeout = 900  # 5 minutes timeout per batch
+        
+        while run.status in ["queued", "in_progress"]:
+            if time.time() - start_time > timeout:
+                raise TimeoutError(f"Batch {batch_num} evaluation timed out after {timeout} seconds")
+            time.sleep(1)
+            run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+        if run.status == "failed":
+            raise Exception(f"Batch {batch_num} evaluation failed: {run.last_error}")
+
+        # Get batch results
+        messages = client.beta.threads.messages.list(thread_id=thread.id)
+        for msg in messages.data:
+            if msg.role == "assistant" and msg.content and len(msg.content) > 0:
+                content = msg.content[0]
+                if hasattr(content, "text") and content.text.value:
+                    try:
+                        batch_result = json.loads(content.text.value)
+                        logger.info(f"Successfully evaluated batch {batch_num}")
+                        return batch_result.get("students", [])
+                    except json.JSONDecodeError as e:
+                        raise Exception(f"Failed to parse batch {batch_num} result: {str(e)}")
+
+        raise Exception(f"No valid response found for batch {batch_num}")
+    except Exception as e:
+        logger.error(f"Error processing batch {batch_num}: {str(e)}")
+        raise
+
+def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
+    """
+    Evaluate answer sheets in parallel batches of 5 using Chat Completions.
+    Uses the already extracted mark scheme and answer sheets JSON to compute scores.
+    Returns: { evaluation_id, students: [...] }
+    """
+    # Get list of answer sheets
+    answer_sheets_list = extracted_answer_sheets.get("answer_sheets", [])
+    if not answer_sheets_list:
+        raise HTTPException(status_code=400, detail="No answer sheets found in extracted data")
+
+    # Ensure unique answer sheets
+    unique_answer_sheets = {sheet.get('file_id'): sheet for sheet in answer_sheets_list}.values()
+    answer_sheets_list = list(unique_answer_sheets)
+
+    # Split into batches of 5
+    batch_size = 5
+    batches = [answer_sheets_list[i:i + batch_size] for i in range(0, len(answer_sheets_list), batch_size)]
+    all_evaluated_students = []
+
+    logger.info(f"Processing {len(answer_sheets_list)} unique answer sheets in {len(batches)} batches")
+
+    # Get evaluation assistant
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
     evaluation_assistant_id = evaluation["evaluation_assistant_id"]
 
-    thread = client.beta.threads.create(
-        messages=[{"role": "user", "content": evaluation_prompt}]
-    )
+    def evaluate_one_batch(batch_num: int, batch: list) -> list:
+        """Inner function to evaluate a single batch and return students list."""
+        logger.info(f"Evaluating batch {batch_num}/{len(batches)} with {len(batch)} answer sheets")
 
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=evaluation_assistant_id,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {"name": "evaluation_schema", "schema": evaluation_schema}
+        batch_payload = {
+            "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
+            "answer_sheets": json.dumps({"answer_sheets": batch}, indent=2),
+            "evaluation_id": evaluation_id
         }
-    )
+        evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
 
-    while run.status in ["queued", "in_progress"]:
-        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        # Create thread and run evaluation
+        thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=evaluation_assistant_id,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "evaluation_schema",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "evaluation_id": {"type": "string"},
+                            "students": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file_id": {"type": "string"},
+                                        "answers": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "question_number": {"type": "string"},
+                                                    "question_text": {"type": "string"},
+                                                    "student_answer": {"type": ["string", "null"]},
+                                                    "correct_answer": {"type": ["string", "null"]},
+                                                    "score": {"type": "number"},
+                                                    "max_score": {"type": "number"},
+                                                    "feedback": {"type": "string"}
+                                                },
+                                                "required": [
+                                                    "question_number",
+                                                    "question_text",
+                                                    "student_answer",
+                                                    "correct_answer",
+                                                    "score",
+                                                    "max_score",
+                                                    "feedback"
+                                                ]
+                                            }
+                                        },
+                                        "total_score": {"type": "number"},
+                                        "max_total_score": {"type": "number"}
+                                    },
+                                    "required": ["file_id", "answers", "total_score", "max_total_score"]
+                                }
+                            }
+                        },
+                        "required": ["evaluation_id", "students"]
+                    }
+                }
+            }
+        )
 
-    if run.status == "failed":
-        logger.error(f"All-in-one evaluation {evaluation_id} failed: {run.last_error}")
-        raise HTTPException(status_code=500, detail=f"All-in-one evaluation failed: {run.last_error}")
+        # Poll until run finishes
+        while run.status in ("queued", "in_progress"):
+            run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    assistant_message = None
-    for m in messages.data:
-        if m.role != "assistant":
-            continue
-        # Ensure content is present and has text
-        if getattr(m, "content", None) and len(m.content) > 0:
-            first = m.content[0]
-            if getattr(first, "text", None) and getattr(first.text, "value", None):
-                assistant_message = m
-                break
-    if not assistant_message:
-        raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
+        if run.status == "failed":
+            logger.error(f"Batch {batch_num} evaluation failed: {run.last_error}")
+            raise HTTPException(status_code=500, detail=f"Batch {batch_num} evaluation failed: {run.last_error}")
 
-    structured_output = assistant_message.content[0].text.value
+        # Get assistant message content
+        messages = client.beta.threads.messages.list(thread_id=thread.id)
+        structured_output = None
+        for msg in messages.data:
+            if msg.role == "assistant" and msg.content and len(msg.content) > 0:
+                content = msg.content[0]
+                if hasattr(content, "text") and content.text.value:
+                    structured_output = content.text.value
+                    break
 
-    # Parse result and enforce minimal invariants
-    try:
-        evaluation_result = json.loads(structured_output)
-        if "properties" in evaluation_result and "type" in evaluation_result:
-            raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results, please try again")
-        if "evaluation_id" not in evaluation_result:
-            evaluation_result["evaluation_id"] = evaluation_id
-        if "students" not in evaluation_result:
-            raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students'")
-        return evaluation_result
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
-        raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
+        if not structured_output:
+            raise HTTPException(status_code=500, detail=f"No content returned for batch {batch_num}")
+
+        # Parse and enforce minimal invariants
+        try:
+            evaluation_result = json.loads(structured_output)
+            if "properties" in evaluation_result and "type" in evaluation_result:
+                raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results, please try again")
+            if "evaluation_id" not in evaluation_result:
+                evaluation_result["evaluation_id"] = evaluation_id
+            if "students" not in evaluation_result:
+                raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students'")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
+            raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
+
+        logger.info(f"Successfully evaluated batch {batch_num} with {len(evaluation_result['students'])} students")
+        return evaluation_result["students"]
+
+    # Evaluate all batches concurrently
+    max_workers = min(4, len(batches))  # limit concurrency
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_batchnum = {
+            executor.submit(evaluate_one_batch, idx + 1, batch): idx + 1
+            for idx, batch in enumerate(batches)
+        }
+        for future in future_to_batchnum:
+            batch_num = future_to_batchnum[future]
+            try:
+                batch_students = future.result(timeout=900)
+                all_evaluated_students.extend(batch_students)
+            except Exception as e:
+                logger.error(f"Batch {batch_num} failed: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
+
+    # Deduplicate by file_id
+    seen_file_ids = set()
+    unique_students = []
+    for student in all_evaluated_students:
+        file_id = student.get('file_id')
+        if file_id and file_id not in seen_file_ids:
+            seen_file_ids.add(file_id)
+            unique_students.append(student)
+
+    final_result = {"evaluation_id": evaluation_id, "students": unique_students}
+    logger.info(f"Completed evaluation of {len(unique_students)}/{len(answer_sheets_list)} answer sheets "
+                f"(removed {len(all_evaluated_students) - len(unique_students)} duplicates)")
+    return final_result
+
+
+    # evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
+    # print(evaluation_prompt)
+
+    # # Schema: covers all files, grouped in students with file_id attribution
+    # evaluation_schema = {
+    #     "type": "object",
+    #     "properties": {
+    #         "evaluation_id": {"type": "string"},
+    #         "students": {
+    #             "type": "array",
+    #             "items": {
+    #                 "type": "object",
+    #                 "properties": {
+    #                     "file_id": {"type": "string"},
+    #                     "answers": {
+    #                         "type": "array",
+    #                         "items": {
+    #                             "type": "object",
+    #                             "properties": {
+    #                                 "question_number": {"type": "string"},
+    #                                 "question_text": {"type": "string"},
+    #                                 "student_answer": {"type": ["string", "null"]},
+    #                                 "correct_answer": {"type": ["string", "null"]},
+    #                                 "score": {"type": "number"},
+    #                                 "max_score": {"type": "number"},
+    #                                 "feedback": {"type": "string"}
+    #                             },
+    #                             "required": [
+    #                                 "question_number",
+    #                                 "question_text",
+    #                                 "student_answer",
+    #                                 "correct_answer",
+    #                                 "score",
+    #                                 "max_score",
+    #                                 "feedback"
+    #                             ]
+    #                         }
+    #                     },
+    #                     "total_score": {"type": "number"},
+    #                     "max_total_score": {"type": "number"}
+    #                 },
+    #                 "required": ["file_id", "answers", "total_score", "max_total_score"]
+    #             }
+    #         }
+    #     },
+    #     "required": ["evaluation_id", "students"]
+    # }
+
+    # # Use Assistants API for evaluation again
+    # evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    # evaluation_assistant_id = evaluation["evaluation_assistant_id"]
+
+    # thread = client.beta.threads.create(
+    #     messages=[{"role": "user", "content": evaluation_prompt}]
+    # )
+
+    # run = client.beta.threads.runs.create(
+    #     thread_id=thread.id,
+    #     assistant_id=evaluation_assistant_id,
+    #     response_format={
+    #         "type": "json_schema",
+    #         "json_schema": {"name": "evaluation_schema", "schema": evaluation_schema}
+    #     }
+    # )
+
+    # while run.status in ["queued", "in_progress"]:
+    #     run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+    # if run.status == "failed":
+    #     logger.error(f"All-in-one evaluation {evaluation_id} failed: {run.last_error}")
+    #     raise HTTPException(status_code=500, detail=f"All-in-one evaluation failed: {run.last_error}")
+
+    # messages = client.beta.threads.messages.list(thread_id=thread.id)
+    # assistant_message = None
+    # for m in messages.data:
+    #     if m.role != "assistant":
+    #         continue
+    #     # Ensure content is present and has text
+    #     if getattr(m, "content", None) and len(m.content) > 0:
+    #         first = m.content[0]
+    #         if getattr(first, "text", None) and getattr(first.text, "value", None):
+    #             assistant_message = m
+    #             break
+    # if not assistant_message:
+    #     raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
+
+    # structured_output = assistant_message.content[0].text.value
+
+    # # Parse result and enforce minimal invariants
+    # try:
+    #     evaluation_result = json.loads(structured_output)
+    #     if "properties" in evaluation_result and "type" in evaluation_result:
+    #         raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results, please try again")
+    #     if "evaluation_id" not in evaluation_result:
+    #         evaluation_result["evaluation_id"] = evaluation_id
+    #     if "students" not in evaluation_result:
+    #         raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students'")
+    #     return evaluation_result
+    # except json.JSONDecodeError as e:
+    #     logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
+    #     raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
 
 def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
     thread = client.beta.threads.create(
