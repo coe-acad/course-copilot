@@ -33,8 +33,12 @@ export default function AssetStudioContent() {
 
   // ✅ Pre-select only those passed from Dashboard
   const selectedFiles = location.state?.selectedFiles || [];
-  const initialSelectedIds = selectedFiles.map(file => file.id);
+  const initialSelectedIds = selectedFiles.map(file => file.id || file.fileName || file.name);
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
+  
+  // Debug logging for file selection
+  console.log('Selected files from Dashboard:', selectedFiles);
+  console.log('Initial selected IDs:', initialSelectedIds);
 
   const [chatMessages, setChatMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -118,6 +122,13 @@ export default function AssetStudioContent() {
         const resolveId = (r) => r.id || r.resourceName || r.fileName;
         const chosen = resources.filter(r => selectedIds.includes(resolveId(r)));
         const fileNames = chosen.map(file => file.resourceName || file.fileName || resolveId(file));
+        
+        // Debug logging
+        console.log('Selected IDs:', selectedIds);
+        console.log('Available resources:', resources.map(r => ({ id: resolveId(r), name: r.resourceName || r.fileName })));
+        console.log('Chosen files:', chosen);
+        console.log('File names being sent:', fileNames);
+        
         const response = await assetService.createAssetChat(courseId, option, fileNames);
         if (response && response.response) {
           setChatMessages(prev => [...prev, { type: "bot", text: response.response }]);
