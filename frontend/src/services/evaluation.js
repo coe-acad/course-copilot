@@ -74,7 +74,7 @@ export const evaluationService = {
     }
   },
 
-  async evaluateFiles(evaluationId) {
+  async evaluateFiles(evaluationId, { signal } = {}) {
     const now = Date.now();
     const lastRequestTime = lastEvaluationTime.get(evaluationId) || 0;
     
@@ -104,14 +104,15 @@ export const evaluationService = {
       }
 
 
-      // Use a longer timeout for initial request, but still handle background processing
+      // Idempotent trigger: backend returns completed if already done, or processing once
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         params: {
           evaluation_id: evaluationId,
           user_id: user.id
         },
-        timeout: 120000 // Increased to 2 minutes for initial request
+        timeout: 30000,
+        signal
       });
       
       
@@ -142,7 +143,7 @@ export const evaluationService = {
         throw new Error('Authentication failed. Please try again.');
       }
       
-      // Handle timeout by switching to polling mode
+      // On timeout, switch to polling mode via status endpoint
       if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
         ongoingEvaluations.delete(evaluationId);
         
@@ -169,15 +170,16 @@ export const evaluationService = {
         }
   },
 
-  async waitForCompletion(evaluationId) {
-    // Enhanced polling - check every 5 seconds for up to 20 minutes
+  async waitForCompletion(evaluationId, { signal } = {}) {
+    // Poll status every 5 seconds for up to 20 minutes
     for (let i = 0; i < 240; i++) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       try {
         const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
           headers: { 'Authorization': `Bearer ${getToken()}` },
-          timeout: 10000
+          timeout: 10000,
+          signal
         });
         
         
@@ -202,11 +204,12 @@ export const evaluationService = {
     throw new Error('Evaluation timed out after 20 minutes. Please check the evaluation status manually.');
   },
 
-  async checkEvaluationStatus(evaluationId) {
+  async checkEvaluationStatus(evaluationId, { signal } = {}) {
     try {
       const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
-        timeout: 10000
+        timeout: 10000,
+        signal
       });
       
       
@@ -240,32 +243,19 @@ export const evaluationService = {
     }
   },
 
-  async checkCompletedEvaluation(evaluationId) {
+  async checkCompletedEvaluation(evaluationId, { signal } = {}) {
     try {
-      const user = getCurrentUser();
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      
-      // Try the original evaluate-files endpoint to see if results are ready
-      const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
+      const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
-        params: {
-          evaluation_id: evaluationId,
-          user_id: user.id
-        },
-        timeout: 10000
+        timeout: 10000,
+        signal
       });
       
-      
-      // If we get results, return them
-      if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
-        // Mark as completed to prevent re-evaluation
+      if (res.data.status === 'completed') {
         completedEvaluations.add(evaluationId);
         return { status: 'completed', evaluation_result: res.data.evaluation_result };
       }
-      
+
       return { status: 'processing' };
     } catch (error) {
       console.error('Fallback evaluation check error:', error);

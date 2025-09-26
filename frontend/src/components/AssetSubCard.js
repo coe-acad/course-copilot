@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FiEye } from "react-icons/fi";
 import { assetService } from "../services/asset";
 import AssetViewModal from "./AssetViewModal";
@@ -12,6 +13,7 @@ export default function AssetSubCard({
   onView,
   onDownload
 }) {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [assetData, setAssetData] = useState(null);
@@ -22,6 +24,11 @@ export default function AssetSubCard({
     setIsLoading(true);
     try {
       const asset = await assetService.viewAsset(courseId, name);
+      // If this is an evaluation reference asset, open the live Evaluation UI by ID
+      if (asset?.asset_category === 'evaluation' && asset?.asset_type === 'evaluation' && asset?.asset_content) {
+        navigate(`/evaluation?evaluation_id=${encodeURIComponent(asset.asset_content)}`);
+        return;
+      }
       setAssetData(asset);
       setShowViewModal(true);
       if (onView) {

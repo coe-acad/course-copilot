@@ -656,7 +656,7 @@ def evaluate_batch(batch: list, batch_num: int, evaluation_id: str, evaluation_a
 
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """
-    Evaluate answer sheets in parallel batches of 5 using Chat Completions.
+    Evaluate answer sheets sequentially in batches of 5 using Chat Completions.
     Uses the already extracted mark scheme and answer sheets JSON to compute scores.
     Returns: { evaluation_id, students: [...] }
     """
@@ -784,21 +784,15 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         logger.info(f"Successfully evaluated batch {batch_num} with {len(evaluation_result['students'])} students")
         return evaluation_result["students"]
 
-    # Evaluate all batches concurrently
-    max_workers = min(4, len(batches))  # limit concurrency
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_batchnum = {
-            executor.submit(evaluate_one_batch, idx + 1, batch): idx + 1
-            for idx, batch in enumerate(batches)
-        }
-        for future in future_to_batchnum:
-            batch_num = future_to_batchnum[future]
-            try:
-                batch_students = future.result(timeout=900)
-                all_evaluated_students.extend(batch_students)
-            except Exception as e:
-                logger.error(f"Batch {batch_num} failed: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
+    # Evaluate all batches sequentially
+    for idx, batch in enumerate(batches):
+        batch_num = idx + 1
+        try:
+            batch_students = evaluate_one_batch(batch_num, batch)
+            all_evaluated_students.extend(batch_students)
+        except Exception as e:
+            logger.error(f"Batch {batch_num} failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
 
     # Deduplicate by file_id
     seen_file_ids = set()

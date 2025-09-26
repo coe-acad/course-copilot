@@ -7,6 +7,7 @@ import pyrebase
 from firebase_admin import auth
 import logging
 from ..services.firebase import firebase_config, db
+from ..services.mongo import create_user, get_user_by_user_id
 from ..config.settings import settings
 
 router = APIRouter()
@@ -50,6 +51,12 @@ async def signup(request: Request):
             raise HTTPException(status_code=400, detail="Missing email, password, or name")
         user = auth.create_user(email=email, password=password, display_name=name)
         logger.info(f"User signed up: {email}")
+        # Ensure user exists in Mongo
+        try:
+            if not get_user_by_user_id(user.uid):
+                create_user(user.uid, email)
+        except Exception as e:
+            logger.warning(f"Mongo user create (signup) skipped or failed for {email}: {str(e)}")
         return JSONResponse(content={"message": "Signup successful", "user_id": user.uid}, status_code=200)
     except Exception as e:
         logger.error(f"Signup failed: {str(e)}")
@@ -68,6 +75,12 @@ async def login(request: Request):
         id_token = user["idToken"]
         refresh_token = user["refreshToken"]
         logger.info(f"User logged in: {email}")
+        # Ensure user exists in Mongo
+        try:
+            if not get_user_by_user_id(user_id):
+                create_user(user_id, email)
+        except Exception as e:
+            logger.warning(f"Mongo user create (login) skipped or failed for {email}: {str(e)}")
         return JSONResponse(content={"message": "Login successful", "token": id_token, "refresh_token": refresh_token, "user_id": user_id}, status_code=200)
     except Exception as e:
         logger.error(f"Login failed: {str(e)}")
@@ -138,6 +151,13 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
 
         # Store user info in Firestore (optional, for consistency)
         db.collection("users").document(user_id).set({"email": email}, merge=True)
+
+        # Ensure user exists in Mongo
+        try:
+            if not get_user_by_user_id(user_id):
+                create_user(user_id, email)
+        except Exception as e:
+            logger.warning(f"Mongo user create (google) skipped or failed for {email}: {str(e)}")
 
         # Store token in a simple in-memory store (for demo purposes)
         # In production, use Redis or a proper session store
