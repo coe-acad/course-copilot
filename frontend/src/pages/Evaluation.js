@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
 import { evaluationService } from "../services/evaluation";
 
 export default function Evaluation() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isGridView] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
@@ -18,7 +19,9 @@ export default function Evaluation() {
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [evaluationProgress, setEvaluationProgress] = useState(0);
+  // eslint-disable-next-line no-unused-vars
   const [evaluationStatus, setEvaluationStatus] = useState('');
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
@@ -32,13 +35,162 @@ export default function Evaluation() {
   const [formatErrorMessage, setFormatErrorMessage] = useState(''); // Format error message
   const [showSaveModal, setShowSaveModal] = useState(false); // Show save modal
   const [assetName, setAssetName] = useState(''); // Asset name for saving
+  const [showNameInputScreen, setShowNameInputScreen] = useState(false); // Show name input screen
+  const [showProcessStartedPopup, setShowProcessStartedPopup] = useState(false); // Show process started popup
   const manualProgressRef = React.useRef(false);
   const evaluationCompletedRef = React.useRef(false);
+  const pollIntervalRef = React.useRef(null);
+  const pendingSavePromiseRef = React.useRef(null);
+  const abortControllerRef = React.useRef(null);
 
   const evaluationInProgressRef = React.useRef(false);
 
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
+  const openedFromCardRef = React.useRef(false);
+
+  // Clear any background timers when unmounting to avoid blocking the rest of the app
+  useEffect(() => {
+    return () => {
+      try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
+    };
+  }, []);
+
+  
+
+  const handleClose = () => {
+    try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
+    try { if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; } } catch {}
+    const maybeWaitForSave = async () => {
+      try {
+        if (pendingSavePromiseRef.current) {
+          // Wait up to 1.5s to let the asset persist so the card shows on Dashboard
+          await Promise.race([
+            pendingSavePromiseRef.current,
+            new Promise((resolve) => setTimeout(resolve, 1500))
+          ]);
+        }
+      } catch {}
+      navigate('/dashboard');
+    };
+    maybeWaitForSave();
+  };
+  // If opened with evaluation_id in query, load that evaluation and show results UI
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const evalId = params.get('evaluation_id');
+    if (evalId) {
+      openedFromCardRef.current = true;
+      setEvaluationId(evalId);
+      setShowResults(true);
+      setIsEvaluating(true);
+      // Fetch status and populate results
+      (async () => {
+        try {
+          abortControllerRef.current = new AbortController();
+          const status = await evaluationService.checkEvaluationStatus(evalId, { signal: abortControllerRef.current.signal });
+          // If filenames are available, populate the table's file list to render rows
+          if (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0) {
+            const files = status.answer_sheet_filenames.map(name => ({ name }));
+            setAnswerSheetFiles(files);
+            setAnswerSheetsUploaded(true);
+          }
+          if (status.status === 'completed' && status.evaluation_result) {
+            setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
+            setEvaluationProgress(100);
+            setEvaluationStatus('Evaluation completed!');
+          } else {
+            setEvaluationStatus('Processing...');
+            // Start same progress simulation as Evaluate flow (90s per file), then poll
+            try {
+              manualProgressRef.current = true;
+              evaluationCompletedRef.current = false;
+              const filesCount = (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0)
+                ? status.answer_sheet_filenames.length
+                : ((answerSheetFiles && answerSheetFiles.length > 0) ? answerSheetFiles.length : 1);
+              setIsEvaluating(true);
+              setShowResults(true);
+              setEvaluationProgress(0);
+              let elapsedSeconds = 0;
+              const totalSecondsTo95 = Math.max(1, filesCount * 90);
+              const progressTimer = setInterval(() => {
+                if (evaluationCompletedRef.current) {
+                  clearInterval(progressTimer);
+                  return;
+                }
+                elapsedSeconds += 1;
+                const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
+                setEvaluationProgress(prev => (target > prev ? target : prev));
+                if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
+                else if (target < 40) setEvaluationStatus('Processing answer sheets...');
+                else if (target < 60) setEvaluationStatus('Evaluating student responses...');
+                else if (target < 80) setEvaluationStatus('Calculating scores...');
+                else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
+                else setEvaluationStatus('Waiting for backend to complete...');
+
+                if (target >= 95) {
+                  clearInterval(progressTimer);
+                  // Begin polling until completion
+                  let consecutiveFailures = 0;
+                  const maxConsecutiveFailures = 3;
+                  const pollInterval = setInterval(async () => {
+                    if (evaluationCompletedRef.current) {
+                      clearInterval(pollInterval);
+                      return;
+                    }
+                    try {
+                      const controller = new AbortController();
+                      abortControllerRef.current = controller;
+                      const statusResponse = await evaluationService.checkEvaluationStatus(evalId, { signal: controller.signal });
+                      consecutiveFailures = 0;
+                      if (statusResponse.status === 'completed') {
+                        clearInterval(pollInterval);
+                        try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
+                        evaluationCompletedRef.current = true;
+                        setIsEvaluating(false);
+                        manualProgressRef.current = false;
+                        setEvaluationProgress(100);
+                        setEvaluationStatus('Evaluation completed!');
+                        if (statusResponse.evaluation_result) {
+                          setEvaluationResult({ evaluation_id: evalId, evaluation_result: statusResponse.evaluation_result });
+                        }
+                      } else {
+                        setEvaluationStatus('Backend still processing... Please wait...');
+                      }
+                    } catch (pollError) {
+                      consecutiveFailures++;
+                      if (pollError.message && pollError.message.includes('Authentication')) {
+                        clearInterval(pollInterval);
+                        setIsEvaluating(false);
+                        setEvaluationStatus('Authentication failed during polling');
+                        manualProgressRef.current = false;
+                        return;
+                      }
+                      if (pollError.message && pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
+                        clearInterval(pollInterval);
+                        setIsEvaluating(false);
+                        setEvaluationStatus('Evaluation session lost - please try again');
+                        setEvaluationProgress(0);
+                        manualProgressRef.current = false;
+                        return;
+                      }
+                    }
+                  }, 15000);
+                  pollIntervalRef.current = pollInterval;
+                }
+              }, 1000);
+            } catch {}
+          }
+        } catch (e) {
+          console.warn('Failed to load saved evaluation:', e.message);
+          setEvaluationStatus('Unable to load evaluation');
+        } finally {
+          setIsEvaluating(false);
+        }
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
   
 
 
@@ -47,63 +199,7 @@ export default function Evaluation() {
     // This effect will run whenever forceUpdate changes, forcing a re-render
   }, [forceUpdate]);
 
-  // Simulate evaluation progress
-  useEffect(() => {
-    let progressInterval;
-    
-    if (isEvaluating && showResults && !manualProgressRef.current) {
-      setEvaluationProgress(0);
-      setEvaluationStatus('Starting evaluation...');
-      
-      // More conservative timing for production - slower progress that gives backend more time
-      let currentProgress = 0;
-      
-      progressInterval = setInterval(() => {
-        setEvaluationProgress(prev => {
-          currentProgress = prev;
-          
-          // Adaptive progress speed - slower as we approach 95%
-          let progressIncrement;
-          if (currentProgress < 50) {
-            progressIncrement = 2; // Fast initially (2% per second)
-          } else if (currentProgress < 80) {
-            progressIncrement = 1; // Medium speed (1% per second)
-          } else if (currentProgress < 90) {
-            progressIncrement = 0.5; // Slow down (0.5% per second)
-          } else if (currentProgress < 95) {
-            progressIncrement = 0.2; // Very slow approach to 95% (0.2% per second)
-          } else {
-            // Stop at 95% and wait for backend
-            setEvaluationStatus('Backend processing files... Please wait...');
-            return 95;
-          }
-          
-          const newProgress = currentProgress + progressIncrement;
-          
-          // Update status based on progress
-          if (newProgress < 20) {
-            setEvaluationStatus('Analyzing mark scheme...');
-          } else if (newProgress < 40) {
-            setEvaluationStatus('Processing answer sheets...');
-          } else if (newProgress < 60) {
-            setEvaluationStatus('Evaluating student responses...');
-          } else if (newProgress < 80) {
-            setEvaluationStatus('Calculating scores...');
-          } else if (newProgress < 90) {
-            setEvaluationStatus('Finalizing evaluation...');
-          } else if (newProgress < 95) {
-            setEvaluationStatus(`Processing ${answerSheetFiles.length} files...`);
-          }
-          
-          return Math.min(newProgress, 95);
-        });
-      }, 1000); // Update every second
-    }
-
-    return () => {
-      if (progressInterval) clearInterval(progressInterval);
-    };
-  }, [isEvaluating, showResults, answerSheetFiles.length]);
+  // Progress bar removed: no simulated progress updates
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -205,6 +301,56 @@ export default function Evaluation() {
       return;
     }
     
+    // Show name input screen
+    setShowNameInputScreen(true);
+  };
+
+  const handleStartEvaluation = async () => {
+    if (!assetName.trim()) {
+      alert('Please enter a name for the evaluation');
+      return;
+    }
+
+    // Show process started popup on the name screen (do not hide name screen)
+    setShowProcessStartedPopup(true);
+
+    // Save the evaluation with the provided name
+    const fileName = answerSheetFiles.length > 0 
+      ? `${answerSheetFiles.length}_students_evaluation_report`
+      : 'evaluation_report';
+
+    // Fire-and-forget save call
+    try { localStorage.setItem('pendingEvaluationAssetName', assetName.trim()); } catch {}
+    
+    const savePromise = evaluationService.saveEvaluation(evaluationId, assetName.trim(), fileName)
+      .then(() => {
+        try {
+          const el = document.createElement('div');
+          el.textContent = 'Saved. You can access this in the Evaluation cards on the creation page.';
+          el.style.position = 'fixed';
+          el.style.bottom = '24px';
+          el.style.right = '24px';
+          el.style.background = '#10b981';
+          el.style.color = '#fff';
+          el.style.padding = '12px 16px';
+          el.style.borderRadius = '8px';
+          el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          el.style.zIndex = '2000';
+          document.body.appendChild(el);
+          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
+        } catch {}
+      })
+      .catch((error) => {
+        console.error('Error saving evaluation:', error);
+        alert('Failed to save evaluation: ' + (error?.message || 'Unknown error'));
+      })
+      .finally(() => {
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+      });
+    pendingSavePromiseRef.current = savePromise;
+
+    // Do not auto-redirect; wait for user to click the button on the popup
+
     // Clear any previous evaluation tracking state
     evaluationService.clearCompletedEvaluations();
     
@@ -212,7 +358,6 @@ export default function Evaluation() {
     
     try {
       setIsEvaluating(true);
-      setShowResults(true); // Show results page immediately
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
 
@@ -278,17 +423,28 @@ export default function Evaluation() {
             }
             
             try {
-              const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId);
+              const controller = new AbortController();
+              abortControllerRef.current = controller;
+              const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId, { signal: controller.signal });
               
               // Reset failure counter on successful response
               consecutiveFailures = 0;
               
-              if (statusResponse.status === 'completed' && statusResponse.evaluation_result) {
+              if (statusResponse.status === 'completed') {
                 clearInterval(pollInterval);
-                finishWithResult({
-                  evaluation_id: evaluationId,
-                  evaluation_result: statusResponse.evaluation_result
-                });
+                try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
+                evaluationCompletedRef.current = true;
+                evaluationInProgressRef.current = false;
+                setIsEvaluating(false);
+                manualProgressRef.current = false;
+                setEvaluationProgress(100);
+                setEvaluationStatus('Evaluation completed!');
+                if (statusResponse.evaluation_result) {
+                  finishWithResult({
+                    evaluation_id: evaluationId,
+                    evaluation_result: statusResponse.evaluation_result
+                  });
+                }
                 return; // Exit immediately after completion
               } else {
                 setEvaluationStatus('Backend still processing... Please wait...');
@@ -300,7 +456,9 @@ export default function Evaluation() {
               // If it's a 404 error and we've had consecutive failures, try fallback
               if (pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
                 try {
-                  const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId);
+                  const controller2 = new AbortController();
+                  abortControllerRef.current = controller2;
+                  const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId, { signal: controller2.signal });
                   if (fallbackResponse.status === 'completed' && fallbackResponse.evaluation_result) {
                     clearInterval(pollInterval);
                     finishWithResult({
@@ -330,6 +488,8 @@ export default function Evaluation() {
               }
             }
           }, 15000); // Poll every 15 seconds
+          // Store globally so we can clear on unmount/close
+          pollIntervalRef.current = pollInterval;
           
           // Safety timeout after 1 hour of polling
           setTimeout(() => {
@@ -633,16 +793,57 @@ export default function Evaluation() {
       : 'evaluation_report';
 
     setIsSaving(true);
+    // Optimistic, non-blocking save: close modal immediately and show toast
+    setShowSaveModal(false);
+    const nameToSave = assetName.trim();
+    setAssetName('');
     try {
-      await evaluationService.saveEvaluation(evaluationId, assetName.trim(), fileName);
-      setShowSaveModal(false);
-      setAssetName('');
-    } catch (error) {
-      console.error('Error saving evaluation:', error);
-      alert('Failed to save evaluation: ' + error.message);
-    } finally {
-      setIsSaving(false);
-    }
+      const el = document.createElement('div');
+      el.textContent = 'Saving... Your evaluation card will appear shortly.';
+      el.style.position = 'fixed';
+      el.style.bottom = '24px';
+      el.style.right = '24px';
+      el.style.background = '#2563eb';
+      el.style.color = '#fff';
+      el.style.padding = '12px 16px';
+      el.style.borderRadius = '8px';
+      el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+      el.style.zIndex = '2000';
+      document.body.appendChild(el);
+      setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 1800);
+    } catch {}
+
+    // Fire-and-forget save call; do not block UI
+    // Mark a pending indicator for Dashboard to aggressively refresh assets
+    try { localStorage.setItem('pendingEvaluationAssetName', nameToSave); } catch {}
+
+    const savePromise = evaluationService.saveEvaluation(evaluationId, nameToSave, fileName)
+      .then(() => {
+        try {
+          const el = document.createElement('div');
+          el.textContent = 'Saved. You can access this in the Evaluation cards on the creation page.';
+          el.style.position = 'fixed';
+          el.style.bottom = '24px';
+          el.style.right = '24px';
+          el.style.background = '#10b981';
+          el.style.color = '#fff';
+          el.style.padding = '12px 16px';
+          el.style.borderRadius = '8px';
+          el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          el.style.zIndex = '2000';
+          document.body.appendChild(el);
+          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
+        } catch {}
+      })
+      .catch((error) => {
+        console.error('Error saving evaluation:', error);
+        alert('Failed to save evaluation: ' + (error?.message || 'Unknown error'));
+      })
+      .finally(() => {
+        setIsSaving(false);
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+      });
+    pendingSavePromiseRef.current = savePromise;
   };
 
 
@@ -1036,8 +1237,8 @@ export default function Evaluation() {
           onGridView={null}
           onListView={null}
           isGridView={isGridView}
-          onBack={() => navigate('/dashboard')}
-          onSave={!isEvaluating && evaluationResult ? () => setShowSaveModal(true) : null}
+          onBack={handleClose}
+          onSave={showResults && evaluationId && !openedFromCardRef.current ? () => setShowSaveModal(true) : null}
           saveLabel="Save Evaluation"
           backLabel="Close"
         />
@@ -1051,58 +1252,6 @@ export default function Evaluation() {
           <span style={{ fontWeight: 700 }}>Evaluation</span>
         </div>
 
-        {/* Progress Bar */}
-        <div style={{ 
-          maxWidth: 1200, 
-          margin: "0 auto 2rem auto", 
-          width: '100%', 
-          padding: '20px',
-          background: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          border: '1px solid #e9ecef'
-        }}>
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '8px'
-            }}>
-              <span style={{ fontSize: '16px', fontWeight: 600, color: '#495057' }}>
-                {isEvaluating ? 'Evaluation in Progress' : 'Evaluation Complete'}
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#2563eb' }}>
-                {Math.round(evaluationProgress)}%
-              </span>
-            </div>
-            <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '12px' }}>
-              {evaluationStatus}
-            </div>
-          </div>
-          
-          {/* Progress Bar */}
-          <div style={{ 
-            width: '100%', 
-            height: '12px', 
-            background: '#e9ecef', 
-            borderRadius: '6px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${evaluationProgress}%`,
-              height: '100%',
-              background: isEvaluating 
-                ? 'linear-gradient(90deg, #2563eb, #3b82f6)' 
-                : evaluationProgress === 100 
-                  ? '#28a745' 
-                  : '#dc3545',
-              borderRadius: '6px',
-              transition: 'width 0.5s ease-in-out',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-            }} />
-          </div>
-        </div>
 
         {/* Total Submissions Summary */}
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%' }}>
@@ -1330,6 +1479,166 @@ export default function Evaluation() {
     );
   }
 
+  // Name input screen
+  if (showNameInputScreen) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Header
+          title="Evaluation"
+          onLogout={handleLogout}
+          onSettings={null}
+          onExport={null}
+          onGridView={null}
+          onListView={null}
+          isGridView={isGridView}
+          onBack={() => setShowNameInputScreen(false)}
+          backLabel="Back"
+        />
+
+        {/* Breadcrumb */}
+        <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
+          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
+          <span style={{ color: '#888' }}>{'>'}</span>
+          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
+          <span style={{ color: '#888' }}>{'>'}</span>
+          <span style={{ fontWeight: 700 }}>Evaluation</span>
+        </div>
+
+        {/* Name Input Content */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5vw' }}>
+          <div style={{ 
+            background: '#fff', 
+            borderRadius: 18, 
+            padding: '48px', 
+            boxShadow: '0 2px 7px #0002',
+            maxWidth: 500,
+            width: '100%'
+          }}>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: 28, fontWeight: 600, color: '#1e40af', textAlign: 'center' }}>
+              Name Your Evaluation
+            </h2>
+            <p style={{ margin: '0 0 32px 0', color: '#666', textAlign: 'center', fontSize: 16 }}>
+              Enter a name for this evaluation. It will be saved to Assets on the Evaluation Card.
+            </p>
+            
+            <div style={{ marginBottom: '32px' }}>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, fontSize: 16 }}>
+                Evaluation Name:
+              </label>
+              <input
+                type="text"
+                value={assetName}
+                onChange={(e) => setAssetName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  borderRadius: 8,
+                  border: '2px solid #e9ecef',
+                  fontSize: 16,
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.2s'
+                }}
+                placeholder="Enter evaluation name..."
+                autoFocus
+                onFocus={(e) => e.target.style.borderColor = '#2563eb'}
+                onBlur={(e) => e.target.style.borderColor = '#e9ecef'}
+              />
+            </div>
+
+            <button
+              onClick={handleStartEvaluation}
+              disabled={!assetName.trim()}
+              style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '8px',
+                border: 'none',
+                background: !assetName.trim() ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: '16px',
+                cursor: !assetName.trim() ? 'not-allowed' : 'pointer',
+                opacity: !assetName.trim() ? 0.5 : 1
+              }}
+            >
+              Start Evaluation →
+            </button>
+          </div>
+        </div>
+
+        <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+        
+        {/* Process Started Popup */}
+        {showProcessStartedPopup && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 3000
+          }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 16,
+              padding: 40,
+              width: '560px',
+              maxWidth: '92vw',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.25)',
+              textAlign: 'center',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                background: '#e0f2fe',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 20px auto'
+              }}>
+                <span style={{ fontSize: '40px', color: '#2563eb' }}>📧</span>
+              </div>
+              <h3 style={{ margin: '0 0 18px 0', fontSize: 26, fontWeight: 700, color: '#111827' }}>
+                Evaluation Started
+              </h3>
+              <p style={{ margin: '0 0 28px 0', fontSize: 18, color: '#374151', lineHeight: 1.6 }}>
+                The evaluation has been started. You will be notified on email once it is completed. You can see the results on the evaluation card.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
+                <button
+                  onClick={() => {
+                    setShowProcessStartedPopup(false);
+                    navigate('/dashboard');
+                  }}
+                  style={{
+                    padding: '14px 28px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    letterSpacing: '0.2px'
+                  }}
+                >
+                  Go to Course Page
+                </button>
+              </div>
+              {/* Removed auto-redirect notice; user will click the button to proceed */}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Original upload interface
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1506,7 +1815,7 @@ export default function Evaluation() {
                     opacity: isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current ? 0.5 : 1
                   }}
                 >
-                  {isEvaluating ? 'Evaluating...' : 'Evaluate →'}
+                  {isEvaluating ? 'Evaluating...' : 'Next →'}
                 </button>
               </div>
             ) : (

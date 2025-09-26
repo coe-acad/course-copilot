@@ -63,6 +63,15 @@ class Settings:
     FIREBASE_APP_ID: Optional[str] = os.getenv("FIREBASE_APP_ID")
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
     
+    # SMTP Email Configuration (optional)
+    SMTP_HOST: Optional[str] = os.getenv("SMTP_HOST")
+    SMTP_PORT: Optional[int] = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: Optional[str] = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM_EMAIL: Optional[str] = os.getenv("SMTP_FROM_EMAIL")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+    SMTP_USE_SSL: bool = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+    
     @classmethod
     def validate(cls) -> None:
         """Validate required settings"""

@@ -9,10 +9,10 @@ import asyncio
 from datetime import datetime
 from flask import request
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id
 from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
 from concurrent.futures import ThreadPoolExecutor
-
+from app.utils.eval_mail import send_eval_completion_email
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -152,54 +152,21 @@ async def evaluate_files(evaluation_id: str, user_id: str):
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
             raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
-        
-        answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
-        # Multiple files = background processing to avoid Cloudflare timeout
-        if len(answer_sheet_file_ids) > 1:
-            asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
+        # If results already exist, return completed immediately (idempotent)
+        if "evaluation_result" in evaluation:
+            return {
+                "evaluation_id": evaluation_id,
+                "evaluation_result": evaluation["evaluation_result"],
+            }
+
+        # If processing already started, don't start another run
+        if evaluation.get("status") == "processing":
             return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
-        
-        # Single file = process normally
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
-            fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, answer_sheet_file_ids)
-            extracted_mark_scheme = fut_ms.result()
-            extracted_answer_sheets = fut_as.result()
-        
-        evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
 
-        # Always verify and potentially recalculate scores for each student
-        for student in evaluation_result.get("students", []):
-            answers = student.get("answers", [])
-            
-            # Calculate what the total should be based on individual question scores
-            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
-            calculated_max = sum((a.get("max_score") or 0) for a in answers)
-            
-            # Log the current vs calculated scores
-            current_total = student.get("total_score", 0)
-            current_max = student.get("max_total_score", 0)
-            
-            logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
-            
-            # Always use the calculated scores to ensure accuracy
-            student["total_score"] = calculated_total
-            student["max_total_score"] = calculated_max
-
-        # Calculate and save aggregate totals across all students
-        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
-        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
-        
-        # Add overall totals to the evaluation result
-        evaluation_result["total_score"] = overall_total
-        evaluation_result["max_total_score"] = overall_max
-        
-        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
-        
-        # Store the final evaluation result (now includes overall totals)
-        update_evaluation_with_result(evaluation_id, evaluation_result)
-
-        return {"evaluation_id": evaluation_id, "evaluation_result": evaluation_result}
+        # Mark as processing and start background task
+        update_evaluation(evaluation_id, {"status": "processing"})
+        asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
+        return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
         
     except HTTPException:
         raise
@@ -253,10 +220,24 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
         
         if "evaluation_result" in evaluation:
             logger.info(f"Evaluation {evaluation_id} has results, returning completed status")
-            return {"status": "completed", "evaluation_result": evaluation["evaluation_result"]}
+            # Trigger completion email once
+            try:
+                if not evaluation.get("email_sent"):
+                    send_eval_completion_email(evaluation_id, user_id)
+                    update_evaluation(evaluation_id, {"email_sent": True})
+            except Exception as e:
+                logger.error(f"Failed to send completion email for {evaluation_id}: {str(e)}")
+            return {
+                "status": "completed",
+                "evaluation_result": evaluation["evaluation_result"],
+                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
+            }
         else:
             logger.info(f"Evaluation {evaluation_id} exists but no evaluation_result yet, returning processing status")
-            return {"status": "processing"}
+            return {
+                "status": "processing",
+                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
+            }
             
     except HTTPException:
         raise
@@ -270,21 +251,16 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
             raise HTTPException(status_code=404, detail="Evaluation not found")
-        
-        if "evaluation_result" not in evaluation:
-            raise HTTPException(status_code=400, detail="Cannot save evaluation without results")
-        
-        # Create formatted evaluation report
-        logger.info(f"Saving evaluation {evaluation_id}")
-        report = format_evaluation_report(evaluation)
-        
-        # Save as asset
+
+        # Save a lightweight evaluation asset that references the evaluation_id
+        # This enables listing a card and opening the live Evaluation UI by ID
+        logger.info(f"Saving evaluation reference {evaluation_id}")
         create_asset(
             course_id=evaluation["course_id"],
             asset_name=asset_name,
             asset_category="evaluation",
-            asset_type="evaluation-report",
-            asset_content=report,
+            asset_type="evaluation",
+            asset_content=evaluation_id,
             asset_last_updated_by="You",
             asset_last_updated_at=datetime.now().strftime("%d %B %Y %H:%M:%S")
         )
@@ -332,3 +308,4 @@ def format_evaluation_report(evaluation):
         report += "---\n\n"
     
     return report
+

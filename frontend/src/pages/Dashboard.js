@@ -65,7 +65,7 @@ export default function Dashboard() {
     fetchResources();
   }, []);
 
-  // Fetch assets on component mount
+  // Fetch assets on component mount and when returning after a pending save
   useEffect(() => {
     const fetchAssets = async () => {
       try {
@@ -108,6 +108,17 @@ export default function Dashboard() {
     };
 
     fetchAssets();
+
+    // If we just saved an evaluation, retry fetch a couple of times for eventual consistency
+    const pendingName = localStorage.getItem('pendingEvaluationAssetName');
+    if (pendingName) {
+      const retries = [800, 1600, 3000];
+      retries.forEach((delay) => {
+        setTimeout(() => { fetchAssets(); }, delay);
+      });
+      // Clear the hint to avoid repeated retries on future visits
+      localStorage.removeItem('pendingEvaluationAssetName');
+    }
   }, []);
 
   const handleCurriculumCreate = () => {

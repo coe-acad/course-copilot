@@ -1,0 +1,53 @@
+{
+  "course_info": {
+    "course_id": "540ed40d-600a-43ba-a09f-0d187b93f5a9",
+    "course_name": "Evaluations",
+    "description": "This course focuses on the principles and techniques of evaluation used in various contexts such as education, business, and social programs. Students will explore different methodologies for conducting evaluations, including formative and summative assessments. The course covers key topics such as designing evaluation frameworks, collecting and analyzing data, and interpreting results to make informed decisions. Students will also learn to critically assess evaluation reports and understand ethical considerations in the evaluation process. Through practical examples and case studies, students will gain skills in developing effective evaluation plans tailored to specific goals and contexts.",
+    "user_id": "J0na0dW4yyXLFzXFqrlMmolFrYD3",
+    "settings": {},
+    "created_at": "",
+    "updated_at": ""
+  },
+  "assets": [
+    {
+      "asset_id": "68d28f92eb9721a3fed68072",
+      "asset_name": "qwe",
+      "asset_type": "evaluation",
+      "asset_category": "evaluation",
+      "asset_content": "79812889-d796-4844-b37b-409a1e0e426f",
+      "last_updated_by": "You",
+      "last_updated_at": "23 September 2025 17:46:18",
+      "course_id": "540ed40d-600a-43ba-a09f-0d187b93f5a9"
+    },
+    {
+      "asset_id": "68d293834ffb22d6163ede8f",
+      "asset_name": "save",
+      "asset_type": "evaluation",
+      "asset_category": "evaluation",
+      "asset_content": "765fee0f-c12b-4449-9d3f-f5413499602b",
+      "last_updated_by": "You",
+      "last_updated_at": "23 September 2025 18:03:07",
+      "course_id": "540ed40d-600a-43ba-a09f-0d187b93f5a9"
+    },
+    {
+      "asset_id": "68d295df4ffb22d6163ede91",
+      "asset_name": "new save",
+      "asset_type": "evaluation",
+      "asset_category": "evaluation",
+      "asset_content": "9121fb89-07a7-4102-b5ef-b64a3f875c1a",
+      "last_updated_by": "You",
+      "last_updated_at": "23 September 2025 18:13:11",
+      "course_id": "540ed40d-600a-43ba-a09f-0d187b93f5a9"
+    },
+    {
+      "asset_id": "68d3c26d0bbf57893c3669a4",
+      "asset_name": "save",
+      "asset_type": "mark-scheme",
+      "asset_category": "assessments",
+      "asset_content": "```json\n[]\n```",
+      "last_updated_by": "You",
+      "last_updated_at": "24 September 2025 15:35:33",
+      "course_id": "540ed40d-600a-43ba-a09f-0d187b93f5a9"
+    }
+  ]
+}

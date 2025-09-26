@@ -49,6 +49,19 @@ def delete_from_collection(collection_name: str, query: dict):
     collection = db[collection_name]
     collection.delete_one(query)
 
+# Users
+def create_user(user_id: str, email: str):
+    add_to_collection("users", {"_id": user_id, "email": email})
+
+def get_user_by_user_id(user_id: str):
+    return get_one_from_collection("users", {"_id": user_id})
+
+def get_email_by_user_id(user_id: str):
+    user_doc = get_one_from_collection("users", {"_id": user_id})
+    if not user_doc:
+        return None
+    return user_doc.get("email")
+
 # Courses
 def create_course(data: dict):
     course_id = str(uuid4())
