@@ -1,10 +1,11 @@
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = new URL('/api', baseUrl).toString();
 
 export async function login(email, password) {
   try {
-    const response = await axios.post(`${API_BASE}/api/login`, { email, password });
+    const response = await axios.post(`${API_BASE}/login`, { email, password });
     
     // Create user object from backend response
     const userData = {
@@ -25,7 +26,7 @@ export async function login(email, password) {
 
 export async function googleLogin() {
   try {
-    const response = await axios.get(`${API_BASE}/api/google-login`);
+    const response = await axios.get(`${API_BASE}/google-login`);
     return response.data;
   } catch (error) {
     throw error.response?.data || { detail: 'Google login failed' };
@@ -34,7 +35,7 @@ export async function googleLogin() {
 
 export async function register(email, password, name) {
   try {
-    const response = await axios.post(`${API_BASE}/api/signup`, { email, password, name });
+    const response = await axios.post(`${API_BASE}/signup`, { email, password, name });
     return response.data;
   } catch (error) {
     throw error.response?.data || { detail: 'Registration failed' };
@@ -84,7 +85,7 @@ async function refreshAuthToken() {
   }
 
   try {
-    const response = await axios.post(`${API_BASE}/api/refresh-token`, {
+    const response = await axios.post(`${API_BASE}/refresh-token`, {
       refresh_token: refreshToken
     });
     

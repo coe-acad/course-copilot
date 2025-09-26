@@ -1608,7 +1608,7 @@ export default function Evaluation() {
                 Evaluation Started
               </h3>
               <p style={{ margin: '0 0 28px 0', fontSize: 18, color: '#374151', lineHeight: 1.6 }}>
-                The evaluation has been started. You will be notified on email once it is completed. You can see the results on the evaluation card.
+                The evaluation has started. You will be notified on email once it is completed. You can see the results on the evaluation card.
               </p>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
                 <button
