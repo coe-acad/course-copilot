@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/header/Header";
+import AssetViewModal from "../components/AssetViewModal";
 import SectionCard from "../components/SectionCard";
 import KnowledgeBase from "../components/KnowledgBase";
 import SettingsModal from "../components/SettingsModal";
@@ -31,7 +32,37 @@ export default function Dashboard() {
   const [isUploadingResources, setIsUploadingResources] = useState(false);
   const [showSettingsPrompt, setShowSettingsPrompt] = useState(false);
   const [pendingContentType, setPendingContentType] = useState('');
+  const [showAssetModal, setShowAssetModal] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [assetModalLoading, setAssetModalLoading] = useState(false);
   const navigate = useNavigate();
+  // Helper to view asset
+  const handleViewAsset = async (category, asset) => {
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId || !asset.name) return;
+    setAssetModalLoading(true);
+    try {
+      // Use assetService to fetch asset details
+      const assetData = await assetService.viewAsset(courseId, asset.name);
+      setSelectedAsset(assetData);
+      setShowAssetModal(true);
+    } catch (error) {
+      alert('Failed to view asset.');
+    } finally {
+      setAssetModalLoading(false);
+    }
+  };
+
+  // Helper to download asset
+  const handleDownloadAsset = async (asset) => {
+    const courseId = localStorage.getItem('currentCourseId');
+    if (!courseId || !asset.name) return;
+    try {
+      await assetService.downloadAsset(courseId, asset.name);
+    } catch (error) {
+      alert('Failed to download asset.');
+    }
+  };
 
   // Fetch resources on component mount
   useEffect(() => {
@@ -266,9 +297,31 @@ export default function Dashboard() {
           scrollbar-width: thin;
           scrollbar-color: #e0e7ef transparent;
         }
+        .assets-table {
+          width: 100%;
+          border-collapse: collapse;
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: 0 4px 24px #0002;
+          margin: 32px auto;
+          overflow: hidden;
+        }
+        .assets-table th, .assets-table td {
+          padding: 14px 18px;
+          text-align: left;
+        }
+        .assets-table th {
+          background: #f5f8ff;
+          font-weight: 700;
+          font-size: 16px;
+          color: #2563eb;
+          border-bottom: 1px solid #e5eaf2;
+        }
+        .assets-table tr:not(:last-child) td {
+          border-bottom: 1px solid #f3f4f6;
+        }
       `}</style>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header and breadcrumbs (static) */}
         <Header
           title="Course Copilot"
           onLogout={handleLogout}
@@ -286,57 +339,104 @@ export default function Dashboard() {
           <span style={{ fontWeight: 700 }}>{localStorage.getItem("currentCourseTitle") || "Course Title"}</span>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden' }}>
-          {/* Main content area: scrollable */}
-          <div className="dashboard-scroll-area" style={{ flex: 2, maxWidth: 900, width: '100%', margin: '0 auto', overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 28 }}>
-            <SectionCard 
-              title="Curriculum" 
-              buttonLabel="Create" 
-              onButtonClick={handleCurriculumCreate}
-              assets={assets.curriculum}
-              courseId={localStorage.getItem('currentCourseId')}
-            />
-            <SectionCard 
-              title="Assessments" 
-              buttonLabel="Create" 
-              onButtonClick={handleAssessmentCreate}
-              assets={assets.assessments}
-              courseId={localStorage.getItem('currentCourseId')}
-            />
-            <SectionCard 
-              title="Evaluation" 
-              buttonLabel="Start Evaluation"
-              onButtonClick={handleEvaluationCreate}
-              assets={assets.evaluation}
-              courseId={localStorage.getItem('currentCourseId')}
-            />
-            {/* <div style={{ background: "#fff", borderRadius: 18, padding: 28, boxShadow: "0 4px 24px #0002" }}>
-              <h2 style={{ margin: 0 }}>Sprint Plan <span style={{ fontSize: 13, fontWeight: 400, color: '#444' }}>(Based on the Academic term...)</span></h2>
-              <button
-                onClick={() => navigate("/studio/sprint-plan")}
-                style={{ marginTop: 12, padding: "8px 22px", borderRadius: 6, border: "1px solid #bbb", background: "#fff", cursor: "pointer" }}
-              >
-                Create Documentation
-              </button>
-            </div> */}
+        {/* Conditional main content: grid or list view */}
+        {isGridView ? (
+          <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden' }}>
+            {/* ...existing grid view code... */}
+            <div className="dashboard-scroll-area" style={{ flex: 2, maxWidth: 900, width: '100%', margin: '0 auto', overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 28 }}>
+              <SectionCard 
+                title="Curriculum" 
+                buttonLabel="Create" 
+                onButtonClick={handleCurriculumCreate}
+                assets={assets.curriculum}
+                courseId={localStorage.getItem('currentCourseId')}
+              />
+              <SectionCard 
+                title="Assessments" 
+                buttonLabel="Create" 
+                onButtonClick={handleAssessmentCreate}
+                assets={assets.assessments}
+                courseId={localStorage.getItem('currentCourseId')}
+              />
+              <SectionCard 
+                title="Evaluation" 
+                buttonLabel="Start Evaluation"
+                onButtonClick={handleEvaluationCreate}
+                assets={assets.evaluation}
+                courseId={localStorage.getItem('currentCourseId')}
+              />
+            </div>
+            {/* Right panel: Knowledge Base */}
+            <div style={{ flex: 1, marginTop: 24, minWidth: 340, maxWidth: 420 }}>
+              <KnowledgeBase
+                resources={loadingResources ? [] : resources}
+                fileInputRef={{ current: null }}
+                onFileChange={() => {}}
+                showCheckboxes={false}
+                selected={[]}
+                onSelect={() => {}}
+                onAddResource={() => setShowAddResourceModal(true)}
+                onDelete={handleDeleteResource}
+                isUploading={isUploadingResources}
+              />
+            </div>
           </div>
-          {/* Right panel: Knowledge Base */}
-          <div style={{ flex: 1, marginTop: 24, minWidth: 340, maxWidth: 420 }}>
-            <KnowledgeBase
-              resources={loadingResources ? [] : resources}
-              fileInputRef={{ current: null }}
-              onFileChange={() => {}}
-              showCheckboxes={false}
-              selected={[]}
-              onSelect={() => {}}
-              onAddResource={() => setShowAddResourceModal(true)}
-              onDelete={handleDeleteResource}
-              isUploading={isUploadingResources}
+        ) : (
+          <div style={{ flex: 1, width: '100%', padding: '0 8vw', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box' }}>
+            <h2 style={{ fontWeight: 700, fontSize: 28, color: '#2563eb', margin: '32px 0 18px 0' }}>Course Assets</h2>
+            <table className="assets-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Category</th>
+                  <th>Last Updated</th>
+                  <th>Updated By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {['curriculum', 'assessments', 'evaluation'].flatMap(category =>
+                  assets[category].map(asset => (
+                    <tr key={asset.name + asset.type + category}>
+                      <td>
+                        <button
+                          style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 16 }}
+                          onClick={() => handleViewAsset(category, asset)}
+                          disabled={assetModalLoading}
+                        >
+                          {asset.name}
+                        </button>
+                      </td>
+                      <td>{asset.type}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{category}</td>
+                      <td>{asset.timestamp}</td>
+                      <td>{asset.updatedBy}</td>
+                      <td>
+                        <button
+                          style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18, marginRight: 8 }}
+                          title="Download"
+                          onClick={() => handleDownloadAsset(asset)}
+                        >
+                          ⬇️
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+            {/* Asset view modal */}
+            <AssetViewModal
+              open={showAssetModal}
+              onClose={() => { setShowAssetModal(false); setSelectedAsset(null); }}
+              assetData={selectedAsset}
+              courseId={localStorage.getItem('currentCourseId')}
             />
           </div>
-        </div>
+        )}
 
-        {/* Selection Modals */}
+        {/* ...existing modals and overlays... */}
         <SelectionModal
           open={showCurriculumModal}
           title="Curriculum"
@@ -357,7 +457,6 @@ export default function Dashboard() {
           onCreate={handleAssessmentSubmit}
         />
 
-        {/* KB Selection Modal → AI Studio */}
         <KnowledgeBaseSelectModal
           open={showKBModal}
           onClose={() => setShowKBModal(false)}
