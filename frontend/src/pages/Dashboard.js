@@ -35,6 +35,7 @@ export default function Dashboard() {
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [assetModalLoading, setAssetModalLoading] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('All');
   const navigate = useNavigate();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
@@ -382,50 +383,68 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div style={{ flex: 1, width: '100%', padding: '0 8vw', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box' }}>
+          <div style={{ flex: 1, width: '100%', padding: '0 8vw', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box', height: 'calc(100vh - 120px)' }}>
             <h2 style={{ fontWeight: 700, fontSize: 28, color: '#2563eb', margin: '32px 0 18px 0' }}>Course Assets</h2>
-            <table className="assets-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Category</th>
-                  <th>Last Updated</th>
-                  <th>Updated By</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {['curriculum', 'assessments', 'evaluation'].flatMap(category =>
-                  assets[category].map(asset => (
-                    <tr key={asset.name + asset.type + category}>
-                      <td>
-                        <button
-                          style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 16 }}
-                          onClick={() => handleViewAsset(category, asset)}
-                          disabled={assetModalLoading}
-                        >
-                          {asset.name}
-                        </button>
-                      </td>
-                      <td>{asset.type}</td>
-                      <td style={{ textTransform: 'capitalize' }}>{category}</td>
-                      <td>{asset.timestamp}</td>
-                      <td>{asset.updatedBy}</td>
-                      <td>
-                        <button
-                          style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18, marginRight: 8 }}
-                          title="Download"
-                          onClick={() => handleDownloadAsset(asset)}
-                        >
-                          ⬇️
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <label htmlFor="categoryFilter" style={{ fontWeight: 600, fontSize: 16, color: '#222' }}>Filter by Category:</label>
+              <select
+                id="categoryFilter"
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 15, fontWeight: 500, color: '#2563eb', background: '#f5f8ff', cursor: 'pointer' }}
+              >
+                <option value="All">All</option>
+                <option value="Curriculum">Curriculum</option>
+                <option value="Assessments">Assessments</option>
+                <option value="Evaluation">Evaluation</option>
+              </select>
+            </div>
+            <div style={{ flex: 1, width: '100%', overflowY: 'auto', boxSizing: 'border-box', marginBottom: 24 }}>
+              <table className="assets-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Category</th>
+                    <th>Last Updated</th>
+                    <th>Updated By</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['curriculum', 'assessments', 'evaluation']
+                    .filter(category => categoryFilter === 'All' || category.toLowerCase() === categoryFilter.toLowerCase())
+                    .flatMap(category =>
+                      assets[category].map(asset => (
+                        <tr key={asset.name + asset.type + category}>
+                          <td>
+                            <button
+                              style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 16 }}
+                              onClick={() => handleViewAsset(category, asset)}
+                              disabled={assetModalLoading}
+                            >
+                              {asset.name}
+                            </button>
+                          </td>
+                          <td>{asset.type}</td>
+                          <td style={{ textTransform: 'capitalize' }}>{category}</td>
+                          <td>{asset.timestamp}</td>
+                          <td>{asset.updatedBy}</td>
+                          <td>
+                            <button
+                              style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18, marginRight: 8 }}
+                              title="Download"
+                              onClick={() => handleDownloadAsset(asset)}
+                            >
+                              ⬇️
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                </tbody>
+              </table>
+            </div>
             {/* Asset view modal */}
             <AssetViewModal
               open={showAssetModal}
