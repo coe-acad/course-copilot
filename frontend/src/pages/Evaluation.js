@@ -1283,7 +1283,7 @@ export default function Evaluation() {
               color: '#495057',
               fontSize: '14px'
             }}>
-              <div>filename (roll no. + student name)</div>
+              <div>Answer Sheet</div>
               <div>Marks</div>
               <div>Result</div>
               <div>Status</div>
@@ -1663,11 +1663,10 @@ export default function Evaluation() {
         <span style={{ fontWeight: 700 }}>Evaluation</span>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden', justifyContent: 'space-around' }}>
         {/* Left Section: Mark Scheme Upload */}
         <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
-          <div style={{ background: '#fff', borderRadius: 18, padding: '32px', boxShadow: '0 2px 7px #0002' }}>
-            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Mark Scheme</h2>
+          <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: 'fit-content', margin: '1em' }}>            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Mark Scheme</h2>
             <p style={{ marginTop: 8, color: '#444', marginBottom: 20 }}>Upload your evaluation mark scheme first</p>
             
             <div style={{ marginBottom: '20px' }}>
@@ -1738,7 +1737,7 @@ export default function Evaluation() {
 
         {/* Right Section: Answer Sheets Upload */}
         <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
-          <div style={{ background: '#fff', borderRadius: 18, padding: '32px', boxShadow: '0 2px 7px #0002' }}>
+          <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: '80%', margin: '1em' }}>
             <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Answer Sheets</h2>
             
             {markSchemeUploaded ? (

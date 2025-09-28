@@ -178,11 +178,22 @@ export default function Courses() {
         onLogout={handleLogout}
       >
         {/* ✅ Course Cards go here */}
-        <div style={{ padding: "24px 5vw", display: "flex", flexWrap: "wrap", gap: "32px" }}>
+        <div
+          style={{
+            padding: "24px 5vw",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1.5fr)",
+            gap: "40px",
+            justifyItems: "center",
+            alignItems: "stretch",
+            // width: "100vh",
+            minHeight: "120px"
+          }}
+        >
           {savedCourses.length > 0 ? (
             savedCourses.map(renderCourseCard)
           ) : (
-            <div style={{ color: "#888", fontSize: 16 }}>No courses created yet.</div>
+            <div style={{ color: "#888", fontSize: 16, gridColumn: "1 / -1" }}>No courses created yet.</div>
           )}
         </div>
       </CoursesLayout>
