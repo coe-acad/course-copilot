@@ -385,27 +385,42 @@ export default function Dashboard() {
         ) : (
           <div style={{ flex: 1, width: '100%', padding: '0 8vw', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box', height: 'calc(100vh - 120px)' }}>
             <h2 style={{ fontWeight: 700, fontSize: 28, color: '#2563eb', margin: '32px 0 18px 0' }}>Course Assets</h2>
-            <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <label htmlFor="categoryFilter" style={{ fontWeight: 600, fontSize: 16, color: '#222' }}>Filter by Category:</label>
-              <select
-                id="categoryFilter"
-                value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 15, fontWeight: 500, color: '#2563eb', background: '#f5f8ff', cursor: 'pointer' }}
-              >
-                <option value="All">All</option>
-                <option value="Curriculum">Curriculum</option>
-                <option value="Assessments">Assessments</option>
-                <option value="Evaluation">Evaluation</option>
-              </select>
-            </div>
             <div style={{ flex: 1, width: '100%', overflowY: 'auto', boxSizing: 'border-box', marginBottom: 24 }}>
-              <table className="assets-table">
-                <thead>
+              <table className="assets-table" style={{ width: '100%' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff' }}>
                   <tr>
                     <th>Name</th>
                     <th>Type</th>
-                    <th>Category</th>
+                    <th style={{ minWidth: 180 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', minHeight: 40 }}>
+                        <span style={{ fontWeight: 600, color: '#2563eb', fontSize: 15, marginRight: 6 }}>Category</span>
+                        <select
+                          id="categoryFilter"
+                          value={categoryFilter}
+                          onChange={e => setCategoryFilter(e.target.value)}
+                          style={{
+                            padding: '6px 18px 6px 10px',
+                            borderRadius: 10,
+                            border: '1.5px solid #d1d5db',
+                            fontSize: 15,
+                            fontWeight: 500,
+                            color: '#2563eb',
+                            background: '#f5f8ff',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px #0001',
+                            transition: 'border 0.2s',
+                            outline: 'none',
+                            marginLeft: 0,
+                            minWidth: 120
+                          }}
+                        >
+                          <option value="All">All</option>
+                          <option value="Curriculum">Curriculum</option>
+                          <option value="Assessments">Assessments</option>
+                          <option value="Evaluation">Evaluation</option>
+                        </select>
+                      </div>
+                    </th>
                     <th>Last Updated</th>
                     <th>Updated By</th>
                     <th>Actions</th>
