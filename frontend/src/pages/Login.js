@@ -89,7 +89,7 @@ export default function Login() {
           <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
         </div>
 
-        {/* Google Sign-In (Placeholder Only) */}
+        {/* Google Sign-In */}
         <button
           type="button"
           style={{
@@ -150,7 +150,7 @@ export default function Login() {
               </span>
             </div>
 
-            {/* Remember me and Forgot password */}
+            {/* Remember me and Forgot password
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
               <label style={{ display: "flex", alignItems: "center", fontSize: 15, color: "#444", fontWeight: 500 }}>
                 <input
@@ -162,7 +162,7 @@ export default function Login() {
                 Keep me signed in
               </label>
               <Link to="/forgot-password" style={{ color: "#2563eb", fontSize: 14, textDecoration: "none", fontWeight: 400 }}>Forgot password?</Link>
-            </div>
+            </div> */}
 
             {/* Error Display */}
             {error && <div style={{ color: "red", marginBottom: 8 }}>{error}</div>}

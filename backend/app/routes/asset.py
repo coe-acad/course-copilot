@@ -163,7 +163,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     category_map = {
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
-        "modules-topics": "curriculum",
+        "modules": "curriculum",
         "lesson-plans": "curriculum",
         "concept-map": "curriculum",
         "course-notes": "curriculum",
