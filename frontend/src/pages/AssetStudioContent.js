@@ -12,7 +12,7 @@ import AddResourceModal from '../components/AddReferencesModal';
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
-  "modules-and-topics": "Modules & Topics",
+  "modules-and-topics": "Modules",
   "lesson-plans": "Lesson Plans",
   "concept-map": "Concept Map",
   "course-notes": "Course Notes",
