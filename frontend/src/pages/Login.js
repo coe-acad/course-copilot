@@ -79,13 +79,11 @@ export default function Login() {
       }}>
         {/* App Icon and Title */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
-          <div style={{
-            background: "#2563eb", color: "#fff", borderRadius: 8,
-            width: 36, height: 36, display: "flex", alignItems: "center",
-            justifyContent: "center", fontWeight: 700, fontSize: 22, marginRight: 12
-          }}>
-            C
-          </div>
+          <img
+            src={process.env.PUBLIC_URL + "/favicon.svg"}
+            alt="Course Copilot Logo"
+            style={{ width: 36, height: 36, borderRadius: 8, marginRight: 12, boxShadow: "0 2px 8px #0001" }}
+          />
           <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
         </div>
 
@@ -126,7 +124,7 @@ export default function Login() {
                 onChange={e => setEmail(e.target.value)}
                 required
                 disabled={loading}
-                style={{ width: "100%", padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15 }}
+                style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15, boxSizing: "border-box" }}
               />
             </div>
             <div style={{ marginBottom: 8, position: "relative" }}>
@@ -137,7 +135,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                style={{ width: "100%", padding: "10px 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15 }}
+                style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15, boxSizing: "border-box" }}
               />
               <span
                 style={{
