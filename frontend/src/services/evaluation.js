@@ -109,7 +109,9 @@ export const evaluationService = {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         params: {
           evaluation_id: evaluationId,
-          user_id: user.id
+          user_id: user.id,
+          mark_scheme_path: markSchemeFileId,
+          answer_sheet_path: markSchemeFileId
         },
         timeout: 30000,
         signal

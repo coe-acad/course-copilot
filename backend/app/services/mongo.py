@@ -190,3 +190,10 @@ def update_question_score_feedback(evaluation_id: str, file_id: str, question_nu
         except Exception as e:
             logger.error(f"Error in alternative update approach: {str(e)}")
             raise
+
+# Extraction
+def create_extracted_data(evaluation_id: str, extracted_data: dict):
+    add_to_collection("extracted_data", {"evaluation_id": evaluation_id, "extracted_data": extracted_data})
+
+def get_extracted_data_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("extracted_data", {"evaluation_id": evaluation_id})
