@@ -953,4 +953,3 @@ def course_description(description: str, course_name: str):
     )
     description = chat_completion.choices[0].message.content
     return description
-
