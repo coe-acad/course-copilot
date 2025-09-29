@@ -1528,5 +1528,19 @@ export const assetService = {
     } catch (error) {
       handleAxiosError(error);
     }
+  },
+
+  // Delete asset
+  deleteAsset: async (courseId, assetName) => {
+    try {
+      const res = await axios.delete(`${API_BASE}/courses/${courseId}/assets/${assetName}`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
+      });
+      return res.data;
+    } catch (error) {
+      handleAxiosError(error);
+    }
   }
 }; 

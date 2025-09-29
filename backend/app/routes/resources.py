@@ -163,23 +163,23 @@ def delete_resource(course_id: str, resource_name: str, user_id: str = Depends(v
         logger.error(f"Error deleting resource: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# @router.get("/courses/{course_id}/resources/{resource_name}/view")
-# def view_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
-#     # 1. Check course exists
-#     check_course_exists(course_id)
-#     # 2. Check resource exists
-#     resources = get_resources_by_course_id(course_id)
-#     if not resources:
-#         raise HTTPException(status_code=404, detail="Resource not found")
-#     resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
-#     if not resource:
-#         raise HTTPException(status_code=404, detail="Resource not found")
-#     # 3. Find file path
-#     path_to_file = resource.get("file_path")
-#     if not path_to_file:
-#         raise HTTPException(status_code=404, detail="File path not found")
-#     # 4. Return FileResponse
-#     return FileResponse(path_to_file, filename=resource_name)
+@router.get("/courses/{course_id}/resources/{resource_name}/view")
+def view_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+    # 1. Check course exists
+    check_course_exists(course_id)
+    # 2. Check resource exists
+    resources = get_resources_by_course_id(course_id)
+    if not resources:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    resource = next((r for r in resources if r.get("resource_name") == resource_name), None)
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    # 3. Find file path
+    path_to_file = resource.get("file_path")
+    if not path_to_file:
+        raise HTTPException(status_code=404, detail="File path not found")
+    # 4. Return FileResponse
+    return FileResponse(path_to_file, filename=resource_name)
 
 # @router.get("/courses/{course_id}/resources/{resource_name}/download")
 # def download_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):

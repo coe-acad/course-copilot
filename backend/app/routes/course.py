@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from ..services import openai_service
 import logging
 from ..utils.verify_token import verify_token
-from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course, delete_course as delete_course_in_db, create_evaluation
+from ..services.mongo import get_course, get_courses_by_user_id, create_course as create_course_in_db, update_course, delete_course as delete_course_in_db, get_resources_by_course_id
 from ..routes.resources import create_course_description_file
 from app.utils.openai_client import client
 from ..services.openai_service import create_vector_store, create_evaluation_assistant_and_vector_store, course_description

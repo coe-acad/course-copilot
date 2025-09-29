@@ -7,7 +7,7 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db
 from ..services.openai_service import clean_text
 
 logger = logging.getLogger(__name__)
@@ -225,5 +225,22 @@ def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(ve
     image_url = image.data[0].url
 
     return ImageResponse(image_url=image_url)
+
+#delete asset
+@router.delete("/courses/{course_id}/assets/{asset_name}", response_model=AssetCreateResponse)
+def delete_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
+    try:
+        # Check if asset exists
+        asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        # Delete asset using the dedicated function
+        delete_asset_from_db(course_id, asset_name)
+        
+        return AssetCreateResponse(message=f"Asset '{asset_name}' deleted successfully")
+    except Exception as e:
+        logger.error(f"Error deleting asset '{asset_name}': {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 

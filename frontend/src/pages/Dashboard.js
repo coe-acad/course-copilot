@@ -65,6 +65,59 @@ export default function Dashboard() {
     }
   };
 
+  // Helper to handle asset deletion
+  const handleDeleteAsset = async (assetName) => {
+    try {
+      // Immediately remove the asset from local state for instant UI update
+      setAssets(prevAssets => {
+        const updatedAssets = { ...prevAssets };
+        
+        // Remove the asset from all categories
+        Object.keys(updatedAssets).forEach(category => {
+          updatedAssets[category] = updatedAssets[category].filter(asset => asset.name !== assetName);
+        });
+        
+        return updatedAssets;
+      });
+      
+      // Optionally refresh from server in background to ensure consistency
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      
+      try {
+        const data = await assetService.getAssets(courseId);
+        const assetsList = data.assets || [];
+        
+        // Group assets by category
+        const groupedAssets = {
+          curriculum: [],
+          assessments: [],
+          evaluation: []
+        };
+        
+        assetsList.forEach(asset => {
+          const category = asset.asset_category;
+          if (groupedAssets.hasOwnProperty(category)) {
+            groupedAssets[category].push({
+              name: asset.asset_name,
+              type: asset.asset_type,
+              timestamp: asset.asset_last_updated_at,
+              updatedBy: asset.asset_last_updated_by
+            });
+          }
+        });
+        
+        // Update with server data to ensure consistency
+        setAssets(groupedAssets);
+      } catch (refreshError) {
+        console.error('Error refreshing assets from server:', refreshError);
+        // Keep the local state update even if server refresh fails
+      }
+    } catch (error) {
+      console.error('Error handling asset deletion:', error);
+    }
+  };
+
   // Fetch resources on component mount
   useEffect(() => {
     const fetchResources = async () => {
@@ -351,6 +404,7 @@ export default function Dashboard() {
                 onButtonClick={handleCurriculumCreate}
                 assets={assets.curriculum}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
               />
               <SectionCard 
                 title="Assessments" 
@@ -358,6 +412,7 @@ export default function Dashboard() {
                 onButtonClick={handleAssessmentCreate}
                 assets={assets.assessments}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
               />
               <SectionCard 
                 title="Evaluation" 
@@ -365,6 +420,7 @@ export default function Dashboard() {
                 onButtonClick={handleEvaluationCreate}
                 assets={assets.evaluation}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
               />
             </div>
             {/* Right panel: Knowledge Base */}

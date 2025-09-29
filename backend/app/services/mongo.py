@@ -100,6 +100,9 @@ def get_assets_by_course_id(course_id: str):
 def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
+def delete_asset_from_db(course_id: str, asset_name: str):
+    delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+
 # Evaluation    
 def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str], answer_sheet_filenames: list[str] = None):
     evaluation = {"evaluation_id": evaluation_id, "course_id": course_id,"evaluation_assistant_id": evaluation_assistant_id, "vector_store_id": vector_store_id, "mark_scheme_file_id": mark_scheme_file_id, "answer_sheet_file_ids": answer_sheet_file_ids, "answer_sheet_filenames": answer_sheet_filenames or []}
