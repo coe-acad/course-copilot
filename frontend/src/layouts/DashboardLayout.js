@@ -7,10 +7,12 @@ import Sidebar from "../components/Sidebar";
 import SettingsModal from "../components/SettingsModal";
 import Modal from "../components/Modal";
 import KnowledgeBase from "../components/KnowledgBase";
+import ExportAssetsModal from "../components/ExportAssetsModal";
 import { useNavigate } from "react-router-dom";
 
 export default function DashboardLayout({ state }) {
   const navigate = useNavigate();
+  const [showExportModal, setShowExportModal] = React.useState(false);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#fafbfc" }}>
@@ -19,7 +21,7 @@ export default function DashboardLayout({ state }) {
         onGridView={() => state.setIsGridView(true)}
         onListView={() => state.setIsGridView(false)}
         onSettings={() => state.setShowSettingsModal(true)}
-        onExport={() => alert("Export to LMS is coming soon!")}
+        onExport={() => setShowExportModal(true)}
         onLogout={() => {
           localStorage.removeItem("user");
           navigate("/login");
@@ -130,6 +132,15 @@ export default function DashboardLayout({ state }) {
       </Modal>
 
       <SettingsModal open={state.showSettingsModal} onClose={() => state.setShowSettingsModal(false)} onSave={() => state.setShowSettingsModal(false)} />
+      <ExportAssetsModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        assets={[]}
+        onExportSelected={(selected) => {
+          // Placeholder: only UI per request
+          console.log("Selected for export:", selected);
+        }}
+      />
     </div>
   );
 }

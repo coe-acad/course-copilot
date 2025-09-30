@@ -14,6 +14,7 @@ import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
 import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
+import ExportAssetsModal from "../components/ExportAssetsModal";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [assetModalLoading, setAssetModalLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [showExportModal, setShowExportModal] = useState(false);
   const navigate = useNavigate();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
@@ -399,7 +401,7 @@ export default function Dashboard() {
           title="Course Copilot"
           onLogout={handleLogout}
           onSettings={() => setShowSettingsModal(true)}
-          onExport={() => alert("Export to LMS coming soon!")}
+          onExport={() => setShowExportModal(true)}
           onGridView={() => setIsGridView(true)}
           onListView={() => setIsGridView(false)}
           isGridView={isGridView}
@@ -599,6 +601,21 @@ export default function Dashboard() {
             setShowSettingsModal(true);
           }}
           contentType={pendingContentType}
+        />
+
+        {/* Export Assets Modal */}
+        <ExportAssetsModal
+          open={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          assets={[
+            ...assets.curriculum.map(a => ({ id: `curriculum|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'curriculum', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
+            ...assets.assessments.map(a => ({ id: `assessments|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'assessments', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
+            ...assets.evaluation.map(a => ({ id: `evaluation|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
+          ]}
+          onExportSelected={(selected) => {
+            // UI-only: pass selections for export handling elsewhere
+            console.log('Selected assets to export:', selected);
+          }}
         />
       </div>
     </>
