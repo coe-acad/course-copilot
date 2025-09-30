@@ -83,111 +83,11 @@ export default function Evaluation() {
       openedFromCardRef.current = true;
       setEvaluationId(evalId);
       setShowResults(true);
-      setIsEvaluating(true);
-      // Fetch status and populate results
-      (async () => {
-        try {
-          abortControllerRef.current = new AbortController();
-          const status = await evaluationService.checkEvaluationStatus(evalId, { signal: abortControllerRef.current.signal });
-          // If filenames are available, populate the table's file list to render rows
-          if (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0) {
-            const files = status.answer_sheet_filenames.map(name => ({ name }));
-            setAnswerSheetFiles(files);
-            setAnswerSheetsUploaded(true);
-          }
-          if (status.status === 'completed' && status.evaluation_result) {
-            setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
-            setEvaluationProgress(100);
-            setEvaluationStatus('Evaluation completed!');
-          } else {
-            setEvaluationStatus('Processing...');
-            // Start same progress simulation as Evaluate flow (90s per file), then poll
-            try {
-              manualProgressRef.current = true;
-              evaluationCompletedRef.current = false;
-              const filesCount = (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0)
-                ? status.answer_sheet_filenames.length
-                : ((answerSheetFiles && answerSheetFiles.length > 0) ? answerSheetFiles.length : 1);
-              setIsEvaluating(true);
-              setShowResults(true);
-              setEvaluationProgress(0);
-              let elapsedSeconds = 0;
-              const totalSecondsTo95 = Math.max(1, filesCount * 90);
-              const progressTimer = setInterval(() => {
-                if (evaluationCompletedRef.current) {
-                  clearInterval(progressTimer);
-                  return;
-                }
-                elapsedSeconds += 1;
-                const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
-                setEvaluationProgress(prev => (target > prev ? target : prev));
-                if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
-                else if (target < 40) setEvaluationStatus('Processing answer sheets...');
-                else if (target < 60) setEvaluationStatus('Evaluating student responses...');
-                else if (target < 80) setEvaluationStatus('Calculating scores...');
-                else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
-                else setEvaluationStatus('Waiting for backend to complete...');
-
-                if (target >= 95) {
-                  clearInterval(progressTimer);
-                  // Begin polling until completion
-                  let consecutiveFailures = 0;
-                  const maxConsecutiveFailures = 3;
-                  const pollInterval = setInterval(async () => {
-                    if (evaluationCompletedRef.current) {
-                      clearInterval(pollInterval);
-                      return;
-                    }
-                    try {
-                      const controller = new AbortController();
-                      abortControllerRef.current = controller;
-                      const statusResponse = await evaluationService.checkEvaluationStatus(evalId, { signal: controller.signal });
-                      consecutiveFailures = 0;
-                      if (statusResponse.status === 'completed') {
-                        clearInterval(pollInterval);
-                        try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-                        evaluationCompletedRef.current = true;
-                        setIsEvaluating(false);
-                        manualProgressRef.current = false;
-                        setEvaluationProgress(100);
-                        setEvaluationStatus('Evaluation completed!');
-                        if (statusResponse.evaluation_result) {
-                          setEvaluationResult({ evaluation_id: evalId, evaluation_result: statusResponse.evaluation_result });
-                        }
-                      } else {
-                        setEvaluationStatus('Backend still processing... Please wait...');
-                      }
-                    } catch (pollError) {
-                      consecutiveFailures++;
-                      if (pollError.message && pollError.message.includes('Authentication')) {
-                        clearInterval(pollInterval);
-                        setIsEvaluating(false);
-                        setEvaluationStatus('Authentication failed during polling');
-                        manualProgressRef.current = false;
-                        return;
-                      }
-                      if (pollError.message && pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
-                        clearInterval(pollInterval);
-                        setIsEvaluating(false);
-                        setEvaluationStatus('Evaluation session lost - please try again');
-                        setEvaluationProgress(0);
-                        manualProgressRef.current = false;
-                        return;
-                      }
-                    }
-                  }, 15000);
-                  pollIntervalRef.current = pollInterval;
-                }
-              }, 1000);
-            } catch {}
-          }
-        } catch (e) {
-          console.warn('Failed to load saved evaluation:', e.message);
-          setEvaluationStatus('Unable to load evaluation');
-        } finally {
-          setIsEvaluating(false);
-        }
-      })();
+      setIsEvaluating(false); // Don't show evaluating state for loaded evaluations
+      setEvaluationStatus('Loading evaluation...');
+      
+      // Just show a simple loading state - no API calls to prevent loops
+      console.log('📋 Loading evaluation from URL:', evalId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
@@ -311,6 +211,14 @@ export default function Evaluation() {
       return;
     }
 
+    // Prevent duplicate evaluation calls
+    if (evaluationInProgressRef.current) {
+      console.log('🚫 Evaluation already in progress, ignoring duplicate call');
+      return;
+    }
+
+    console.log('🚀 Starting evaluation process for:', evaluationId);
+
     // Show process started popup on the name screen (do not hide name screen)
     setShowProcessStartedPopup(true);
 
@@ -361,33 +269,11 @@ export default function Evaluation() {
       setEvaluationProgress(0);
       setEvaluationStatus('Starting evaluation...');
 
-      // Start precise progress simulation up to 95%: 90 seconds per file
+      // No progress simulation - just show processing status
       manualProgressRef.current = true;
       evaluationCompletedRef.current = false;
-      const totalSecondsTo95 = Math.max(1, (answerSheetFiles?.length || 1) * 90);
-      let elapsedSeconds = 0;
-      const progressTimer = setInterval(() => {
-        if (evaluationCompletedRef.current) {
-          clearInterval(progressTimer);
-          return;
-        }
-        elapsedSeconds += 1;
-        const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
-        setEvaluationProgress(prev => (target > prev ? target : prev));
-        // Update status bands
-        if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
-        else if (target < 40) setEvaluationStatus('Processing answer sheets...');
-        else if (target < 60) setEvaluationStatus('Evaluating student responses...');
-        else if (target < 80) setEvaluationStatus('Calculating scores...');
-        else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
-        else setEvaluationStatus('Waiting for backend to complete...');
-
-        if (target >= 95) {
-          clearInterval(progressTimer); // Stop at exactly 95% and wait for backend
-          // Start polling for completion after reaching 95%
-          startPollingForCompletion();
-        }
-      }, 1000);
+      setEvaluationProgress(0);
+      setEvaluationStatus('Processing evaluation...');
 
       // Trigger backend evaluation; whenever it finishes, jump to 100%
       const finishWithResult = (result) => {
@@ -402,135 +288,32 @@ export default function Evaluation() {
         // Clear any ongoing polling to prevent duplicate requests
       };
 
-      // Start polling function that monitors status after 95%
-      const startPollingForCompletion = async () => {
-        if (evaluationCompletedRef.current) {
-          return;
-        }
-        
-        setEvaluationStatus('Backend processing complete files... Please wait...');
-        
-        let consecutiveFailures = 0;
-        const maxConsecutiveFailures = 3;
-        let pollInterval;
-        
-        try {
-          // Poll every 15 seconds until completion
-          pollInterval = setInterval(async () => {
-            if (evaluationCompletedRef.current) {
-              clearInterval(pollInterval);
-              return;
-            }
-            
-            try {
-              const controller = new AbortController();
-              abortControllerRef.current = controller;
-              const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId, { signal: controller.signal });
-              
-              // Reset failure counter on successful response
-              consecutiveFailures = 0;
-              
-              if (statusResponse.status === 'completed') {
-                clearInterval(pollInterval);
-                try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-                evaluationCompletedRef.current = true;
-                evaluationInProgressRef.current = false;
-                setIsEvaluating(false);
-                manualProgressRef.current = false;
-                setEvaluationProgress(100);
-                setEvaluationStatus('Evaluation completed!');
-                if (statusResponse.evaluation_result) {
-                  finishWithResult({
-                    evaluation_id: evaluationId,
-                    evaluation_result: statusResponse.evaluation_result
-                  });
-                }
-                return; // Exit immediately after completion
-              } else {
-                setEvaluationStatus('Backend still processing... Please wait...');
-              }
-            } catch (pollError) {
-              consecutiveFailures++;
-              console.warn(`Polling error (attempt ${consecutiveFailures}/${maxConsecutiveFailures}):`, pollError.message);
-              
-              // If it's a 404 error and we've had consecutive failures, try fallback
-              if (pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
-                try {
-                  const controller2 = new AbortController();
-                  abortControllerRef.current = controller2;
-                  const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId, { signal: controller2.signal });
-                  if (fallbackResponse.status === 'completed' && fallbackResponse.evaluation_result) {
-                    clearInterval(pollInterval);
-                    finishWithResult({
-                      evaluation_id: evaluationId,
-                      evaluation_result: fallbackResponse.evaluation_result
-                    });
-                    return; // Exit immediately after completion
-                  }
-                  // Reset failure counter if fallback works
-                  consecutiveFailures = 0;
-                  setEvaluationStatus('Using fallback monitoring... Please wait...');
-                } catch (fallbackError) {
-                  console.error('Fallback check also failed:', fallbackError.message);
-                  // If fallback also fails, stop polling
-                  clearInterval(pollInterval);
-                  evaluationInProgressRef.current = false;
-                  setIsEvaluating(false);
-                  setEvaluationStatus('Evaluation session lost - please try again');
-                  setEvaluationProgress(0);
-                  manualProgressRef.current = false;
-                  alert('The evaluation session was lost and could not be recovered. This might be due to a server restart or timeout. Please try restarting the evaluation process.');
-                  return;
-                }
-              } else {
-                // For other errors or first few 404s, just log and continue
-                setEvaluationStatus(`Checking status... (${consecutiveFailures} retries)`);
-              }
-            }
-          }, 15000); // Poll every 15 seconds
-          // Store globally so we can clear on unmount/close
-          pollIntervalRef.current = pollInterval;
-          
-          // Safety timeout after 1 hour of polling
-          setTimeout(() => {
-            if (!evaluationCompletedRef.current) {
-              clearInterval(pollInterval);
-              evaluationInProgressRef.current = false;
-              setIsEvaluating(false);
-              setEvaluationStatus('Evaluation timed out - please try again');
-              setEvaluationProgress(0);
-              manualProgressRef.current = false;
-              alert('Evaluation timed out after 1 hour. Please try refreshing and checking again, or contact support.');
-            }
-          }, 60 * 60 * 1000); // 1 hour
-          
-        } catch (error) {
-          console.error('Error starting polling:', error);
-          if (pollInterval) clearInterval(pollInterval);
-          evaluationInProgressRef.current = false;
-          setIsEvaluating(false);
-          setEvaluationStatus('Polling failed - please try again');
-          alert('Failed to monitor evaluation status: ' + error.message);
-        }
-      };
+      // Removed polling helper to avoid loops
 
-      // Also try the original evaluation service call (for single files or immediate completion)
+      // Simple direct evaluation call with duplicate prevention
+      console.log('🚀 Starting evaluation for:', evaluationId);
+      setIsEvaluating(true);
+      setEvaluationStatus('Starting evaluation...');
+      
+      // Double-check we're not already running
+      if (evaluationInProgressRef.current) {
+        console.log('🚫 Duplicate evaluation call prevented');
+        return;
+      }
+      
       evaluationService.evaluateFiles(evaluationId)
         .then((result) => {
+          console.log('✅ Evaluation completed:', result);
           finishWithResult(result);
         })
         .catch(err => {
-          console.warn('Evaluation service call failed, relying on polling:', err?.message || err);
-          // Don't fail here - let polling handle the completion
-          // Only fail if it's a clear authentication or setup error
-          if (err?.message?.includes('Authentication failed') || err?.message?.includes('not found')) {
-            evaluationInProgressRef.current = false;
-            setIsEvaluating(false);
-            setEvaluationStatus('Evaluation failed - please try again');
-            setEvaluationProgress(0);
-            manualProgressRef.current = false;
-            alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
-          }
+          console.error('❌ Evaluation failed:', err);
+          evaluationInProgressRef.current = false;
+          setIsEvaluating(false);
+          setEvaluationStatus('Evaluation failed');
+          setEvaluationProgress(0);
+          manualProgressRef.current = false;
+          alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
         });
        
     } catch (err) {

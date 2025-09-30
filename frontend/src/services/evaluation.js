@@ -6,8 +6,6 @@ const API_BASE = new URL('/api', baseUrl).toString();
 
 // Track ongoing evaluation requests to prevent duplicates
 const ongoingEvaluations = new Set();
-// Track last evaluation request timestamps to prevent rapid duplicates
-const lastEvaluationTime = new Map();
 // Track completed evaluations to prevent re-evaluation
 const completedEvaluations = new Set();
 
@@ -75,61 +73,29 @@ export const evaluationService = {
   },
 
   async evaluateFiles(evaluationId, { signal } = {}) {
-    const now = Date.now();
-    const lastRequestTime = lastEvaluationTime.get(evaluationId) || 0;
-    
-    // Check if this evaluation is already completed
-    if (completedEvaluations.has(evaluationId)) {
-      throw new Error('This evaluation has already been completed. Please refresh the page.');
-    }
-    
-    // Prevent duplicate requests for the same evaluation
-    if (ongoingEvaluations.has(evaluationId)) {
-      throw new Error('Evaluation already in progress for this ID');
-    }
-    
-    // NUCLEAR PROTECTION: Prevent rapid successive requests (within 3 seconds)
-    if (now - lastRequestTime < 3000) {
-      throw new Error('Duplicate request blocked - please wait');
-    }
-    
-    ongoingEvaluations.add(evaluationId);
-    lastEvaluationTime.set(evaluationId, now);
-    
     try {
       const user = getCurrentUser();
       if (!user?.id) {
-        ongoingEvaluations.delete(evaluationId);
         throw new Error('User not authenticated');
       }
 
+      console.log('🚀 Calling evaluation endpoint with:', {
+        evaluation_id: evaluationId,
+        user_id: user.id
+      });
 
-      // Idempotent trigger: backend returns completed if already done, or processing once
+      // Simple direct call to evaluation endpoint
       const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
         headers: { 'Authorization': `Bearer ${getToken()}` },
         params: {
           evaluation_id: evaluationId,
-          user_id: user.id,
-          mark_scheme_path: markSchemeFileId,
-          answer_sheet_path: markSchemeFileId
+          user_id: user.id
         },
-        timeout: 30000,
+        timeout: 300000, // 5 minutes timeout for long evaluation
         signal
       });
       
-      
-      // If backend is processing in background, poll for completion
-      if (res.data.evaluation_result?.status === 'processing') {
-        ongoingEvaluations.delete(evaluationId);
-        return await this.waitForCompletion(evaluationId);
-      }
-      
-      // Mark as completed to prevent re-evaluation
-      if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
-        completedEvaluations.add(evaluationId);
-      }
-      
-      ongoingEvaluations.delete(evaluationId); // Clean up tracking
+      console.log('✅ Evaluation response:', res.data);
       return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
     } catch (error) {
       console.error('Evaluation error details:', {
@@ -145,16 +111,10 @@ export const evaluationService = {
         throw new Error('Authentication failed. Please try again.');
       }
       
-      // On timeout, switch to polling mode via status endpoint
+      // Do not fall back to polling; surface timeout to the caller
       if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
         ongoingEvaluations.delete(evaluationId);
-        
-        // Start polling immediately when timeout occurs
-        try {
-          return await this.waitForCompletion(evaluationId);
-        } catch (pollingError) {
-          throw new Error('Evaluation is taking longer than expected. The process may still be running. Please check back later or contact support if the issue persists.');
-        }
+        throw new Error('Evaluation timed out. Please try again or check back later.');
       }
       
       if (error.response?.status >= 500) {
@@ -170,79 +130,6 @@ export const evaluationService = {
       ongoingEvaluations.delete(evaluationId);
       throw new Error(error.response?.data?.detail || `Evaluation failed: ${error.message}`);
         }
-  },
-
-  async waitForCompletion(evaluationId, { signal } = {}) {
-    // Poll status every 5 seconds for up to 20 minutes
-    for (let i = 0; i < 240; i++) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      try {
-        const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` },
-          timeout: 10000,
-          signal
-        });
-        
-        
-        if (res.data.status === 'completed') {
-          // Mark as completed to prevent re-evaluation
-          completedEvaluations.add(evaluationId);
-          return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
-        }
-        
-        // Log progress for debugging
-        if (i % 6 === 0) { // Every 30 seconds
-        }
-      } catch (error) {
-        console.warn(`Polling attempt ${i + 1} failed:`, error.message);
-        // Continue polling even if individual requests fail
-        if (error.response?.status === 401) {
-          throw new Error('Authentication failed during polling');
-        }
-      }
-    }
-    
-    throw new Error('Evaluation timed out after 20 minutes. Please check the evaluation status manually.');
-  },
-
-  async checkEvaluationStatus(evaluationId, { signal } = {}) {
-    try {
-      const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-        timeout: 10000,
-        signal
-      });
-      
-      
-      // Mark as completed if we get a completed status
-      if (res.data.status === 'completed') {
-        completedEvaluations.add(evaluationId);
-      }
-      
-      return res.data; // { status: "completed" | "processing", evaluation_result?: {...} }
-    } catch (error) {
-      console.error('Status check error:', error);
-      
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try again.');
-      }
-      
-      if (error.response?.status === 404) {
-        // 404 might mean the evaluation was not created properly or was deleted
-        // Let's provide more context
-        console.warn(`Evaluation ${evaluationId} not found (404). This might be a timing issue or the evaluation was not created properly.`);
-        throw new Error('Evaluation not found. Please try restarting the evaluation process.');
-      }
-      
-      if (error.response?.status >= 500) {
-        throw new Error('Server error while checking evaluation status. Please try again.');
-      }
-      
-      // For other errors, provide a generic message but don't fail completely
-      console.warn('Status check failed, but continuing to retry:', error.message);
-      throw new Error(error.response?.data?.detail || 'Failed to check evaluation status');
-    }
   },
 
   async checkCompletedEvaluation(evaluationId, { signal } = {}) {
