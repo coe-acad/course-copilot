@@ -5,6 +5,7 @@ import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
 import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
 import { assetService } from "../services/asset";
+import { resolveNameConflict, getAllResourceNames } from "../utils/nameConflictHandler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -233,9 +234,22 @@ export default function AssetStudioContent() {
         return;
       }
 
+      // Get existing assets to check for conflicts
+      const existingAssetsData = await assetService.getAssets(courseId);
+      const existingAssets = existingAssetsData.assets || [];
+      const existingAssetNames = existingAssets.map(asset => asset.asset_name);
+
+      // Resolve name conflict
+      const finalAssetName = resolveNameConflict(assetName.trim(), existingAssetNames);
+      
+      // Update the asset name in the input if it was changed
+      if (finalAssetName !== assetName.trim()) {
+        setAssetName(finalAssetName);
+      }
+
       const assetType = option;
 
-      await assetService.saveAsset(courseId, assetName, assetType, saveModalMessage);
+      await assetService.saveAsset(courseId, finalAssetName, assetType, saveModalMessage);
       
       // Close modal and reset
       setShowSaveModal(false);
@@ -268,22 +282,36 @@ export default function AssetStudioContent() {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) return;
-      const baseName = (resourceFileName || '').trim() || 'document';
-      const safeBase = baseName.replace(/[^a-zA-Z0-9-_ ]/g, '_');
-      const finalFileName = safeBase.toLowerCase().endsWith('.pdf') ? safeBase : `${safeBase}.pdf`;
-      const blob = await assetService.generateContentPdfBlob(safeBase, resourceSaveMessage || '', {
-        asset_type: option
-      });
-      const file = new File([blob], finalFileName, { type: 'application/pdf' });
-      await uploadCourseResources(courseId, [file]);
+      
+      // Get existing resource names to check for conflicts
+      const existingResourceNames = getAllResourceNames(resources);
+      
+      // Resolve name conflict
+      const baseResourceName = (resourceFileName || '').trim() || 'document';
+      const finalResourceName = resolveNameConflict(baseResourceName, existingResourceNames);
+      
+      // Update the resource name in the input if it was changed
+      if (finalResourceName !== baseResourceName) {
+        setResourceFileName(finalResourceName);
+      }
+      
+      console.log('Saving chat message as resource:', finalResourceName);
+      console.log('Content length:', resourceSaveMessage?.length || 0);
+      
+      // Use the same endpoint as AssetSubCard - save content as text resource
+      const result = await assetService.saveAssetAsResource(courseId, finalResourceName, resourceSaveMessage || '');
+      console.log('Save as resource result:', result);
+      
+      // Refresh resources list
       const resourcesData = await getAllResources(courseId);
       setResources(resourcesData.resources);
+      
       setShowSaveResourceModal(false);
       setResourceFileName("");
       setResourceSaveMessage("");
     } catch (e) {
       console.error('Failed to save to resources', e);
-      alert('Failed to save to resources');
+      alert(`Failed to save to resources: ${e.message}`);
     } finally {
       setIsSavingResource(false);
     }
@@ -337,6 +365,7 @@ export default function AssetStudioContent() {
           onFileChange={handleFileUpload}
           onAddResource={() => setShowAddResourceModal(true)}
           onDelete={handleDeleteResource}
+          courseId={localStorage.getItem('currentCourseId')}
         />
       }
     >
@@ -670,7 +699,7 @@ export default function AssetStudioContent() {
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
-                File Name:
+                Resource Name:
               </label>
               <input
                 type="text"
@@ -684,7 +713,7 @@ export default function AssetStudioContent() {
                   fontSize: 14,
                   boxSizing: "border-box"
                 }}
-                placeholder="Enter file name (e.g., Outcome Draft)"
+                placeholder="Enter resource name (e.g., Course Notes)"
               />
             </div>
 

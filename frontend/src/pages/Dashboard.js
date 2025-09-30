@@ -66,6 +66,25 @@ export default function Dashboard() {
   };
 
   // Helper to handle asset deletion
+  const handleResourceAdded = async () => {
+    // Refresh resources when a new one is added
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      
+      const data = await getAllResources(courseId);
+      const transformedResources = (data.resources || []).map(resource => ({
+        id: resource.resourceName,
+        fileName: resource.resourceName,
+        title: resource.resourceName,
+        url: `#${resource.resourceName}`
+      }));
+      setResources(transformedResources);
+    } catch (error) {
+      console.error('Error refreshing resources:', error);
+    }
+  };
+
   const handleDeleteAsset = async (assetName) => {
     try {
       // Immediately remove the asset from local state for instant UI update
@@ -405,6 +424,8 @@ export default function Dashboard() {
                 assets={assets.curriculum}
                 courseId={localStorage.getItem('currentCourseId')}
                 onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
               <SectionCard 
                 title="Assessments" 
@@ -413,6 +434,8 @@ export default function Dashboard() {
                 assets={assets.assessments}
                 courseId={localStorage.getItem('currentCourseId')}
                 onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
               <SectionCard 
                 title="Evaluation" 
@@ -421,6 +444,8 @@ export default function Dashboard() {
                 assets={assets.evaluation}
                 courseId={localStorage.getItem('currentCourseId')}
                 onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
             </div>
             {/* Right panel: Knowledge Base */}
@@ -434,6 +459,7 @@ export default function Dashboard() {
                 onSelect={() => {}}
                 onAddResource={() => setShowAddResourceModal(true)}
                 onDelete={handleDeleteResource}
+                courseId={localStorage.getItem('currentCourseId')}
                 isUploading={isUploadingResources}
               />
             </div>

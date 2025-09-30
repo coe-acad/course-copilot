@@ -81,11 +81,17 @@ def delete_course(course_id: str):
     delete_from_collection("courses", {"_id": course_id})
 
 # Resources
-def create_resource(course_id: str, resource_name: str):
-    add_to_collection("resources", {"course_id": course_id, "resource_name": resource_name})
+def create_resource(course_id: str, resource_name: str, content: str = None):
+    resource_data = {"course_id": course_id, "resource_name": resource_name}
+    if content is not None:
+        resource_data["content"] = content
+    add_to_collection("resources", resource_data)
 
 def get_resources_by_course_id(course_id: str):
     return get_many_from_collection("resources", {"course_id": course_id})
+
+def get_resource_by_course_id_and_resource_name(course_id: str, resource_name: str):
+    return get_one_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
 def delete_resource(course_id: str, resource_name: str):
     delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})

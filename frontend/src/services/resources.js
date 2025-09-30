@@ -67,6 +67,17 @@ export async function deleteResource(courseId, resourceName) {
   return res.data;
 }
 
+export async function viewResource(courseId, resourceName) {
+  console.log('viewResource called with:', { courseId, resourceName });
+  const url = `${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/content`;
+  console.log('Making request to:', url);
+  const res = await axios.get(url, {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  });
+  console.log('Response received:', res.data);
+  return res.data;
+}
+
 /*
 // Returns the view URL for a resource (for use as an href)
 export function getResourceViewUrl(courseId, resourceName) {

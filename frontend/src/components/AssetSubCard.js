@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiEye, FiTrash2 } from "react-icons/fi";
+import { FiEye, FiTrash2, FiSave } from "react-icons/fi";
 import { assetService } from "../services/asset";
 import AssetViewModal from "./AssetViewModal";
+import Toast from "./Toast";
+import { resolveNameConflict } from "../utils/nameConflictHandler";
 
 export default function AssetSubCard({ 
   label, 
@@ -12,13 +14,18 @@ export default function AssetSubCard({
   courseId,
   onView,
   onDownload,
-  onDelete
+  onDelete,
+  onResourceAdded,
+  existingResources = []
 }) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingAsResource, setIsSavingAsResource] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const [assetData, setAssetData] = useState(null);
 
   const handleView = async () => {
@@ -70,6 +77,54 @@ export default function AssetSubCard({
 
   const handleDeleteCancel = () => {
     setShowDeleteConfirm(false);
+  };
+
+  const handleSaveAsResource = async () => {
+    if (!courseId || !name) return;
+    
+    setIsSavingAsResource(true);
+    try {
+      console.log('Starting save as resource for:', name);
+      
+      // Get the asset content first
+      const asset = await assetService.viewAsset(courseId, name);
+      console.log('Asset data received:', asset);
+      
+      const content = asset?.asset_content;
+      console.log('Content extracted:', content ? `Length: ${content.length}` : 'No content');
+      
+      if (!content) {
+        alert('Asset content not found');
+        return;
+      }
+      
+      // Check for name conflicts with existing resources
+      const existingResourceNames = existingResources.map(resource => 
+        resource.resourceName || resource.fileName || resource.title || resource.name
+      ).filter(Boolean);
+      
+      // Resolve name conflict
+      const finalResourceName = resolveNameConflict(name, existingResourceNames);
+      
+      // Send the content to backend
+      console.log('Sending to backend with name:', finalResourceName);
+      const result = await assetService.saveAssetAsResource(courseId, finalResourceName, content);
+      console.log('Backend response:', result);
+      
+      // Trigger refresh of resources in parent component
+      if (onResourceAdded) {
+        onResourceAdded();
+      }
+      
+      // Show success message
+      setToastMessage('Asset saved as resource successfully');
+      setShowToast(true);
+    } catch (error) {
+      console.error('Error saving asset as resource:', error);
+      alert(`Failed to save asset as resource: ${error.message}`);
+    } finally {
+      setIsSavingAsResource(false);
+    }
   };
 
   return (
@@ -130,6 +185,36 @@ export default function AssetSubCard({
             <FiEye size={16} />
           </button>
           <button
+            onClick={handleSaveAsResource}
+            disabled={isSavingAsResource}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#666",
+              cursor: isSavingAsResource ? "not-allowed" : "pointer",
+              padding: "4px",
+              borderRadius: "4px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+              opacity: isSavingAsResource ? 0.5 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!isSavingAsResource) {
+                e.currentTarget.style.background = "#f0f9ff";
+                e.currentTarget.style.color = "#2563eb";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#666";
+            }}
+            title="Save as resource"
+          >
+            <FiSave size={16} />
+          </button>
+          <button
             onClick={handleDeleteClick}
             disabled={isDeleting}
             style={{
@@ -182,7 +267,7 @@ export default function AssetSubCard({
             fontWeight: 700,
             fontSize: 18,
             marginBottom: 8,
-            paddingRight: 80, // Increased padding for two buttons
+            paddingRight: 120, // Increased padding for three buttons
           }}
         >
           {name}
@@ -335,6 +420,15 @@ export default function AssetSubCard({
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Toast Notification */}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type="success"
+          onClose={() => setShowToast(false)}
+        />
       )}
     </>
   );

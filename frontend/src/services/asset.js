@@ -1542,5 +1542,26 @@ export const assetService = {
     } catch (error) {
       handleAxiosError(error);
     }
+  },
+
+  // Save asset as resource
+  saveAssetAsResource: async (courseId, assetName, content) => {
+    try {
+      const res = await axios.post(`${API_BASE}/courses/${courseId}/assets/${assetName}/save-as-resource`, 
+        { 
+          content: content,
+          asset_name: assetName
+        }, 
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          }
+        }
+      );
+      return res.data;
+    } catch (error) {
+      handleAxiosError(error);
+    }
   }
 }; 

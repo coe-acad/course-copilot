@@ -2,7 +2,7 @@ import React, { useRef } from "react";
 import AssetSubCard from "./AssetSubCard";
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
-export default function SectionCard({ title, description, buttonLabel, style, onButtonClick, assets = [], courseId, onDeleteAsset }) {
+export default function SectionCard({ title, description, buttonLabel, style, onButtonClick, assets = [], courseId, onDeleteAsset, onResourceAdded, existingResources = [] }) {
   const scrollContainerRef = useRef(null);
 
   const scrollLeft = () => {
@@ -116,6 +116,8 @@ export default function SectionCard({ title, description, buttonLabel, style, on
                   updatedBy={asset.updatedBy}
                   courseId={courseId}
                   onDelete={onDeleteAsset}
+                  onResourceAdded={onResourceAdded}
+                  existingResources={existingResources}
                 />
               </div>
             ))}

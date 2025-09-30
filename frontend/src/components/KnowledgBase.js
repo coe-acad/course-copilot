@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiMoreVertical } from "react-icons/fi";
-import { uploadCourseResources } from "../services/resources";
+import { uploadCourseResources, viewResource } from "../services/resources";
+import ResourceViewModal from "./ResourceViewModal";
 // import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
 
 export default function KnowledgeBase({
@@ -19,6 +20,8 @@ export default function KnowledgeBase({
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedResource, setSelectedResource] = useState(null);
   // const [loadingViewId, setLoadingViewId] = useState(null);
   // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
 
@@ -41,6 +44,15 @@ export default function KnowledgeBase({
   const handleCheckboxToggle = (id) => {
     if (!onSelect) return;
     onSelect(id);
+  };
+
+  const handleViewResource = (resource) => {
+    console.log('View resource clicked:', resource);
+    console.log('CourseId available:', courseId);
+    console.log('Setting showViewModal to true');
+    setSelectedResource(resource);
+    setShowViewModal(true);
+    setMenuOpenId(null);
   };
 
   const handleFileUpload = async (event) => {
@@ -225,6 +237,15 @@ export default function KnowledgeBase({
                       listStyleType: "none"
                     }}>
                       <li
+                        style={{ ...menuItemStyle, color: "#2563eb", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewResource(res.resourceName || res.fileName || res.name);
+                        }}
+                      >
+                        View
+                      </li>
+                      <li
                         style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -249,6 +270,17 @@ export default function KnowledgeBase({
         )}
       </ul>
       </div>
+
+      {/* Resource View Modal */}
+      <ResourceViewModal
+        open={showViewModal}
+        onClose={() => {
+          setShowViewModal(false);
+          setSelectedResource(null);
+        }}
+        resourceName={selectedResource}
+        courseId={courseId}
+      />
     </>
   );
 }
