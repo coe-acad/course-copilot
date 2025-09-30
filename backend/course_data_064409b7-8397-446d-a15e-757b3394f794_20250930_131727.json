@@ -1,0 +1,84 @@
+{
+  "course_info": {
+    "course_id": "064409b7-8397-446d-a15e-757b3394f794",
+    "course_name": "Intro to Python",
+    "description": "Python lists, dict, f strings",
+    "user_id": "J0na0dW4yyXLFzXFqrlMmolFrYD3",
+    "settings": {
+      "course_level": [
+        "Year 1"
+      ],
+      "study_area": [
+        "AI & Decentralised Technologies"
+      ],
+      "pedagogical_components": [
+        "Project"
+      ],
+      "ask_clarifying_questions": false
+    },
+    "created_at": "",
+    "updated_at": ""
+  },
+  "assets": [
+    {
+      "asset_id": "6899c61ad8b24dfaf441bf63",
+      "asset_name": "newnew",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "### Proposed Course Topics\n\n1. **Introduction to Python Programming**\n   - Overview of Python's History and Usage\n   - Installation and Setup of Python Environment\n   - Introduction to Python Syntax and Semantics\n\n2. **Basic Programming Constructs**\n   - Variables and Data Types\n   - Operators and Expressions\n   - Control Structures: Conditionals and Loops\n\n3. **Data Structures in Python**\n   - Lists, Tuples, and Sets\n   - Dictionaries\n   - Understanding and Implementing Functions\n\n4. **Python's Role in AI and Decentralized Technologies**\n   - Use of Python in AI Applications\n   - Introduction to Python Libraries for AI\n   - Python's Application in Blockchain and Decentralized Tech",
+      "last_updated_by": "You",
+      "last_updated_at": "11 August 2025 15:59:46",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    },
+    {
+      "asset_id": "6899c803d8b24dfaf441bf68",
+      "asset_name": "review",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "### Topics for \"Intro to Python\"\n\n1. **Introduction to Programming Concepts**\n   - Understanding Programming Languages\n   - Basics of Python Syntax\n   - Setting Up the Python Environment\n\n2. **Data Types and Variables**\n   - Primitive Data Types\n   - Working with Variables\n   - Type Conversion\n\n3. **Control Structures**\n   - Conditional Statements\n   - Looping Constructs\n   - Introduction to Recursion\n\n4. **Functions and Modules**\n   - Defining and Calling Functions\n   - Organizing Code with Modules\n   - Understanding Built-in Functions\n\n5. **Data Structures**\n   - Lists, Tuples, and Dictionaries\n   - Sets and Strings\n   - Simple Algorithms with Data Structures\n\n6. **Introduction to Object-Oriented Programming**\n   - Classes and Objects\n   - Inheritance and Polymorphism\n   - Understanding Methods\n\n7. **File Handling and Exceptions**\n   - Reading from and Writing to Files\n   - Handling Exceptions\n   - Best Practices in File I/O\n\n8. **Basic Debugging Techniques**\n   - Understanding Syntax and Logical Errors\n   - Using Debugging Tools in Python\n   - Writing Testable Code",
+      "last_updated_by": "You",
+      "last_updated_at": "11 August 2025 16:07:55",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    },
+    {
+      "asset_id": "6899c887d8b24dfaf441bf69",
+      "asset_name": "same",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "**Intro to Python Course Syllabus**\n\n**Modules and Topics**\n\n1. **Introduction to Python Programming**\n   - Overview of Python and its applications\n   - Installing Python and setting up the development environment\n   - Introduction to the Python interpreter and development tools\n\n2. **Python Basics**\n   - Python syntax and semantics\n   - Variables, data types, and operations\n   - Input and output operations\n\n3. **Control Structures in Python**\n   - Conditional statements\n   - Looping constructs: for and while loops\n   - Exception handling basics\n\n4. **Data Structures in Python**\n   - Lists, tuples, and dictionaries\n   - Strings and string operations\n   - Basic file I/O operations\n\n5. **Functions and Modules**\n   - Defining and calling functions\n   - Function arguments and return values\n   - Importing and using modules\n\n6. **Introduction to AI and Libraries in Python**\n   - Brief overview of AI concepts\n   - Introduction to Python libraries like NumPy, Pandas, and others related to AI & decentralized technologies\n\nThis syllabus provides a theoretical foundation while introducing essential programming concepts and tools used in the field of AI.",
+      "last_updated_by": "You",
+      "last_updated_at": "11 August 2025 16:10:07",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    },
+    {
+      "asset_id": "689aec6f2545816e91c5f7de",
+      "asset_name": "topics",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "Based on the course settings provided, we are developing a first-year undergraduate course titled \"Intro to Python,\" which falls under the study area of \"AI & Decentralised Technologies.\" The course involves a theoretical pedagogical component, suggesting that it will primarily focus on imparting foundational knowledge and understanding rather than practical or project-based learning.\n\n### Reasoning for Topic Selection\n\nGiven the course name and its study area, the topics should revolve around introducing Python programming to beginners while ensuring relevance to AI and decentralized technologies. The scope of the topics should provide a strong foundational understanding that can prepare students for more advanced courses in the subsequent years of their degree program.\n\n### Proposed Course Topics\n\n1. **Introduction to Python Programming**\n   - Overview of Python Language\n   - Setting Up Python Environment\n   - Writing and Executing Basic Python Scripts\n\n2. **Core Python Concepts**\n   - Variables and Data Types\n   - Control Structures (if statements, loops)\n   - Functions and Modules\n   - Error Handling and Debugging\n\n3. **Data Structures in Python**\n   - Lists, Tuples, and Dictionaries\n   - Sets and String Manipulations\n   - Introduction to Libraries (NumPy, pandas)\n\n4. **Basic Concepts in AI with Python**\n   - Introduction to AI and Machine Learning\n   - Exploring AI Libraries (scikit-learn)\n   - Writing Basic AI Models and Algorithms\n  \n5. **Decentralized Technologies Overview**\n   - Introduction to Decentralized Systems\n   - Python Applications in Blockchain\n   - Basic Smart Contract Programming with Python",
+      "last_updated_by": "You",
+      "last_updated_at": "12 August 2025 12:55:35",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    },
+    {
+      "asset_id": "689aed8e2545816e91c5f7df",
+      "asset_name": "neww_test",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "| Module Number | Module Title                           | Module Description                                                                                      | Topics/Subtopics Covered                                                                                                                                  |\n|---------------|----------------------------------------|---------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|\n| 1             | Introduction to Programming and Python | This module introduces students to the fundamentals of programming and the Python environment.          | - Understanding programming languages and Python's role<br>- Setting up Python environment<br>- Writing and executing basic Python scripts                  |\n| 2             | Basic Python Syntax and Operations     | This module covers the essential syntax, operations, and control structures in Python.                  | - Variables, data types, and arithmetic operations<br>- Control structures: loops and conditionals                                                        |\n| 3             | Functions and Data Structures          | This module explores defining functions and using basic data structures.                                 | - Defining and using functions<br>- Importing and using Python standard library modules<br>- Lists, tuples, and dictionaries<br>- Operations on data structures |\n| 4             | Introduction to Object-Oriented Programming | Students learn the basics of object-oriented programming, a key paradigm in software design.               | - Basic concepts: classes and objects<br>- Implementing simple classes in Python                                                                          |\n| 5             | Python in AI and Decentralized Technologies | This module connects Python programming to its applications in AI and decentralized technologies.         | - Overview of Python libraries used in AI (e.g., NumPy, TensorFlow basics)<br>- Use of Python in blockchain and decentralization (e.g., simple smart contracts) |",
+      "last_updated_by": "You",
+      "last_updated_at": "12 August 2025 13:00:22",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    },
+    {
+      "asset_id": "689c3c7b12f2114ee32ddf42",
+      "asset_name": "deploy",
+      "asset_type": "modules-topics",
+      "asset_category": "curriculum",
+      "asset_content": "Based on the provided course settings, we are to design a curriculum for an \"Intro to Python\" course, primarily targeting first-year students majoring in \"AI & Decentralised Technologies\". The pedagogical approach emphasizes projects, which implies that students will learn best through hands-on experiences, applying the concepts in practical applications relevant to AI and Blockchain technologies.\n\n### Approach for Course Design\n\n1. **Foundation of Python Programming**: Given that this is an introductory course for Year 1 students, the curriculum should begin with fundamental programming concepts using Python. This includes syntax, data types, and basic operations to ensure everyone starts with a solid grounding.\n\n2. **Application to AI and Decentralised Technologies**: Since the study area is \"AI & Decentralised Technologies,\" the course should quickly transition into relevant applications of Python in these fields. The course should emphasize practical programming skills and applications that prepare students for further studies in AI and decentralized systems.\n\n3. **Project-Based Learning**: Given the pedagogical component emphasizes projects, the course should focus on creating opportunities for students to work on projects that integrate Python programming with AI and decentralized technology principles. This could involve mini-projects culminating in a final project where students demonstrate their accumulated knowledge and skills.\n\n### Proposed Topics\n\n1. **Introduction to Python Programming**\n   - Python Syntax and Semantics\n   - Variables and Data Types\n   - Control Structures: Conditionals and Loops\n\n2. **Data Structures and Algorithms with Python**\n   - Lists, Tuples, and Dictionaries\n   - Functions and Modular Programming\n   - Basic Algorithms and Problem-solving\n\n3. **Python Application in AI**\n   - Introduction to Libraries like NumPy and Pandas\n   - Basic Data Manipulation\n   - Introduction to Machine Learning Concepts\n\n4. **Python Application in Decentralised Technologies**\n   - Understanding Blockchain Basics\n   - Python Libraries for Blockchain (e.g., Web3.py)\n   - Smart Contract Basics\n\n5. **Project Development**\n   - Project Planning and Design\n   - Implementing a Python-Based AI or Decentralised Technology Project\n   - Presentation and Documentation of Project",
+      "last_updated_by": "You",
+      "last_updated_at": "13 August 2025 07:19:23",
+      "course_id": "064409b7-8397-446d-a15e-757b3394f794"
+    }
+  ]
+}

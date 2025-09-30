@@ -1,0 +1,39 @@
+Extract all questions and answers from the attached answer sheet. Include the complete question and answer. Make sure to not skip anything and to not add anything more. If an answer is missing, set it as “Student answer”: Null. 
+
+Once you have the extracted output, check again to ensure you have extracted all questions and answers. You can check this by comparing with the number of question-answers in the mark scheme. 
+
+Return the extracted output in the exact JSON format as below:
+
+{\"student_name\": \"...\", \"answers\": [{\"question_number\": \"1\", \"question_text\": \"...\", \"student_answer\": \"...\"}]}
+
+
+Evaluate the extracted answers against the mark scheme.
+
+Each item in the mark scheme data has:
+Question_number
+Marks
+Question_text
+Student_text
+Answer_template
+Marking_scheme
+Deductions
+Evaluation Guidelines
+
+Compare the student's answer to the answer_template and mark_scheme. Award marks based on accuracy, completeness, and relevance.
+
+If the answer deviates but is sound, favor the higher score. Any one comprehensive, context-relevant answer can earn full marks. Minor calculation errors should not cost any marks if reasoning is sound. Provide marks liberally if the student shows rich understanding even if not using the right terms. If no text is provided, award 0 marks.
+
+Once you finish, please check whether you have extracted and evaluated all the answers. This can be checked by comparing the number of answers evaluated with the number of question-answer pairs given in the mark scheme. If you have missed evaluating any of the answers, please redo the specific student’s answer sheet.
+
+Required Output by question:
+Return a JSON array of objects with keys: 
+Question_number
+Score
+Text_feedback
+Improvement_suggestions
+
+Data:
+Evaluation ID: {{ evaluation_id }}
+Mark scheme data: {{ mark_scheme }}
+Students answer sheets: {{ answer_sheets }}
+

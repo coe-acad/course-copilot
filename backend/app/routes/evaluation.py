@@ -10,10 +10,10 @@ from datetime import datetime
 from flask import request
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id
-from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
+from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check, evaluate_file_ids_directly
+from app.utils.prompt_parser import PromptParser
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email
-from app.utils.extraction import extract_text_from_mark_scheme, parse_answer_paper, extract_text_from_answer_sheet
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -25,8 +25,6 @@ class UploadFilesRequest(BaseModel):
 class EvaluationResponse(BaseModel):
     evaluation_id: str
     evaluation_result: dict
-    mark_scheme_path: list
-    answer_sheet_path: list
 
 class EditresultRequest(BaseModel):
     evaluation_id: str
@@ -35,45 +33,50 @@ class EditresultRequest(BaseModel):
     score: float
     feedback: str
 
-def _process_evaluation(evaluation_id: str, user_id: str, mark_scheme_path:List[UploadFile] = File(...), answer_sheets_path: List[UploadFile] = File(...)):
+
+def _process_evaluation(evaluation_id, user_id, evaluation):
     """Process evaluation in background"""
-    extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
-    extracted_answer_sheets_text = extract_text_from_answer_sheet(answer_sheets_path)
-    extracted_answer_sheets = [parse_answer_paper(extracted_answer_sheets_text)]
-    print(extracted_mark_scheme, extracted_answer_sheets)
+    # with ThreadPoolExecutor(max_workers=2) as executor:
+    #     fut_ms = executor.submit(extract_mark_scheme, evaluation_id, user_id, evaluation["mark_scheme_file_id"])
+    #     fut_as = executor.submit(extract_answer_sheets_batched, evaluation_id, user_id, evaluation["answer_sheet_file_ids"])
+    #     extracted_mark_scheme = fut_ms.result()
+    #     extracted_answer_sheets = fut_as.result()
+    mark_scheme_file_id = evaluation["mark_scheme_file_id"]
+    answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
+    prompt = PromptParser().get_evaluation_prompt(evaluation_id, {"mark_scheme": mark_scheme_file_id, "answer_sheets": answer_sheet_file_ids, "evaluation_id": evaluation_id})
+    print(prompt)
+    evaluation_result = evaluate_file_ids_directly(evaluation_id, user_id, answer_sheet_file_ids, mark_scheme_file_id)
+    print(evaluation_result)
+    # Always verify and potentially recalculate scores for each student
+    for student in evaluation_result.get("students", []):
+        answers = student.get("answers", [])
+        
+        # Calculate what the total should be based on individual question scores
+        calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+        calculated_max = sum((a.get("max_score") or 0) for a in answers)
+        
+        # Log the current vs calculated scores
+        current_total = student.get("total_score", 0)
+        current_max = student.get("max_total_score", 0)
+        
+        logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
+        
+        # Always use the calculated scores to ensure accuracy
+        student["total_score"] = calculated_total
+        student["max_total_score"] = calculated_max
 
-    # evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
+    # Calculate and save aggregate totals across all students
+    overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+    overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
     
-    # # Always verify and potentially recalculate scores for each student
-    # for student in evaluation_result.get("students", []):
-    #     answers = student.get("answers", [])
-        
-    #     # Calculate what the total should be based on individual question scores
-    #     calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
-    #     calculated_max = sum((a.get("max_score") or 0) for a in answers)
-        
-    #     # Log the current vs calculated scores
-    #     current_total = student.get("total_score", 0)
-    #     current_max = student.get("max_total_score", 0)
-        
-    #     logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
-        
-    #     # Always use the calculated scores to ensure accuracy
-    #     student["total_score"] = calculated_total
-    #     student["max_total_score"] = calculated_max
-
-    # # Calculate and save aggregate totals across all students
-    # overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
-    # overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+    # Add overall totals to the evaluation result
+    evaluation_result["total_score"] = overall_total
+    evaluation_result["max_total_score"] = overall_max
     
-    # # Add overall totals to the evaluation result
-    # evaluation_result["total_score"] = overall_total
-    # evaluation_result["max_total_score"] = overall_max
+    logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
     
-    # logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
-    
-    # # Store the final evaluation result (now includes overall totals)
-    # update_evaluation_with_result(evaluation_id, evaluation_result)
+    # Store the final evaluation result (now includes overall totals)
+    update_evaluation_with_result(evaluation_id, evaluation_result)
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
@@ -91,7 +94,6 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
     if "not in the correct format" in mark_scheme_check_result:
         raise HTTPException(status_code=400, detail=mark_scheme_check_result)
     
-    # Create evaluation
     create_evaluation(
         evaluation_id=evaluation_id,
         course_id=course_id,
@@ -101,6 +103,7 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         answer_sheet_file_ids=[],
         answer_sheet_filenames=[]
     )
+    
     # Verify the evaluation was created successfully
     created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
     if not created_evaluation:
@@ -130,7 +133,11 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
             raise HTTPException(status_code=400, detail="Mark scheme must be uploaded first")
         
         # Upload answer sheets
-        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets)
+        vector_store_id = evaluation.get("vector_store_id")
+        if not vector_store_id:
+            raise HTTPException(status_code=400, detail="Vector store not found for evaluation")
+        
+        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets, vector_store_id)
         
         # Update evaluation record
         update_evaluation(evaluation_id, {
@@ -148,26 +155,58 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
 @router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
-async def evaluate_files(evaluation_id: str, user_id: str, mark_scheme_path:List[UploadFile] = File(...), answer_sheets: List[UploadFile] = File(...)):
+async def evaluate_files(evaluation_id: str, user_id: str, mark_scheme_path: str = None, answer_sheet_path: str = None):
     try:
+        print(f"🚀 EVALUATION ENDPOINT CALLED!")
+        print(f"   evaluation_id: {evaluation_id}")
+        print(f"   user_id: {user_id}")
+        print(f"   mark_scheme_path: {mark_scheme_path}")
+        print(f"   answer_sheet_path: {answer_sheet_path}")
+        
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
+            print(f"❌ Evaluation {evaluation_id} not found in database")
             raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
-        # If results already exist, return completed immediately (idempotent)
-        if "evaluation_result" in evaluation:
-            return {
-                "evaluation_id": evaluation_id,
-                "evaluation_result": evaluation["evaluation_result"],
-            }
+        
+        print(f"✅ Evaluation found in database")
+        
+        mark_scheme_file_id = evaluation["mark_scheme_file_id"]
+        answer_sheet_file_ids = evaluation["answer_sheet_file_ids"]
+        print(f"📋 Mark scheme file ID: {mark_scheme_file_id}")
+        print(f"📋 Answer sheet file IDs: {answer_sheet_file_ids}")
+        
+        prompt = PromptParser().get_evaluation_prompt(evaluation_id, {"mark_scheme": mark_scheme_file_id, "answer_sheets": answer_sheet_file_ids, "evaluation_id": evaluation_id})
+        print(f"📝 EVALUATION PROMPT:")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80)
+        evaluation_result = evaluate_file_ids_directly(evaluation_id, user_id, answer_sheet_file_ids, mark_scheme_file_id)
+        logger.info(evaluation_result)
+        
+        # Process results (same logic as _process_evaluation)
+        for student in evaluation_result.get("students", []):
+            answers = student.get("answers", [])
+            
+            # Calculate what the total should be based on individual question scores
+            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+            calculated_max = sum((a.get("max_score") or 0) for a in answers)
+            
+            # Always use the calculated scores to ensure accuracy
+            student["total_score"] = calculated_total
+            student["max_total_score"] = calculated_max
 
-        # If processing already started, don't start another run
-        if evaluation.get("status") == "processing":
-            return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
-
-        # Mark as processing and start background task
-        update_evaluation(evaluation_id, {"status": "processing"})
-        asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
-        return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
+        # Calculate and save aggregate totals across all students
+        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+        
+        # Add overall totals to the evaluation result
+        evaluation_result["total_score"] = overall_total
+        evaluation_result["max_total_score"] = overall_max
+        
+        # Save the result to database
+        update_evaluation_with_result(evaluation_id, evaluation_result)
+        
+        return {"evaluation_id": evaluation_id, "evaluation_result": evaluation_result}
         
     except HTTPException:
         raise

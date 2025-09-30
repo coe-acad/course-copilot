@@ -165,8 +165,8 @@ def upload_mark_scheme_file(mark_scheme: UploadFile, vector_store_id: str) -> st
     """Upload mark scheme file"""
     return upload_file_to_vector_store(mark_scheme, vector_store_id)
 
-def upload_answer_sheet_files(answer_sheets: List[UploadFile]) -> tuple[List[str], List[str]]:
-    """Upload multiple answer sheet files and return both file IDs and filenames"""
+def upload_answer_sheet_files(answer_sheets: List[UploadFile], vector_store_id: str) -> tuple[List[str], List[str]]:
+    """Upload multiple answer sheet files to vector store and return both file IDs and filenames"""
     answer_sheet_ids = []
     answer_sheet_filenames = []
     
@@ -177,8 +177,12 @@ def upload_answer_sheet_files(answer_sheets: List[UploadFile]) -> tuple[List[str
             file_obj.name = answer_sheet.filename
 
             file_id = create_file(file_obj)
+            # Add file to vector store
+            connect_file_to_vector_store(vector_store_id, file_id)
+            
             answer_sheet_ids.append(file_id)
             answer_sheet_filenames.append(answer_sheet.filename)
+            logger.info(f"Successfully uploaded and added {answer_sheet.filename} to vector store")
         except Exception as e:
             logger.error(f"Failed to upload {answer_sheet.filename}: {str(e)}")
             continue
@@ -953,3 +957,152 @@ def course_description(description: str, course_name: str):
     )
     description = chat_completion.choices[0].message.content
     return description
+
+#create a fuction which evlauates the thing s from the file ids directly no seprate extraction and keep the json aoutput as the evlaure file fuction
+def evaluate_file_ids_directly(evaluation_id: str, user_id: str, answer_sheet_file_ids: list[str], mark_scheme_file_id: str) -> dict:
+    # Get evaluation assistant ID from database
+    from app.services.mongo import get_evaluation_by_evaluation_id
+    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+    
+    evaluation_assistant_id = evaluation.get("evaluation_assistant_id")
+    vector_store_id = evaluation.get("vector_store_id")
+    if not evaluation_assistant_id:
+        raise HTTPException(status_code=500, detail="Evaluation assistant ID not found")
+    if not vector_store_id:
+        raise HTTPException(status_code=500, detail="Vector store ID not found")
+    
+    # Prepare file attachments for the thread
+    file_attachments = []
+    
+    # Add mark scheme file
+    file_attachments.append({
+        "file_id": mark_scheme_file_id,
+        "tools": [{"type": "file_search"}]
+    })
+    
+    # Add answer sheet files
+    for file_id in answer_sheet_file_ids:
+        file_attachments.append({
+            "file_id": file_id,
+            "tools": [{"type": "file_search"}]
+        })
+    
+    payload = {
+        "mark_scheme": f"Mark scheme file ID: {mark_scheme_file_id}",
+        "answer_sheets": f"Answer sheet file IDs: {', '.join(answer_sheet_file_ids)}",
+        "evaluation_id": evaluation_id
+    }
+    evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
+    print(f"🤖 AI PROMPT BEING SENT:")
+    print("=" * 80)
+    print(evaluation_prompt)
+    print("=" * 80)
+
+    # Create thread with file attachments and vector store access
+    print(f"🧵 Creating thread with prompt length: {len(evaluation_prompt)}")
+    thread = client.beta.threads.create(
+        messages=[{
+            "role": "user", 
+            "content": evaluation_prompt,
+            "attachments": file_attachments
+        }],
+        tool_resources={
+            "file_search": {
+                "vector_store_ids": [vector_store_id]
+            }
+        }
+    )
+    print(f"✅ Thread created: {thread.id}")
+    run = client.beta.threads.runs.create(
+        thread_id=thread.id,
+        temperature=0.3,
+        assistant_id=evaluation_assistant_id,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "evaluation_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "evaluation_id": {"type": "string"},
+                        "students": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "file_id": {"type": "string"},
+                                    "answers": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "question_number": {"type": "string"},
+                                                "question_text": {"type": "string"},
+                                                "student_answer": {"type": ["string", "null"]},
+                                                "correct_answer": {"type": ["string", "null"]},
+                                                "score": {"type": "number"},
+                                                "max_score": {"type": "number"},
+                                                "feedback": {"type": "string"}
+                                            },
+                                            "required": [
+                                                "question_number",
+                                                "question_text",
+                                                "student_answer",
+                                                "correct_answer",
+                                                "score",
+                                                "max_score",
+                                                "feedback"
+                                            ]
+                                        }
+                                    },
+                                    "total_score": {"type": "number"},
+                                    "max_total_score": {"type": "number"}
+                                },
+                                "required": ["file_id", "answers", "total_score", "max_total_score"]
+                            }
+                        }
+                    },
+                    "required": ["evaluation_id", "students"]
+                }
+            }
+        }
+    )
+
+    # Poll until run finishes
+    while run.status in ("queued", "in_progress"):
+        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+    if run.status == "failed":
+        logger.error(f"Evaluation failed: {run.last_error}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {run.last_error}")
+
+    # Get assistant message content
+    messages = client.beta.threads.messages.list(thread_id=thread.id)
+    structured_output = None
+    for msg in messages.data:
+        if msg.role == "assistant" and msg.content and len(msg.content) > 0:
+            content = msg.content[0]
+            if hasattr(content, "text") and content.text.value:
+                structured_output = content.text.value
+                break
+
+    if not structured_output:
+        raise HTTPException(status_code=500, detail="No content returned from evaluation")
+
+    # Parse and enforce minimal invariants
+    try:
+        evaluation_result = json.loads(structured_output)
+        if "properties" in evaluation_result and "type" in evaluation_result:
+            raise HTTPException(status_code=500, detail="OpenAI returned schema definition instead of evaluation results, please try again")
+        if "evaluation_id" not in evaluation_result:
+            evaluation_result["evaluation_id"] = evaluation_id
+        if "students" not in evaluation_result:
+            raise HTTPException(status_code=500, detail="Invalid evaluation result structure: missing 'students'")
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse evaluation JSON for {evaluation_id}: {structured_output}")
+        raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
+
+    logger.info(f"Successfully evaluated {len(evaluation_result['students'])} students")
+    return evaluation_result

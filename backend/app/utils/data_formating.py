@@ -50,9 +50,8 @@ def format_course_data(course: Dict, assets: List[Dict]) -> Dict[str, Any]:
         "assets": []
     }
     
-    # Format all assets with their content and metadata
+    # Include curriculum modules
     modules_assets = [asset for asset in assets if asset.get("asset_type") == "modules-topics"]
-    
     for asset in modules_assets:
         asset_data = {
             "asset_id": asset.get("_id"),
@@ -65,11 +64,10 @@ def format_course_data(course: Dict, assets: List[Dict]) -> Dict[str, Any]:
             "course_id": asset.get("course_id", "")
         }
         formatted_data["assets"].append(asset_data)
-    
-    return formatted_data
 
-    assessment_assets = [asset for asset in assets if asset.get("asset_type") == "project" or asset.get("asset_type") == "activity" or asset.get("asset_type") == "quiz" or asset.get("asset_type") == "question-paper" or asset.get("asset_type") == "mark-scheme" or asset.get("asset_type") == "mock-interview"]
-    formatted_data["assessment_assets"] = []
+    # Include assessment assets (projects, activities, quizzes, question papers, mark schemes, mock interviews)
+    assessment_types = {"project", "activity", "quiz", "question-paper", "mark-scheme", "mock-interview"}
+    assessment_assets = [asset for asset in assets if asset.get("asset_type") in assessment_types]
     for asset in assessment_assets:
         asset_data = {
             "asset_id": asset.get("_id"),
@@ -82,7 +80,7 @@ def format_course_data(course: Dict, assets: List[Dict]) -> Dict[str, Any]:
             "course_id": asset.get("course_id", "")
         }
         formatted_data["assets"].append(asset_data)
-    
+
     return formatted_data
 
 
