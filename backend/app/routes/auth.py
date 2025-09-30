@@ -9,6 +9,7 @@ import logging
 from ..services.firebase import firebase_config, db
 from ..services.mongo import create_user, get_user_by_user_id
 from ..config.settings import settings
+from ..services.mongo import update_in_collection
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -152,12 +153,18 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
         # Store user info in Firestore (optional, for consistency)
         db.collection("users").document(user_id).set({"email": email}, merge=True)
 
-        # Ensure user exists in Mongo
+        # Ensure user exists in Mongo and update email
         try:
-            if not get_user_by_user_id(user_id):
+            existing_user = get_user_by_user_id(user_id)
+            if not existing_user:
                 create_user(user_id, email)
+                logger.info(f"Created new MongoDB user for Google sign-in: {email}")
+            else:
+                # Update email in case it changed
+                update_in_collection("users", {"_id": user_id}, {"email": email})
+                logger.info(f"Updated MongoDB user email for Google sign-in: {email}")
         except Exception as e:
-            logger.warning(f"Mongo user create (google) skipped or failed for {email}: {str(e)}")
+            logger.warning(f"Mongo user create/update (google) skipped or failed for {email}: {str(e)}")
 
         # Store token in a simple in-memory store (for demo purposes)
         # In production, use Redis or a proper session store
