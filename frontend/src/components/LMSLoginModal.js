@@ -91,15 +91,29 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error("❌ LMS Login Error:", errorData);
         const errorMessage = errorData.detail || errorData.message || 'Login failed. Please check your credentials.';
         throw new Error(errorMessage);
       }
 
       const data = await response.json();
       
-      // Store LMS token for later use
-      localStorage.setItem("lms_token", data.data?.token || "");
-      localStorage.setItem("lms_user", JSON.stringify(data.data?.user || {}));
+      // Store LMS cookies (for session-based auth) and user data
+      const lmsCookies = data.cookies || "";
+      const lmsUser = data.data?.user || data.user || {};
+      const lmsToken = data.token || data.data?.token || "";  // Some APIs might also return a token
+      
+      localStorage.setItem("lms_cookies", lmsCookies);
+      localStorage.setItem("lms_user", JSON.stringify(lmsUser));
+      if (lmsToken) {
+        localStorage.setItem("lms_token", lmsToken);
+      }
+      
+      console.log("✅ LMS Login Success:", { 
+        cookies: lmsCookies ? lmsCookies.substring(0, 50) + "..." : "none",
+        token: lmsToken ? lmsToken.substring(0, 30) + "..." : "none",
+        user: lmsUser 
+      });
       
       // Check if in mock mode
       const isMockMode = data.message?.includes("MOCK MODE");
