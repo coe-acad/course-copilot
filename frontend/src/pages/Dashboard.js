@@ -15,6 +15,7 @@ import assessmentOptions from "../config/assessmentsOptions";
 import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
 import ExportAssetsModal from "../components/ExportAssetsModal";
+import LMSLoginModal from "../components/LMSLoginModal";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [assetModalLoading, setAssetModalLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [showLMSLoginModal, setShowLMSLoginModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const navigate = useNavigate();
   // Helper to view asset
@@ -401,7 +403,7 @@ export default function Dashboard() {
           title="Course Copilot"
           onLogout={handleLogout}
           onSettings={() => setShowSettingsModal(true)}
-          onExport={() => setShowExportModal(true)}
+          onExport={() => setShowLMSLoginModal(true)}
           onGridView={() => setIsGridView(true)}
           onListView={() => setIsGridView(false)}
           isGridView={isGridView}
@@ -603,7 +605,26 @@ export default function Dashboard() {
           contentType={pendingContentType}
         />
 
-        {/* Export Assets Modal */}
+        {/* ========================================
+            LMS Login Modal - Shows first when Export to LMS is clicked
+            BACKEND INTEGRATION: This modal calls /api/login-lms endpoint
+            ======================================== */}
+        <LMSLoginModal
+          open={showLMSLoginModal}
+          onClose={() => setShowLMSLoginModal(false)}
+          onLoginSuccess={(data) => {
+            console.log("LMS login successful:", data);
+            // BACKEND: After successful login, LMS token is stored in localStorage
+            // Frontend automatically proceeds to export modal
+            setShowExportModal(true);
+          }}
+        />
+
+        {/* ========================================
+            Export Assets Modal - Shows after successful LMS login
+            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms (current)
+            FUTURE: Will call /api/courses/{id}/push-to-lms when implemented
+            ======================================== */}
         <ExportAssetsModal
           open={showExportModal}
           onClose={() => setShowExportModal(false)}
@@ -613,7 +634,9 @@ export default function Dashboard() {
             ...assets.evaluation.map(a => ({ id: `evaluation|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
           ]}
           onExportSelected={(selected) => {
-            // UI-only: pass selections for export handling elsewhere
+            // BACKEND: Selected assets are sent to backend for processing
+            // Current: Downloads JSON file with formatted assets
+            // Future: Pushes directly to LMS platform using stored LMS token
             console.log('Selected assets to export:', selected);
           }}
         />

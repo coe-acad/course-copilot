@@ -1,32 +1,33 @@
 import React from "react";
 import curriculumOptions from "../data/curriculumOptions";
 import assessmentsOptions from "../data/assessmentsOptions";
-import AppHeader from "../components/header/AppHeader";
+import DashboardHeader from "../components/header/DashboardHeader";
 import SectionCard from "../components/SectionCard";
 import Sidebar from "../components/Sidebar";
 import SettingsModal from "../components/SettingsModal";
 import Modal from "../components/Modal";
 import KnowledgeBase from "../components/KnowledgBase";
 import ExportAssetsModal from "../components/ExportAssetsModal";
+import LMSLoginModal from "../components/LMSLoginModal";
 import { useNavigate } from "react-router-dom";
 
 export default function DashboardLayout({ state }) {
   const navigate = useNavigate();
+  const [showLMSLoginModal, setShowLMSLoginModal] = React.useState(false);
   const [showExportModal, setShowExportModal] = React.useState(false);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#fafbfc" }}>
-      <AppHeader
+      <DashboardHeader
         isGridView={state.isGridView}
         onGridView={() => state.setIsGridView(true)}
         onListView={() => state.setIsGridView(false)}
         onSettings={() => state.setShowSettingsModal(true)}
-        onExport={() => setShowExportModal(true)}
+        onExport={() => setShowLMSLoginModal(true)}
         onLogout={() => {
           localStorage.removeItem("user");
           navigate("/login");
         }}
-        type="dashboard"
       />
 
       {/* Main Body */}
@@ -132,12 +133,35 @@ export default function DashboardLayout({ state }) {
       </Modal>
 
       <SettingsModal open={state.showSettingsModal} onClose={() => state.setShowSettingsModal(false)} onSave={() => state.setShowSettingsModal(false)} />
+      
+      {/* ========================================
+          LMS Login Modal - Shows first when Export to LMS is clicked
+          BACKEND INTEGRATION: This modal calls /api/login-lms endpoint
+          ======================================== */}
+      <LMSLoginModal
+        open={showLMSLoginModal}
+        onClose={() => setShowLMSLoginModal(false)}
+        onLoginSuccess={(data) => {
+          console.log("LMS login successful:", data);
+          // BACKEND: After successful login, LMS token is stored in localStorage
+          // Frontend automatically proceeds to export modal
+          setShowExportModal(true);
+        }}
+      />
+      
+      {/* ========================================
+          Export Assets Modal - Shows after successful LMS login
+          BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms (current)
+          FUTURE: Will call /api/courses/{id}/push-to-lms when implemented
+          ======================================== */}
       <ExportAssetsModal
         open={showExportModal}
         onClose={() => setShowExportModal(false)}
         assets={[]}
         onExportSelected={(selected) => {
-          // Placeholder: only UI per request
+          // BACKEND: Selected assets are sent to backend for processing
+          // Current: Downloads JSON file
+          // Future: Pushes directly to LMS platform
           console.log("Selected for export:", selected);
         }}
       />

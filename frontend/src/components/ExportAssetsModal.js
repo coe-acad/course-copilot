@@ -108,15 +108,90 @@ export default function ExportAssetsModal({
         const assetTypes = [...new Set(chosen.map(a => a.type))]; // Get unique asset types
         const token = localStorage.getItem("token");
         
+        // Get LMS token from localStorage (set during login) - for future use with push-to-lms endpoint
+        // const lmsToken = localStorage.getItem("lms_token");
+        
+        // ========================================
+        // BACKEND INTEGRATION REQUIRED
+        // ========================================
+        // 
+        // NEW ENDPOINT NEEDED: POST /api/courses/{course_id}/push-to-lms
+        // 
+        // REQUEST HEADERS:
+        // - Authorization: Bearer <user_auth_token>
+        // - X-LMS-Token: <lms_token_from_login>
+        // - Content-Type: application/json
+        // 
+        // REQUEST BODY:
+        // {
+        //   "asset_names": ["asset1", "asset2", ...],
+        //   "asset_type": ["quiz", "question-paper", ...],
+        //   "lms_course_id": "optional_existing_course_id",
+        //   "publish": true/false,
+        //   "export_format": "lms_specific_format"
+        // }
+        // 
+        // EXPECTED SUCCESS RESPONSE (200):
+        // {
+        //   "success": true,
+        //   "message": "Successfully exported to LMS",
+        //   "data": {
+        //     "lms_course_id": "created_course_id",
+        //     "lms_content_ids": ["content1", "content2", ...],
+        //     "exported_assets": [
+        //       {
+        //         "asset_name": "quiz1",
+        //         "lms_content_id": "lms_quiz_id",
+        //         "status": "success"
+        //       }
+        //     ]
+        //   }
+        // }
+        // 
+        // EXPECTED ERROR RESPONSES:
+        // - 400: { "detail": "LMS token expired or invalid" }
+        // - 401: { "detail": "Unauthorized - invalid LMS credentials" }
+        // - 404: { "detail": "Course not found" }
+        // - 422: { "detail": "Invalid asset data" }
+        // - 500: { "detail": "LMS export failed" }
+        // 
+        // BACKEND IMPLEMENTATION STEPS:
+        // 1. Validate LMS token from X-LMS-Token header
+        // 2. Get course data and selected assets
+        // 3. Format assets according to LMS API requirements
+        // 4. Call LMS platform API to create/update content
+        // 5. Handle LMS-specific response format
+        // 6. Return success with LMS IDs for tracking
+        // 7. Implement retry logic for failed exports
+        // 8. Add logging for audit trail
+        // 
+        // LMS API INTEGRATION EXAMPLE:
+        // POST {LMS_BASE_URL}/api/v1/courses
+        // Headers: Authorization: Bearer {lms_token}
+        // Body: { course_data, assets: formatted_assets }
+        // 
+        // CURRENT: Downloads JSON file (temporary)
+        // FUTURE: Push directly to LMS platform
+        
+        // ========================================
+        // CURRENT: Using existing export-lms endpoint (temporary)
+        // FUTURE: Switch to push-to-lms endpoint when implemented
+        // ========================================
         const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses/${courseId}/export-lms`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
+            // TODO: Add LMS token header when push-to-lms endpoint is ready:
+            // 'X-LMS-Token': lmsToken
           },
           body: JSON.stringify({ 
             asset_names: assetNames,
             asset_type: assetTypes
+            // TODO: Add LMS-specific parameters when push-to-lms endpoint is ready:
+            // lms_course_id: "existing_course_id_if_updating",
+            // publish: true/false,
+            // export_format: "lms_specific_format"
           })
         });
         
