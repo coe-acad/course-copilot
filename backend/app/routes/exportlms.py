@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from ..services.mongo import get_course, get_asset_by_course_id_and_asset_name
 from ..utils.data_formating import format_quiz_content
 from ..utils.verify_token import verify_token
-from ..utils.lms_curl import login_to_lms
+from ..utils.lms_curl import login_to_lms, get_lms_courses
 from ..config.settings import settings
 from fastapi import APIRouter
 import logging
@@ -18,6 +18,9 @@ class ExportLMSRequest(BaseModel):
 class LoginLMSRequest(BaseModel):
     email: str
     password: str
+
+class GetCoursesLMSRequest(BaseModel):
+    lms_token: str
 
 #route to login to the lms
 @router.post("/login-lms")
@@ -56,6 +59,48 @@ def login_lms(request: LoginLMSRequest, user_id: str):
         raise
     except Exception as e:
         logger.error(f"Error during LMS login: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+#route to get the courses from the lms
+@router.post("/courses-lms")
+def get_courses_lms(request: GetCoursesLMSRequest, user_id: str):
+    """
+    Get courses from the LMS platform using the LMS authentication token
+    """
+    try:
+        # Validate input
+        if not request.lms_token:
+            raise HTTPException(status_code=400, detail="LMS token is required")
+        
+        # Check if LMS_BASE_URL is configured in settings
+        if not settings.LMS_BASE_URL:
+            raise HTTPException(status_code=500, detail="LMS base URL is not configured in server settings")
+        
+        # Log token info for debugging (first 20 chars only for security)
+        logger.info(f"Using LMS token: {request.lms_token[:20]}... (length: {len(request.lms_token)})")
+        
+        # Call the LMS courses utility function
+        result = get_lms_courses(request.lms_token)
+        
+        # Check if request was successful
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=result.get("status_code", 500),
+                detail=result.get("error", "Failed to fetch courses from LMS")
+            )
+        
+        logger.info(f"User {user_id} successfully fetched courses from LMS")
+        
+        # Return the success response
+        return {
+            "message": "Successfully fetched courses from LMS",
+            "data": result.get("data", [])
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching LMS courses: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
         
 @router.post("/courses/{course_id}/export-lms")
