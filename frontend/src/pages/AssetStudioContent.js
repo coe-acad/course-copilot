@@ -144,11 +144,12 @@ export default function AssetStudioContent() {
     };
 
     // Guard against double-invocation and ensure resources have been fetched first
-    if (!hasInitializedRef.current && !resourcesLoading && chatMessages.length === 0) {
+    // Only run once when resources finish loading, ignore subsequent resource updates
+    if (!hasInitializedRef.current && !resourcesLoading && chatMessages.length === 0 && resources.length > 0) {
       hasInitializedRef.current = true;
       createInitialMessage();
     }
-  }, [resourcesLoading, resources, option, chatMessages.length, selectedIds]);
+  }, [resourcesLoading, option]);
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>

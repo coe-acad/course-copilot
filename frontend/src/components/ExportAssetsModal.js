@@ -9,6 +9,7 @@ export default function ExportAssetsModal({
   onExportSelected
 }) {
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [assets, setAssets] = useState([]);
   const [selected, setSelected] = useState({});
@@ -94,17 +95,107 @@ export default function ExportAssetsModal({
     setSelected(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleExport = () => {
-    const chosen = assets.filter(a => selected[a.id]);
-    if (onExportSelected) onExportSelected(chosen);
-    onClose?.();
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      setError("");
+      const chosen = assets.filter(a => selected[a.id]);
+      
+      // Call the export API
+      const courseId = localStorage.getItem("currentCourseId");
+      if (courseId && chosen.length > 0) {
+        const assetNames = chosen.map(a => a.name);
+        const assetTypes = [...new Set(chosen.map(a => a.type))]; // Get unique asset types
+        const token = localStorage.getItem("token");
+        
+        const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses/${courseId}/export-lms`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            asset_names: assetNames,
+            asset_type: assetTypes
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || 'Export failed');
+        }
+        
+        const data = await response.json();
+        console.log('Export data:', data);
+        
+        // Download the exported data as JSON
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `course-export-${new Date().getTime()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      if (onExportSelected) onExportSelected(chosen);
+      onClose?.();
+    } catch (error) {
+      console.error('Export error:', error);
+      setError(error.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (!open) return null;
 
   return (
     <Modal open={open} onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
+        {/* Loading Overlay */}
+        {exporting && (
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(255, 255, 255, 0.95)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+            zIndex: 1000,
+            borderRadius: 12
+          }}>
+            <div style={{
+              width: 48,
+              height: 48,
+              border: "4px solid #e5e7eb",
+              borderTop: "4px solid #2563eb",
+              borderRadius: "50%",
+              animation: "spin 1s linear infinite"
+            }}></div>
+            <div style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: "#2563eb"
+            }}>
+              Formatting the content, please wait...
+            </div>
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        )}
+        
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontWeight: 700, fontSize: 22 }}>Export Assets</div>
           <div style={{ color: "#6b7280", fontSize: 14 }}>
@@ -190,21 +281,34 @@ export default function ExportAssetsModal({
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-          <button onClick={onClose} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}>Cancel</button>
+          <button 
+            onClick={onClose} 
+            disabled={exporting}
+            style={{ 
+              padding: "10px 16px", 
+              borderRadius: 8, 
+              border: "1px solid #d1d5db", 
+              background: "#fff",
+              cursor: exporting ? "not-allowed" : "pointer",
+              opacity: exporting ? 0.5 : 1
+            }}
+          >
+            Cancel
+          </button>
           <button
             onClick={handleExport}
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || exporting}
             style={{
               padding: "10px 16px",
               borderRadius: 8,
               border: "none",
-              background: selectedCount === 0 ? "#94a3b8" : "#2563eb",
+              background: (selectedCount === 0 || exporting) ? "#94a3b8" : "#2563eb",
               color: "#fff",
               fontWeight: 600,
-              cursor: selectedCount === 0 ? "not-allowed" : "pointer"
+              cursor: (selectedCount === 0 || exporting) ? "not-allowed" : "pointer"
             }}
           >
-            Export {selectedCount > 0 ? `(${selectedCount})` : ""}
+            {exporting ? "Exporting..." : `Export ${selectedCount > 0 ? `(${selectedCount})` : ""}`}
           </button>
         </div>
       </div>

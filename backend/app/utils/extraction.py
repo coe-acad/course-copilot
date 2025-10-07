@@ -33,8 +33,6 @@ def parse_answer_paper(text):
         "responses": responses
     }
 
-
-
 # if __name__ == "__main__":
 #     mark_scheme_path = "/Users/IRFAN/Downloads/RAG (Retrieval Augmented Generation) SET A - AEC 01_answer_sheets/mark-scheme_RAG.pdf"
 #     answer_sheet_path = "/Users/IRFAN/Downloads/RAG (Retrieval Augmented Generation) SET A - AEC 01_answer_sheets/Aman Rathor_exam_answers.pdf"

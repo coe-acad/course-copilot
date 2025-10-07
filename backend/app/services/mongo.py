@@ -106,6 +106,9 @@ def get_assets_by_course_id(course_id: str):
 def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
+def get_asset_by_course_id_and_asset_type(course_id: str, asset_type: str):
+    return get_one_from_collection("assets", {"course_id": course_id, "asset_type": asset_type})
+
 def delete_asset_from_db(course_id: str, asset_name: str):
     delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
