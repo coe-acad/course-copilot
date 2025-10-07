@@ -149,6 +149,7 @@ export default function AssetStudioContent() {
       hasInitializedRef.current = true;
       createInitialMessage();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourcesLoading, option]);
 
   const toggleSelect = (id) => {

@@ -108,8 +108,8 @@ export default function ExportAssetsModal({
         const assetTypes = [...new Set(chosen.map(a => a.type))]; // Get unique asset types
         const token = localStorage.getItem("token");
         
-        // Get LMS token from localStorage (set during login)
-        const lmsToken = localStorage.getItem("lms_token");
+        // Get LMS token from localStorage (set during login) - for future use with push-to-lms endpoint
+        // const lmsToken = localStorage.getItem("lms_token");
         
         // ========================================
         // BACKEND INTEGRATION REQUIRED
