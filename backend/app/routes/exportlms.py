@@ -21,9 +21,12 @@ class LoginLMSRequest(BaseModel):
 
 #route to login to the lms
 @router.post("/login-lms")
-def login_lms(request: LoginLMSRequest, user_id: str):
+def login_lms(request: LoginLMSRequest, user_id: str = Depends(verify_token)):
     """
     Login to the LMS platform with user credentials
+    
+    DEVELOPMENT MODE: If LMS_BASE_URL is not configured, returns a mock success response
+    for frontend testing purposes.
     """
     try:
         # Validate input
@@ -32,7 +35,19 @@ def login_lms(request: LoginLMSRequest, user_id: str):
         
         # Check if LMS_BASE_URL is configured in settings
         if not settings.LMS_BASE_URL:
-            raise HTTPException(status_code=500, detail="LMS base URL is not configured in server settings")
+            # DEVELOPMENT MODE: Return mock response for frontend testing
+            logger.warning(f"LMS_BASE_URL not configured. Returning mock response for user {user_id}")
+            return {
+                "message": "Successfully logged into LMS (MOCK MODE - No LMS_BASE_URL configured)",
+                "data": {
+                    "token": "mock_lms_token_for_testing_" + user_id[:8],
+                    "user": {
+                        "id": "mock_user_id",
+                        "email": request.email,
+                        "name": "Mock User"
+                    }
+                }
+            }
         
         # Call the LMS login utility function
         result = login_to_lms(request.email, request.password)
@@ -62,6 +77,54 @@ def login_lms(request: LoginLMSRequest, user_id: str):
 def export_lms(course_id: str, request: ExportLMSRequest, user_id: str = Depends(verify_token)):
     """
     Export specific assets by name and type to LMS format
+    
+    This endpoint currently formats assets for export but does not push them to the LMS.
+    
+    Future Enhancement:
+    ---------------------
+    To actually push content to LMS platform, create a new endpoint:
+    
+    @router.post("/courses/{course_id}/push-to-lms")
+    def push_to_lms(
+        course_id: str,
+        request: ExportLMSRequest,
+        lms_token: str,  # From frontend via header X-LMS-Token
+        user_id: str = Depends(verify_token)
+    ):
+        # 1. Get formatted assets using current export_lms logic
+        # 2. Use lms_token to authenticate with LMS platform
+        # 3. Call LMS API endpoint (e.g., POST {LMS_BASE_URL}/api/v1/courses)
+        # 4. Handle LMS-specific response format
+        # 5. Return success with LMS course/content IDs
+        
+        Example LMS API call:
+        ---------------------
+        import requests
+        
+        headers = {
+            'Authorization': f'Bearer {lms_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'sprint_name': course_name,
+            'sprint_description': course_description,
+            'assets': formatted_assets
+        }
+        
+        lms_response = requests.post(
+            f'{settings.LMS_BASE_URL}/api/v1/sprints',
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        
+        if lms_response.status_code == 201:
+            return {
+                'success': True,
+                'lms_course_id': lms_response.json()['id'],
+                'message': 'Successfully exported to LMS'
+            }
     """
     try:
         # Get course data
