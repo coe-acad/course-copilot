@@ -124,6 +124,7 @@ export function logoutFromLMS() {
   localStorage.removeItem('lms_cookies');
   localStorage.removeItem('lms_token');
   localStorage.removeItem('lms_user');
+  localStorage.removeItem('lms_courses');
 }
 
 /**
@@ -135,12 +136,30 @@ export function getLMSUser() {
   return lmsUserStr ? JSON.parse(lmsUserStr) : null;
 }
 
+/**
+ * Get stored LMS courses from localStorage
+ * @returns {Array} List of courses (empty array if none stored)
+ */
+export function getStoredLMSCourses() {
+  const coursesStr = localStorage.getItem('lms_courses');
+  return coursesStr ? JSON.parse(coursesStr) : [];
+}
+
+/**
+ * Clear stored LMS courses
+ */
+export function clearStoredLMSCourses() {
+  localStorage.removeItem('lms_courses');
+}
+
 // Export default object with all functions
 export default {
   loginToLMS,
   getLMSCourses,
   isLoggedIntoLMS,
   logoutFromLMS,
-  getLMSUser
+  getLMSUser,
+  getStoredLMSCourses,
+  clearStoredLMSCourses
 };
 

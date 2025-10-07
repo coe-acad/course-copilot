@@ -7,6 +7,9 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [showCourses, setShowCourses] = useState(false);
+  const [fetchingCourses, setFetchingCourses] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -121,16 +124,62 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
         console.log("⚠️ Running in MOCK MODE - LMS_BASE_URL not configured in backend");
       }
       
-      // Call success callback
-      if (onLoginSuccess) {
-        onLoginSuccess(data);
-      }
+      // Automatically fetch LMS courses after successful login
+      if (lmsCookies) {
+        setFetchingCourses(true);
+        try {
+          console.log("📚 Fetching LMS courses...");
+          
+          const coursesResponse = await fetch(
+            `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses-lms`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                lms_cookies: lmsCookies
+              })
+            }
+          );
 
-      // Close modal and reset form
-      setEmail("");
-      setPassword("");
-      setError("");
-      onClose();
+          if (coursesResponse.ok) {
+            const coursesData = await coursesResponse.json();
+            // Normalize various possible response shapes from backend/LMS
+            const fetchedCourses = Array.isArray(coursesData)
+              ? coursesData
+              : (coursesData.data || coursesData.courses || coursesData.results || []);
+            
+            console.log("✅ LMS Courses fetched successfully!");
+            console.log(`📊 Found ${fetchedCourses.length} courses:`, fetchedCourses);
+            
+            // Log course names for visibility
+            if (fetchedCourses.length > 0) {
+              fetchedCourses.forEach((course, index) => {
+                console.log(`  ${index + 1}. ${course.name || course.title || 'Unnamed Course'} (ID: ${course.id})`);
+              });
+            }
+            
+            // Store courses in localStorage for later use
+            localStorage.setItem("lms_courses", JSON.stringify(fetchedCourses));
+            
+            // Show courses in the modal
+            setCourses(fetchedCourses);
+            setShowCourses(true);
+            setFetchingCourses(false);
+          } else {
+            const errorData = await coursesResponse.json().catch(() => ({}));
+            console.error("⚠️ Failed to fetch LMS courses:", errorData);
+            setError(errorData.detail || 'Failed to fetch courses from LMS');
+            setFetchingCourses(false);
+          }
+        } catch (err) {
+          console.error("⚠️ Error fetching LMS courses:", err);
+          setError(err.message || 'Failed to fetch courses');
+          setFetchingCourses(false);
+        }
+      }
     } catch (err) {
       console.error('LMS login error:', err);
       setError(err.message || 'Failed to login to LMS. Please try again.');
@@ -140,31 +189,55 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
   };
 
   const handleClose = () => {
-    if (!loading) {
+    if (!loading && !fetchingCourses) {
       setEmail("");
       setPassword("");
       setError("");
+      setCourses([]);
+      setShowCourses(false);
       onClose();
     }
+  };
+
+  const handleAddCourse = () => {
+    console.log("Add new course clicked");
+    // Call success callback
+    if (onLoginSuccess) {
+      onLoginSuccess({ courses, action: 'add_new' });
+    }
+    handleClose();
+  };
+
+  const handleSelectCourse = (course) => {
+    console.log("Selected course:", course);
+    // Call success callback with selected course
+    if (onLoginSuccess) {
+      onLoginSuccess({ courses, selectedCourse: course, action: 'select_existing' });
+    }
+    handleClose();
   };
 
   if (!open) return null;
 
   return (
     <Modal open={open} onClose={handleClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        {/* Header */}
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 24, marginBottom: 8, color: "#111827" }}>
-            🔐 Login to LMS
-          </div>
-          <div style={{ fontSize: 14, color: "#6b7280" }}>
-            Enter your LMS credentials to export content
-          </div>
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 500 }}>
+        
+        {/* Show Login Form */}
+        {!showCourses && (
+          <>
+            {/* Header */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 24, marginBottom: 8, color: "#111827" }}>
+                🔐 Login to LMS
+              </div>
+              <div style={{ fontSize: 14, color: "#6b7280" }}>
+                Enter your LMS credentials to see available courses
+              </div>
+            </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Form */}
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Error Message */}
           {error && (
             <div style={{
@@ -259,24 +332,6 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Info Box */}
-          <div style={{
-            background: "#fef3c7",
-            border: "1px solid #fcd34d",
-            borderRadius: 8,
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "#92400e",
-            display: "flex",
-            gap: 8
-          }}>
-            <span>⚠️</span>
-            <div>
-              <strong>DEVELOPMENT MODE:</strong> LMS connection not configured. Any email/password will work for testing the UI flow. 
-              When LMS_BASE_URL is configured, this will authenticate with your actual LMS platform.
-            </div>
-          </div>
-
           {/* Buttons */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
             <button
@@ -342,6 +397,111 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
             100% { transform: rotate(360deg); }
           }
         `}</style>
+          </>
+        )}
+
+        {/* Show Courses List */}
+        {showCourses && (
+          <>
+            {/* Header */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 24, marginBottom: 8, color: "#111827" }}>
+                📚 LMS Courses
+              </div>
+              <div style={{ fontSize: 14, color: "#6b7280" }}>
+                Found {courses.length} course{courses.length !== 1 ? 's' : ''} in your LMS
+              </div>
+            </div>
+
+            {/* Fetching Courses Loader */}
+            {fetchingCourses && (
+              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  border: "4px solid #e5e7eb",
+                  borderTop: "4px solid #2563eb",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                  margin: '0 auto 16px auto'
+                }}></div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "#2563eb" }}>
+                  Loading courses...
+                </div>
+              </div>
+            )}
+            {/* Courses List (cards with Name and ID only) */}
+            {!fetchingCourses && courses.length > 0 && (
+              <div style={{
+                maxHeight: '420px',
+                overflowY: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: 10,
+                background: '#fafbfc',
+                padding: 10
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                  {courses.map((course, index) => (
+                    <div
+                      key={course.id || index}
+                      style={{
+                        background: '#fff',
+                        borderRadius: 10,
+                        padding: 14,
+                        border: '1px solid #e5e7eb'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#2563eb' }}>
+                          {course.name || `Course ${index + 1}`}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#374151' }}>
+                          ID: <span style={{ fontFamily: 'monospace' }}>{course.id || '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No Courses Message */}
+            {!fetchingCourses && courses.length === 0 && (
+              <div style={{ 
+                padding: '40px 20px',
+                textAlign: 'center',
+                color: '#6b7280',
+                fontSize: 14
+              }}>
+                No courses found in your LMS.
+              </div>
+            )}
+
+            {/* Close Button */}
+            {!fetchingCourses && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button
+                  onClick={handleClose}
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    color: "#374151",
+                    fontWeight: 600,
+                    fontSize: 15,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = "#f9fafb"}
+                  onMouseLeave={(e) => e.target.style.background = "#fff"}
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </Modal>
   );

@@ -119,17 +119,44 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
         logger.info(f"🍪 Using cookies: {lms_cookies[:50]}...")
         
         response = requests.get(url, headers=headers, timeout=30)
-        response_data = response.json()
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = { "message": response.text }
         
         if response.status_code == 200:
             logger.info(f"✅ Fetched courses successfully!")
+            # Normalize to a list of courses regardless of LMS response shape
+            normalized: Any
+            if isinstance(response_data, list):
+                normalized = response_data
+            elif isinstance(response_data, dict):
+                # Common keys that may contain the array
+                for key in ["data", "courses", "results", "items", "records"]:
+                    value = response_data.get(key)
+                    if isinstance(value, list):
+                        normalized = value
+                        break
+                else:
+                    # If no known key, and the dict itself represents a single course, wrap it
+                    normalized = [response_data]
+            else:
+                # Unknown payload type; return empty list but include raw for debugging
+                logger.warning("Unexpected LMS course payload type; returning empty list")
+                normalized = []
+
             return {
                 "success": True,
                 "status_code": response.status_code,
-                "data": response_data
+                "data": normalized
             }
         else:
-            error_msg = response_data.get('message') or response_data.get('error') or 'Failed to fetch courses'
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to fetch courses'
             logger.error(f"❌ Failed to fetch courses: {error_msg}")
             return {
                 "success": False,

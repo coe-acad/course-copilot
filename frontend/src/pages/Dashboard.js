@@ -617,9 +617,17 @@ export default function Dashboard() {
           open={showLMSLoginModal}
           onClose={() => setShowLMSLoginModal(false)}
           onLoginSuccess={(data) => {
-            console.log("LMS login successful:", data);
+            console.log("✅ LMS login successful:", data);
+            
+            // Log course information
+            if (data.courses && data.courses.length > 0) {
+              console.log(`📚 Loaded ${data.courses.length} courses from LMS`);
+            } else {
+              console.log("⚠️ No courses found or courses couldn't be loaded");
+            }
+            
             setShowLMSLoginModal(false);
-            // BACKEND: After successful login, show LMS Courses modal
+            // Show LMS Courses modal to select a course
             setShowLMSCoursesModal(true);
           }}
         />

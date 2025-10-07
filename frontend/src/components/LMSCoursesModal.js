@@ -26,19 +26,24 @@ export default function LMSCoursesModal({
       setError("");
       
       // ========================================
-      // BACKEND INTEGRATION REQUIRED
+      // LMS COURSES FETCH - COOKIE AUTHENTICATION
       // ========================================
       // 
-      // ENDPOINT: GET /api/lms/courses
+      // ENDPOINT: POST /api/courses-lms
       // 
       // REQUEST HEADERS:
       // - Authorization: Bearer <user_auth_token>
-      // - X-LMS-Token: <lms_token_from_login>
+      // - Content-Type: application/json
+      // 
+      // REQUEST BODY:
+      // {
+      //   "lms_cookies": "session=abc123; Path=/; HttpOnly"
+      // }
       // 
       // EXPECTED SUCCESS RESPONSE (200):
       // {
-      //   "success": true,
-      //   "courses": [
+      //   "message": "Successfully fetched courses from LMS",
+      //   "data": [
       //     {
       //       "id": "course_id_123",
       //       "name": "Introduction to Machine Learning",
@@ -56,27 +61,29 @@ export default function LMSCoursesModal({
       // }
       // 
       // BACKEND IMPLEMENTATION:
-      // 1. Validate LMS token from X-LMS-Token header
-      // 2. Call LMS platform API to get courses list
+      // 1. Validate LMS cookies from request body
+      // 2. Call LMS platform API using Cookie header
       // 3. Transform LMS response to match expected format
       // 4. Return formatted courses list
       
       const token = localStorage.getItem("token");
-      const lmsToken = localStorage.getItem("lms_token");
+      const lmsCookies = localStorage.getItem("lms_cookies");
 
-      if (!lmsToken) {
-        throw new Error("LMS token not found. Please login to LMS first.");
+      if (!lmsCookies) {
+        throw new Error("LMS cookies not found. Please login to LMS first.");
       }
 
       const response = await fetch(
-        `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/lms/courses`,
+        `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses-lms`,
         {
-          method: 'GET',
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
-            'X-LMS-Token': lmsToken,
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({
+            lms_cookies: lmsCookies
+          })
         }
       );
 
@@ -89,7 +96,8 @@ export default function LMSCoursesModal({
       }
 
       const data = await response.json();
-      setCourses(data.courses || []);
+      const normalized = Array.isArray(data) ? data : (data.data || data.courses || data.results || []);
+      setCourses(normalized);
       
     } catch (err) {
       console.error('Error fetching LMS courses:', err);

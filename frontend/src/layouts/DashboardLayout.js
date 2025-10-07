@@ -142,9 +142,18 @@ export default function DashboardLayout({ state }) {
         open={showLMSLoginModal}
         onClose={() => setShowLMSLoginModal(false)}
         onLoginSuccess={(data) => {
-          console.log("LMS login successful:", data);
-          // BACKEND: After successful login, LMS token is stored in localStorage
-          // Frontend automatically proceeds to export modal
+          console.log("✅ LMS login successful:", data);
+          
+          // Log course information
+          if (data.courses && data.courses.length > 0) {
+            console.log(`📚 Loaded ${data.courses.length} courses from LMS:`, data.courses);
+          } else if (data.coursesError) {
+            console.warn("⚠️ Courses couldn't be loaded:", data.coursesError);
+          }
+          
+          // Close login modal
+          setShowLMSLoginModal(false);
+          // Proceed to export modal
           setShowExportModal(true);
         }}
       />
