@@ -6,6 +6,7 @@ export default function ExportAssetsModal({
   open,
   onClose,
   assets: assetsProp,
+  selectedLMSCourse,
   onExportSelected
 }) {
   const [loading, setLoading] = useState(false);
@@ -187,9 +188,12 @@ export default function ExportAssetsModal({
           },
           body: JSON.stringify({ 
             asset_names: assetNames,
-            asset_type: assetTypes
+            asset_type: assetTypes,
+            // Include selected LMS course information
+            lms_course_id: selectedLMSCourse?.id || null, // null means create new course
+            lms_course_name: selectedLMSCourse?.name || null,
+            lms_course_code: selectedLMSCourse?.code || null
             // TODO: Add LMS-specific parameters when push-to-lms endpoint is ready:
-            // lms_course_id: "existing_course_id_if_updating",
             // publish: true/false,
             // export_format: "lms_specific_format"
           })
@@ -230,6 +234,80 @@ export default function ExportAssetsModal({
   return (
     <Modal open={open} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
+        {/* Selected LMS Course Info */}
+        {selectedLMSCourse && (
+          <div style={{
+            padding: '12px 16px',
+            background: '#eff6ff',
+            borderRadius: 8,
+            border: '1px solid #2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: '#2563eb',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+              fontWeight: 'bold',
+              flexShrink: 0
+            }}>
+              📚
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#2563eb', marginBottom: 2 }}>
+                Exporting to LMS Course:
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#1e40af' }}>
+                {selectedLMSCourse.name}
+                {selectedLMSCourse.code && <span style={{ color: '#6b7280', marginLeft: 8 }}>({selectedLMSCourse.code})</span>}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {selectedLMSCourse === null && (
+          <div style={{
+            padding: '12px 16px',
+            background: '#fef3c7',
+            borderRadius: 8,
+            border: '1px solid #f59e0b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: '#f59e0b',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+              fontWeight: 'bold',
+              flexShrink: 0
+            }}>
+              ➕
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400e', marginBottom: 2 }}>
+                Creating New LMS Course
+              </div>
+              <div style={{ fontSize: 13, color: '#78350f' }}>
+                A new course will be created in your LMS with the exported content
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Loading Overlay */}
         {exporting && (
           <div style={{

@@ -16,6 +16,7 @@ import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
 import ExportAssetsModal from "../components/ExportAssetsModal";
 import LMSLoginModal from "../components/LMSLoginModal";
+import LMSCoursesModal from "../components/LMSCoursesModal";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -39,7 +40,9 @@ export default function Dashboard() {
   const [assetModalLoading, setAssetModalLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [showLMSLoginModal, setShowLMSLoginModal] = useState(false);
+  const [showLMSCoursesModal, setShowLMSCoursesModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
   const navigate = useNavigate();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
@@ -140,6 +143,7 @@ export default function Dashboard() {
       console.error('Error handling asset deletion:', error);
     }
   };
+
 
   // Fetch resources on component mount
   useEffect(() => {
@@ -614,30 +618,48 @@ export default function Dashboard() {
           onClose={() => setShowLMSLoginModal(false)}
           onLoginSuccess={(data) => {
             console.log("LMS login successful:", data);
-            // BACKEND: After successful login, LMS token is stored in localStorage
-            // Frontend automatically proceeds to export modal
+            setShowLMSLoginModal(false);
+            // BACKEND: After successful login, show LMS Courses modal
+            setShowLMSCoursesModal(true);
+          }}
+        />
+
+        {/* ========================================
+            LMS Courses Modal - Shows after successful LMS login
+            BACKEND INTEGRATION: This modal calls GET /api/lms/courses
+            ======================================== */}
+        <LMSCoursesModal
+          open={showLMSCoursesModal}
+          onClose={() => setShowLMSCoursesModal(false)}
+          onCourseSelected={(course) => {
+            console.log("LMS course selected:", course);
+            setShowLMSCoursesModal(false);
+            setSelectedLMSCourse(course);
+            // BACKEND: After course selection, show export modal
             setShowExportModal(true);
           }}
         />
 
         {/* ========================================
-            Export Assets Modal - Shows after successful LMS login
-            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms (current)
-            FUTURE: Will call /api/courses/{id}/push-to-lms when implemented
+            Export Assets Modal - Shows after LMS course selection
+            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms
             ======================================== */}
         <ExportAssetsModal
           open={showExportModal}
-          onClose={() => setShowExportModal(false)}
+          onClose={() => {
+            setShowExportModal(false);
+            setSelectedLMSCourse(null);
+          }}
           assets={[
             ...assets.curriculum.map(a => ({ id: `curriculum|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'curriculum', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
             ...assets.assessments.map(a => ({ id: `assessments|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'assessments', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
             ...assets.evaluation.map(a => ({ id: `evaluation|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
           ]}
+          selectedLMSCourse={selectedLMSCourse}
           onExportSelected={(selected) => {
             // BACKEND: Selected assets are sent to backend for processing
-            // Current: Downloads JSON file with formatted assets
-            // Future: Pushes directly to LMS platform using stored LMS token
             console.log('Selected assets to export:', selected);
+            console.log('Target LMS course:', selectedLMSCourse);
           }}
         />
       </div>
