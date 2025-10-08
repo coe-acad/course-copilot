@@ -93,6 +93,46 @@ export async function getLMSCourses() {
 }
 
 /**
+ * Create a new module in LMS platform
+ * @param {string} lmsCourseId - LMS course ID
+ * @param {string} moduleTitle - Title of the module
+ * @param {number} order - Order of the module (defaults to 1)
+ * @returns {Promise<Object>} Response with created module data
+ */
+export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
+  try {
+    const lmsCookies = getLMSCookies();
+
+    const response = await axiosInstance.post(
+      '/create-module-lms',
+      { 
+        lms_cookies: lmsCookies,
+        lms_course_id: lmsCourseId,
+        module_title: moduleTitle,
+        order: order
+      }
+    );
+
+    return {
+      success: true,
+      module: response.data.data || {},
+      message: response.data.message
+    };
+  } catch (error) {
+    console.error('Create LMS module error:', error);
+    
+    // If cookies expired or invalid, clear LMS data
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      localStorage.removeItem('lms_cookies');
+      localStorage.removeItem('lms_token');
+      localStorage.removeItem('lms_user');
+    }
+    
+    throw error.response?.data || { detail: 'Failed to create LMS module' };
+  }
+}
+
+/**
  * Check if user is logged into LMS
  * @returns {boolean}
  */
@@ -140,6 +180,7 @@ export function clearStoredLMSCourses() {
 export default {
   loginToLMS,
   getLMSCourses,
+  createLMSModule,
   isLoggedIntoLMS,
   logoutFromLMS,
   getLMSUser,

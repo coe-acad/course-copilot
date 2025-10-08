@@ -252,7 +252,8 @@ def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
             "error": f"Unexpected error: {str(e)}",
             "status_code": 500
         }
-
+    
+    # Ensure URL has protocol
 def post_quiz_data_to_lms(lms_cookies: str, quiz_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Post quiz data to the LMS platform using authentication cookies
@@ -369,6 +370,75 @@ def link_activity_to_course(lms_cookies: str, lms_course_id: str, lms_module_id:
             
     except Exception as e:
         logger.error(f"Error linking activity: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "status_code": 500
+        }
+
+def create_lms_module(lms_cookies: str, lms_course_id: str, module_title: str, order: int = 1) -> Dict[str, Any]:
+    """
+    Create a new module in the LMS platform
+    
+    Args:
+        lms_cookies: Cookie string from Set-Cookie header (session-based auth)
+        lms_course_id: The ID of the course to create the module in
+        module_title: The title/name of the module
+        order: The order of the module in the course (defaults to 1)
+    """
+    lms_base_url = settings.LMS_BASE_URL
+    
+    # Ensure URL has protocol
+    if not lms_base_url.startswith('http://') and not lms_base_url.startswith('https://'):
+        lms_base_url = f"https://{lms_base_url}"
+    
+    url = f"{lms_base_url}/api/v1/module"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Cookie': lms_cookies
+    }
+    
+    payload = {
+        "courseId": lms_course_id,
+        "title": module_title,
+        "order": order
+    }
+    
+    try:
+        logger.info(f"Creating module '{module_title}' in course {lms_course_id}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"message": response.text}
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"Module created successfully!")
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "data": response_data
+            }
+        else:
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to create module'
+            logger.error(f"Failed to create module: {error_msg}")
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": error_msg
+            }
+            
+    except Exception as e:
+        logger.error(f"Error creating module: {str(e)}")
         return {
             "success": False,
             "error": f"Unexpected error: {str(e)}",

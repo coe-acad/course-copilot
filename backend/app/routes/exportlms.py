@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from ..services.mongo import get_course, get_asset_by_course_id_and_asset_name
 from ..utils.data_formating import format_quiz_content
 from ..utils.verify_token import verify_token
-from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules, post_quiz_data_to_lms, link_activity_to_course
+from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules, post_quiz_data_to_lms, link_activity_to_course, create_lms_module
 from ..config.settings import settings
 import logging
 
@@ -27,6 +27,12 @@ class GetCoursesLMSRequest(BaseModel):
 class GetModulesLMSRequest(BaseModel):
     lms_cookies: str  # LMS authentication cookies from Set-Cookie header
     lms_course_id: str  # The ID of the course to get modules for
+
+class CreateModuleLMSRequest(BaseModel):
+    lms_cookies: str  # LMS authentication cookies from Set-Cookie header
+    lms_course_id: str  # The ID of the course to create module in
+    module_title: str  # The title of the module to create
+    order: int = 1  # The order of the module (defaults to 1)
 
 class PostQuizRequest(BaseModel):
     lms_cookies: str  # LMS authentication cookies from Set-Cookie header
@@ -263,6 +269,52 @@ def get_modules_lms(request: GetModulesLMSRequest, user_id: str=Depends(verify_t
         }
     
     return result
+
+#route to create a module in LMS
+@router.post("/create-module-lms")
+def create_module_lms(request: CreateModuleLMSRequest, user_id: str):
+    """
+    Create a new module in the LMS platform using authentication cookies
+    """
+    try:
+        # Validate input
+        if not request.lms_cookies:
+            raise HTTPException(status_code=400, detail="LMS authentication cookies are required")
+        if not request.lms_course_id:
+            raise HTTPException(status_code=400, detail="LMS course ID is required")
+        if not request.module_title:
+            raise HTTPException(status_code=400, detail="Module title is required")
+        
+        logger.info(f"User {user_id} creating module '{request.module_title}' in LMS course {request.lms_course_id}")
+        
+        # Call the LMS module creation utility function
+        result = create_lms_module(
+            lms_cookies=request.lms_cookies,
+            lms_course_id=request.lms_course_id,
+            module_title=request.module_title,
+            order=request.order
+        )
+        
+        # Check if request was successful
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=result.get("status_code", 500),
+                detail=result.get("error", "Failed to create module in LMS")
+            )
+        
+        logger.info(f"User {user_id} successfully created module in LMS")
+        
+        # Return the success response with module data
+        return {
+            "message": "Successfully created module in LMS",
+            "data": result.get("data", {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating module in LMS: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 #post asset to lms which will take the asset name and type and use the function to post to lms
 @router.post("/post-asset-to-lms")
