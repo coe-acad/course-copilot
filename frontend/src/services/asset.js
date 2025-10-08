@@ -1,13 +1,6 @@
 import axiosInstance from '../utils/axiosConfig';
 import jsPDF from 'jspdf';
 
-function getToken() {
-  const token = localStorage.getItem('token');
-  if (!token || token === 'null') {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return token;
-}
 
 function handleAxiosError(error) {
   if (error.response && error.response.data && error.response.data.detail) {

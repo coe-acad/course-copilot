@@ -14,6 +14,22 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
   const [error, setError] = useState(null);
 
   React.useEffect(() => {
+    const fetchResourceContent = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        console.log('Fetching resource content for:', resourceName, 'in course:', courseId);
+        const data = await viewResource(courseId, resourceName);
+        console.log('Resource data received:', data);
+        setResourceData(data);
+      } catch (error) {
+        console.error('Error fetching resource content:', error);
+        setError(error.message || 'Failed to load resource content');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     console.log('ResourceViewModal useEffect triggered:', { open, resourceName, courseId });
     if (open && resourceName && courseId) {
       console.log('Conditions met, calling fetchResourceContent');
@@ -26,22 +42,6 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
       });
     }
   }, [open, resourceName, courseId]);
-
-  const fetchResourceContent = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      console.log('Fetching resource content for:', resourceName, 'in course:', courseId);
-      const data = await viewResource(courseId, resourceName);
-      console.log('Resource data received:', data);
-      setResourceData(data);
-    } catch (error) {
-      console.error('Error fetching resource content:', error);
-      setError(error.message || 'Failed to load resource content');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCopyContent = async () => {
     if (!resourceData?.content) return;

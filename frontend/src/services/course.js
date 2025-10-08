@@ -1,13 +1,5 @@
 import axiosInstance from '../utils/axiosConfig';
-import { getCurrentUser } from './auth';
 
-function getToken() {
-  const user = getCurrentUser();
-  if (!user || !user.token) {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return user.token;
-}
 
 export async function fetchCourses() {
   const res = await axiosInstance.get('/courses');

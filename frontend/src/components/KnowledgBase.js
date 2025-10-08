@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiMoreVertical } from "react-icons/fi";
-import { uploadCourseResources, viewResource } from "../services/resources";
+import { uploadCourseResources } from "../services/resources";
 import ResourceViewModal from "./ResourceViewModal";
 // import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
 

@@ -1,4 +1,4 @@
-import axiosInstance, { API_BASE } from '../utils/axiosConfig';
+import { API_BASE } from '../utils/axiosConfig';
 import axios from 'axios';
 
 export async function login(email, password) {

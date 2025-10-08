@@ -8,13 +8,6 @@ const lastEvaluationTime = new Map();
 // Track completed evaluations to prevent re-evaluation
 const completedEvaluations = new Set();
 
-function getToken() {
-  const user = getCurrentUser();
-  if (!user || !user.token) {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return user.token;
-}
 
 export const evaluationService = {
   // Clear completed evaluations tracking (useful when starting fresh)
