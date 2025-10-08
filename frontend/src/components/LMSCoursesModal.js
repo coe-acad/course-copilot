@@ -10,6 +10,8 @@ export default function LMSCoursesModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isGridView, setIsGridView] = useState(true);
+  
+  console.log('LMSCoursesModal render - isGridView:', isGridView, 'courses:', courses.length);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState(null);
 
@@ -97,6 +99,7 @@ export default function LMSCoursesModal({
 
       const data = await response.json();
       const normalized = Array.isArray(data) ? data : (data.data || data.courses || data.results || []);
+      console.log('LMS Courses fetched:', normalized);
       setCourses(normalized);
       
     } catch (err) {
@@ -108,6 +111,7 @@ export default function LMSCoursesModal({
   };
 
   const handleCourseSelect = (courseId) => {
+    console.log('Course selected:', courseId);
     setSelectedCourseId(courseId);
   };
 

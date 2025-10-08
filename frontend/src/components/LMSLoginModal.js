@@ -199,23 +199,6 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
     }
   };
 
-  const handleAddCourse = () => {
-    console.log("Add new course clicked");
-    // Call success callback
-    if (onLoginSuccess) {
-      onLoginSuccess({ courses, action: 'add_new' });
-    }
-    handleClose();
-  };
-
-  const handleSelectCourse = (course) => {
-    console.log("Selected course:", course);
-    // Call success callback with selected course
-    if (onLoginSuccess) {
-      onLoginSuccess({ courses, selectedCourse: course, action: 'select_existing' });
-    }
-    handleClose();
-  };
 
   if (!open) return null;
 
@@ -444,11 +427,25 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
                   {courses.map((course, index) => (
                     <div
                       key={course.id || index}
+                      onClick={() => {
+                        console.log('Course selected in login modal:', course);
+                        onLoginSuccess({ courses: [course] });
+                      }}
                       style={{
                         background: '#fff',
                         borderRadius: 10,
                         padding: 14,
-                        border: '1px solid #e5e7eb'
+                        border: '1px solid #e5e7eb',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#2563eb';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(37, 99, 235, 0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#e5e7eb';
+                        e.currentTarget.style.boxShadow = 'none';
                       }}
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
