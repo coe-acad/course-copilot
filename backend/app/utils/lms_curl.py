@@ -115,8 +115,8 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
     }
     
     try:
-        logger.info(f"📚 Fetching courses from LMS at {url}")
-        logger.info(f"🍪 Using cookies: {lms_cookies[:50]}...")
+        logger.info(f"Fetching courses from LMS at {url}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
         
         response = requests.get(url, headers=headers, timeout=30)
         # Attempt to parse JSON but be defensive about non-JSON bodies
@@ -126,7 +126,7 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
             response_data = { "message": response.text }
         
         if response.status_code == 200:
-            logger.info(f"✅ Fetched courses successfully!")
+            logger.info(f"Fetched courses successfully!")
             # Normalize to a list of courses regardless of LMS response shape
             normalized: Any
             if isinstance(response_data, list):
@@ -157,7 +157,7 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
                 error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
             if not error_msg:
                 error_msg = 'Failed to fetch courses'
-            logger.error(f"❌ Failed to fetch courses: {error_msg}")
+            logger.error(f"Failed to fetch courses: {error_msg}")
             return {
                 "success": False,
                 "status_code": response.status_code,
@@ -165,7 +165,7 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
             }
             
     except Exception as e:
-        logger.error(f"💥 Error fetching courses: {str(e)}")
+        logger.error(f"Error fetching courses: {str(e)}")
         return {
             "success": False,
             "error": f"Unexpected error: {str(e)}",
@@ -194,8 +194,8 @@ def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
     }
     
     try:
-        logger.info(f"📚 Fetching modules for course {lms_course_id} from LMS at {url}")
-        logger.info(f"🍪 Using cookies: {lms_cookies[:50]}...")
+        logger.info(f"Fetching modules for course {lms_course_id} from LMS at {url}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
         
         response = requests.get(url, headers=headers, timeout=30)
         
@@ -206,7 +206,7 @@ def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
             response_data = {"message": response.text}
         
         if response.status_code == 200:
-            logger.info(f"✅ Fetched modules successfully!")
+            logger.info(f"Fetched modules successfully!")
             
             # Normalize to a list of modules regardless of LMS response shape
             normalized: Any
@@ -238,7 +238,7 @@ def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
                 error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
             if not error_msg:
                 error_msg = 'Failed to fetch modules'
-            logger.error(f"❌ Failed to fetch modules: {error_msg}")
+            logger.error(f"Failed to fetch modules: {error_msg}")
             return {
                 "success": False,
                 "status_code": response.status_code,
@@ -246,9 +246,132 @@ def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
             }
             
     except Exception as e:
-        logger.error(f"💥 Error fetching modules: {str(e)}")
+        logger.error(f"Error fetching modules: {str(e)}")
         return {
             "success": False,
             "error": f"Unexpected error: {str(e)}",
             "status_code": 500
         }
+
+def post_quiz_data_to_lms(lms_cookies: str, quiz_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Post quiz data to the LMS platform using authentication cookies
+    """
+    lms_base_url = settings.LMS_BASE_URL
+    
+    # Ensure URL has protocol
+    if not lms_base_url.startswith('http://') and not lms_base_url.startswith('https://'):
+        lms_base_url = f"https://{lms_base_url}"
+    
+    url = f"{lms_base_url}/api/v1/activity/quiz"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Cookie': lms_cookies
+    }
+    
+    try:
+        logger.info(f"Posting quiz data to LMS at {url}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
+        logger.info(f"Quiz data: {quiz_data.get('title', 'Unknown')}")
+        
+        response = requests.post(url, json=quiz_data, headers=headers, timeout=30)
+        
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"message": response.text}
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"Quiz posted successfully!")
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "data": response_data
+            }
+        else:
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to post quiz'
+            logger.error(f"Failed to post quiz: {error_msg}")
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": error_msg
+            }
+            
+    except Exception as e:
+        logger.error(f"Error posting quiz: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "status_code": 500
+        }
+
+def link_activity_to_course(lms_cookies: str, lms_course_id: str, lms_module_id: str, lms_activity_id: str, order: int = 0) -> Dict[str, Any]:
+    """
+    Link an activity to a course and topic/module in the LMS platform
+    """
+    lms_base_url = settings.LMS_BASE_URL
+    
+    # Ensure URL has protocol
+    if not lms_base_url.startswith('http://') and not lms_base_url.startswith('https://'):
+        lms_base_url = f"https://{lms_base_url}"
+    
+    url = f"{lms_base_url}/api/v1/activity/link"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Cookie': lms_cookies
+    }
+    
+    payload = {
+        "courseId": lms_course_id,
+        "topicId": lms_module_id,
+        "activityId": lms_activity_id,
+        "order": order
+    }
+    
+    try:
+        logger.info(f"Linking activity {lms_activity_id} to course {lms_course_id}, topic {lms_module_id}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"message": response.text}
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"Activity linked successfully!")
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "data": response_data
+            }
+        else:
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to link activity'
+            logger.error(f"Failed to link activity: {error_msg}")
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": error_msg
+            }
+            
+    except Exception as e:
+        logger.error(f"Error linking activity: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "status_code": 500
+        }
+    

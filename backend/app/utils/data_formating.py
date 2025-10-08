@@ -135,7 +135,7 @@ def example_usage():
     except Exception as e:
         print(f"Error: {e}")
 
-def format_quiz_content(quiz_content: str, course_id: str, user_id: str, asset_name: str, asset_type: str):
+def format_quiz_content(course_id: str, asset_name: str):
     """
     Format quiz content using OpenAI structured output
     """
@@ -188,7 +188,7 @@ Guidelines:
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "name": {
+                        "title": {
                             "type": "string",
                             "description": "The title of the quiz"
                         },
@@ -234,7 +234,7 @@ Guidelines:
                             }
                         }
                     },
-                    "required": ["name", "description", "contentHours", "questions"],
+                    "required": ["title", "description", "contentHours", "questions"],
                     "additionalProperties": False
                 }
             }
