@@ -17,6 +17,8 @@ import SettingsPromptModal from '../components/SettingsPromptModal';
 import ExportAssetsModal from "../components/ExportAssetsModal";
 import LMSLoginModal from "../components/LMSLoginModal";
 import LMSCoursesModal from "../components/LMSCoursesModal";
+import LMSModulesModal from "../components/LMSModulesModal";
+import ActivitiesSelectionModal from "../components/ActivitiesSelectionModal";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -41,8 +43,11 @@ export default function Dashboard() {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [showLMSLoginModal, setShowLMSLoginModal] = useState(false);
   const [showLMSCoursesModal, setShowLMSCoursesModal] = useState(false);
+  const [showLMSModulesModal, setShowLMSModulesModal] = useState(false);
+  const [showActivitiesModal, setShowActivitiesModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
+  const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const navigate = useNavigate();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
@@ -624,7 +629,8 @@ export default function Dashboard() {
               console.log("📚 Course selected directly:", data.courses[0]);
               setShowLMSLoginModal(false);
               setSelectedLMSCourse(data.courses[0]);
-              setShowExportModal(true);
+              // Show modules modal instead of export modal
+              setShowLMSModulesModal(true);
             } else {
               // Log course information
               if (data.courses && data.courses.length > 0) {
@@ -651,13 +657,57 @@ export default function Dashboard() {
             console.log("LMS course selected:", course);
             setShowLMSCoursesModal(false);
             setSelectedLMSCourse(course);
-            // BACKEND: After course selection, show export modal
-            setShowExportModal(true);
+            // Show modules modal after course selection
+            setShowLMSModulesModal(true);
           }}
         />
 
         {/* ========================================
-            Export Assets Modal - Shows after LMS course selection
+            LMS Modules Modal - Shows after course selection
+            BACKEND INTEGRATION: This modal calls /api/courses-lms/{course_id}/modules
+            ======================================== */}
+        <LMSModulesModal
+          open={showLMSModulesModal}
+          onClose={() => {
+            setShowLMSModulesModal(false);
+            setSelectedLMSCourse(null);
+            setSelectedLMSModule(null);
+          }}
+          selectedCourse={selectedLMSCourse}
+          onModuleSelected={(module) => {
+            console.log("LMS module selected:", module);
+            setShowLMSModulesModal(false);
+            setSelectedLMSModule(module);
+            // Show activities selection modal
+            setShowActivitiesModal(true);
+          }}
+        />
+
+        {/* ========================================
+            Activities Selection Modal - Shows after module selection
+            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-to-lms-module
+            ======================================== */}
+        <ActivitiesSelectionModal
+          open={showActivitiesModal}
+          onClose={() => {
+            setShowActivitiesModal(false);
+            setSelectedLMSModule(null);
+            setSelectedLMSCourse(null);
+          }}
+          selectedCourse={selectedLMSCourse}
+          selectedModule={selectedLMSModule}
+          onActivitiesSelected={(selected) => {
+            console.log('Selected activities to export:', selected);
+            console.log('Target LMS course:', selectedLMSCourse);
+            console.log('Target LMS module:', selectedLMSModule);
+            setShowActivitiesModal(false);
+            setSelectedLMSModule(null);
+            setSelectedLMSCourse(null);
+          }}
+        />
+
+        {/* ========================================
+            Export Assets Modal - Legacy modal (kept for backward compatibility)
             BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms
             ======================================== */}
         <ExportAssetsModal
