@@ -1,8 +1,5 @@
-import axios from 'axios';
+import axiosInstance from '../utils/axiosConfig';
 import { getCurrentUser } from './auth';
-
-const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const API_BASE = new URL('/api', baseUrl).toString();
 
 function getToken() {
   const user = getCurrentUser();
@@ -22,17 +19,13 @@ export async function getAllResources(courseId = null) {
     }
   }
   
-  const res = await axios.get(`${API_BASE}/courses/${courseId}/resources`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
+  const res = await axiosInstance.get(`/courses/${courseId}/resources`);
   return res.data;
 }
 
 // upload resources
 export async function uploadResources(courseId, files) {
-  const res = await axios.post(`${API_BASE}/courses/${courseId}/resources`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
+  const res = await axiosInstance.post(`/courses/${courseId}/resources`);
   return res.data;
 }
 
@@ -48,11 +41,7 @@ export async function uploadCourseResources(courseId, files) {
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
   try {
-    const res = await axios.post(`${API_BASE}/courses/${courseId}/resources`, formData, {
-      headers: {
-        'Authorization': `Bearer ${getToken()}`
-      }
-    });
+    const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData);
     return res.data;
   } catch (error) {
     console.error('Upload error:', error);
@@ -61,19 +50,15 @@ export async function uploadCourseResources(courseId, files) {
 }
 
 export async function deleteResource(courseId, resourceName) {
-  const res = await axios.delete(`${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}`, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
+  const res = await axiosInstance.delete(`/courses/${courseId}/resources/${encodeURIComponent(resourceName)}`);
   return res.data;
 }
 
 export async function viewResource(courseId, resourceName) {
   console.log('viewResource called with:', { courseId, resourceName });
-  const url = `${API_BASE}/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/content`;
+  const url = `/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/content`;
   console.log('Making request to:', url);
-  const res = await axios.get(url, {
-    headers: { 'Authorization': `Bearer ${getToken()}` }
-  });
+  const res = await axiosInstance.get(url);
   console.log('Response received:', res.data);
   return res.data;
 }

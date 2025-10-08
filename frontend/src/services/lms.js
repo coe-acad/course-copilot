@@ -1,8 +1,5 @@
 // LMS Service - Handles all LMS platform operations
-import axios from 'axios';
-
-const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const API_BASE = new URL('/api', baseUrl).toString();
+import axiosInstance from '../utils/axiosConfig';
 
 /**
  * Get user authentication token
@@ -34,15 +31,9 @@ function getLMSCookies() {
  */
 export async function loginToLMS(email, password) {
   try {
-    const response = await axios.post(
-      `${API_BASE}/login-lms`,
-      { email, password },
-      {
-        headers: {
-          'Authorization': `Bearer ${getUserToken()}`,
-          'Content-Type': 'application/json'
-        }
-      }
+    const response = await axiosInstance.post(
+      '/login-lms',
+      { email, password }
     );
 
     // Store LMS credentials in localStorage
@@ -76,17 +67,10 @@ export async function loginToLMS(email, password) {
 export async function getLMSCourses() {
   try {
     const lmsCookies = getLMSCookies();
-    const userToken = getUserToken();
 
-    const response = await axios.post(
-      `${API_BASE}/courses-lms`,
-      { lms_cookies: lmsCookies },
-      {
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
+    const response = await axiosInstance.post(
+      '/courses-lms',
+      { lms_cookies: lmsCookies }
     );
 
     return {
