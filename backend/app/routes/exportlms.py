@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from ..services.mongo import get_course, get_asset_by_course_id_and_asset_name
 from ..utils.data_formating import format_quiz_content
 from ..utils.verify_token import verify_token
-from ..utils.lms_curl import login_to_lms, get_lms_courses
+from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules
 from ..config.settings import settings
 import logging
 
@@ -23,6 +23,10 @@ class GoogleLoginLMSRequest(BaseModel):
 
 class GetCoursesLMSRequest(BaseModel):
     lms_cookies: str  # LMS authentication cookies from Set-Cookie header
+
+class GetModulesLMSRequest(BaseModel):
+    lms_cookies: str  # LMS authentication cookies from Set-Cookie header
+    lms_course_id: str  # The ID of the course to get modules for
 
 #route to login to the lms
 @router.post("/login-lms")
@@ -128,3 +132,22 @@ def get_courses_lms(request: GetCoursesLMSRequest, user_id: str=Depends(verify_t
         logger.error(f"Error fetching LMS courses: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
         
+#route to get all modules for a course
+@router.post("/modules-lms")
+def get_modules_lms(request: GetModulesLMSRequest, user_id: str=Depends(verify_token)):
+    """
+    Get all modules for a course from the LMS platform using authentication cookies
+    """
+    result = get_all_modules(request.lms_cookies, request.lms_course_id)
+    
+    # Filter to only include id and name fields
+    if result.get("success") and "data" in result:
+        filtered_data = [
+            {"id": module.get("id"), "name": module.get("name")}
+            for module in result["data"]
+        ]
+        return {
+            "data": filtered_data
+        }
+    
+    return result

@@ -171,3 +171,84 @@ def get_lms_courses(lms_cookies: str) -> Dict[str, Any]:
             "error": f"Unexpected error: {str(e)}",
             "status_code": 500
         }
+
+def get_all_modules(lms_cookies: str, lms_course_id: str) -> Dict[str, Any]:
+    """
+    Get all modules for a course from the LMS platform using authentication cookies
+    
+    Args:
+        lms_cookies: Cookie string from Set-Cookie header (session-based auth)
+        lms_course_id: The ID of the course to get modules for
+    """
+    lms_base_url = settings.LMS_BASE_URL
+    
+    # Ensure URL has protocol
+    if not lms_base_url.startswith('http://') and not lms_base_url.startswith('https://'):
+        lms_base_url = f"https://{lms_base_url}"
+    
+    url = f"{lms_base_url}/api/v1/course/{lms_course_id}/modules"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Cookie': lms_cookies  # Use Cookie header for session-based auth
+    }
+    
+    try:
+        logger.info(f"📚 Fetching modules for course {lms_course_id} from LMS at {url}")
+        logger.info(f"🍪 Using cookies: {lms_cookies[:50]}...")
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"message": response.text}
+        
+        if response.status_code == 200:
+            logger.info(f"✅ Fetched modules successfully!")
+            
+            # Normalize to a list of modules regardless of LMS response shape
+            normalized: Any
+            if isinstance(response_data, list):
+                normalized = response_data
+            elif isinstance(response_data, dict):
+                # Common keys that may contain the array
+                for key in ["data", "modules", "results", "items", "records"]:
+                    value = response_data.get(key)
+                    if isinstance(value, list):
+                        normalized = value
+                        break
+                else:
+                    # If no known key, and the dict itself represents a single module, wrap it
+                    normalized = [response_data]
+            else:
+                # Unknown payload type; return empty list but include raw for debugging
+                logger.warning("Unexpected LMS module payload type; returning empty list")
+                normalized = []
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "data": normalized
+            }
+        else:
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to fetch modules'
+            logger.error(f"❌ Failed to fetch modules: {error_msg}")
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": error_msg
+            }
+            
+    except Exception as e:
+        logger.error(f"💥 Error fetching modules: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "status_code": 500
+        }
