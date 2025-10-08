@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
 
 export default function LMSModulesModal({
@@ -14,14 +14,7 @@ export default function LMSModulesModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState(null);
 
-  useEffect(() => {
-    if (open && selectedCourse) {
-      fetchLMSModules();
-      setSelectedModuleId(null);
-    }
-  }, [open, selectedCourse]);
-
-  const fetchLMSModules = async () => {
+  const fetchLMSModules = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -98,7 +91,14 @@ export default function LMSModulesModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCourse]);
+
+  useEffect(() => {
+    if (open && selectedCourse) {
+      fetchLMSModules();
+      setSelectedModuleId(null);
+    }
+  }, [open, selectedCourse, fetchLMSModules]);
 
   const handleModuleSelect = (moduleId) => {
     console.log('Module selected:', moduleId);

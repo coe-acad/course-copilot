@@ -16,13 +16,14 @@ export default function ActivitiesSelectionModal({
   const [selected, setSelected] = useState({});
   const [search, setSearch] = useState("");
 
-  // Filter to only show activities and quizzes
-  const activityTypes = ['quiz', 'question-paper', 'mock-interview', 'test'];
-
   useEffect(() => {
     if (!open) return;
     setError("");
     setSelected({});
+    
+    // Filter to only show activities and quizzes
+    const activityTypes = ['quiz', 'question-paper', 'mock-interview', 'test'];
+    
     const load = async () => {
       try {
         setLoading(true);
