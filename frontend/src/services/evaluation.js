@@ -1,8 +1,5 @@
-import axios from 'axios';
+import axiosInstance from '../utils/axiosConfig';
 import { getCurrentUser } from './auth';
-
-const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const API_BASE = new URL('/api', baseUrl).toString();
 
 // Track ongoing evaluation requests to prevent duplicates
 const ongoingEvaluations = new Set();
@@ -11,13 +8,6 @@ const lastEvaluationTime = new Map();
 // Track completed evaluations to prevent re-evaluation
 const completedEvaluations = new Set();
 
-function getToken() {
-  const user = getCurrentUser();
-  if (!user || !user.token) {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return user.token;
-}
 
 export const evaluationService = {
   // Clear completed evaluations tracking (useful when starting fresh)
@@ -32,9 +22,8 @@ export const evaluationService = {
     formData.append('mark_scheme', markSchemeFile);
     
     try {
-      const res = await axios.post(`${API_BASE}/evaluation/upload-mark-scheme`, formData, {
+      const res = await axiosInstance.post('/evaluation/upload-mark-scheme', formData, {
         headers: { 
-          'Authorization': `Bearer ${getToken()}`,
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -58,9 +47,8 @@ export const evaluationService = {
     }
     
     try {
-      const res = await axios.post(`${API_BASE}/evaluation/upload-answer-sheets`, formData, {
+      const res = await axiosInstance.post('/evaluation/upload-answer-sheets', formData, {
         headers: { 
-          'Authorization': `Bearer ${getToken()}`,
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -105,8 +93,7 @@ export const evaluationService = {
 
 
       // Idempotent trigger: backend returns completed if already done, or processing once
-      const res = await axios.get(`${API_BASE}/evaluation/evaluate-files`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
+      const res = await axiosInstance.get('/evaluation/evaluate-files', {
         params: {
           evaluation_id: evaluationId,
           user_id: user.id
@@ -176,8 +163,7 @@ export const evaluationService = {
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       try {
-        const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` },
+        const res = await axiosInstance.get(`/evaluation/status/${evaluationId}`, {
           timeout: 10000,
           signal
         });
@@ -206,8 +192,7 @@ export const evaluationService = {
 
   async checkEvaluationStatus(evaluationId, { signal } = {}) {
     try {
-      const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
+      const res = await axiosInstance.get(`/evaluation/status/${evaluationId}`, {
         timeout: 10000,
         signal
       });
@@ -245,8 +230,7 @@ export const evaluationService = {
 
   async checkCompletedEvaluation(evaluationId, { signal } = {}) {
     try {
-      const res = await axios.get(`${API_BASE}/evaluation/status/${evaluationId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
+      const res = await axiosInstance.get(`/evaluation/status/${evaluationId}`, {
         timeout: 10000,
         signal
       });
@@ -270,17 +254,12 @@ export const evaluationService = {
         throw new Error('User not authenticated');
       }
       
-      const res = await axios.put(`${API_BASE}/evaluation/edit-results`, {
+      const res = await axiosInstance.put('/evaluation/edit-results', {
         evaluation_id: evaluationId,
         file_id: fileId,
         question_number: questionNumber,
         score: score,
         feedback: feedback
-      }, {
-        headers: { 
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        }
       });
       
       return res.data; // { message: "Results updated" }
@@ -298,9 +277,8 @@ export const evaluationService = {
       const formData = new FormData();
       formData.append('asset_name', assetName);
       formData.append('file_name', fileName);
-      const res = await axios.post(`${API_BASE}/evaluation/save/${evaluationId}`, formData, {
+      const res = await axiosInstance.post(`/evaluation/save/${evaluationId}`, formData, {
         headers: { 
-          'Authorization': `Bearer ${getToken()}`,
           'Content-Type': 'multipart/form-data'
         }
       });

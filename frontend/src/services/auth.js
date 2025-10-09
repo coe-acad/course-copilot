@@ -1,10 +1,9 @@
+import { API_BASE } from '../utils/axiosConfig';
 import axios from 'axios';
-
-const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const API_BASE = new URL('/api', baseUrl).toString();
 
 export async function login(email, password) {
   try {
+    // Use raw axios for login (not the instance with interceptor to avoid infinite loop)
     const response = await axios.post(`${API_BASE}/login`, { email, password });
     
     // Create user object from backend response
@@ -26,6 +25,7 @@ export async function login(email, password) {
 
 export async function googleLogin() {
   try {
+    // Use raw axios for google login (not the instance with interceptor)
     const response = await axios.get(`${API_BASE}/google-login`);
     return response.data;
   } catch (error) {
@@ -35,6 +35,7 @@ export async function googleLogin() {
 
 export async function register(email, password, name) {
   try {
+    // Use raw axios for registration (not the instance with interceptor)
     const response = await axios.post(`${API_BASE}/signup`, { email, password, name });
     return response.data;
   } catch (error) {
@@ -76,58 +77,3 @@ export function getUserDisplayName() {
   const user = getCurrentUser();
   return user ? user.displayName : null;
 }
-
-// Function to refresh token
-async function refreshAuthToken() {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  try {
-    const response = await axios.post(`${API_BASE}/refresh-token`, {
-      refresh_token: refreshToken
-    });
-    
-    // Update stored tokens
-    localStorage.setItem('token', response.data.token);
-    localStorage.setItem('refresh_token', response.data.refresh_token);
-    
-    // Update user object
-    const user = getCurrentUser();
-    if (user) {
-      user.token = response.data.token;
-      localStorage.setItem('user', JSON.stringify(user));
-    }
-    
-    return response.data.token;
-  } catch (error) {
-    // If refresh fails, logout user
-    logout();
-    throw error;
-  }
-}
-
-// Axios interceptor to handle token refresh on 401 responses
-axios.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        const newToken = await refreshAuthToken();
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return axios(originalRequest);
-      } catch (refreshError) {
-        // Refresh failed, redirect to login
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-    }
-    
-    return Promise.reject(error);
-  }
-);

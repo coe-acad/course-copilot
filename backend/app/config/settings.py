@@ -94,6 +94,9 @@ class Settings:
         if not (has_key_file or has_all_env):
             raise ValueError("Firebase configuration missing: provide serviceAccountKey.json or set all Firebase env vars")
 
+    # LMS Configuration
+    LMS_BASE_URL: Optional[str] = os.getenv("LMS_BASE_URL")
+
 # Create global settings instance
 settings = Settings()
 

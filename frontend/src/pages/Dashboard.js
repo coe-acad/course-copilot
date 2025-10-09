@@ -14,6 +14,11 @@ import curriculumOptions from "../config/curriculumOptions";
 import assessmentOptions from "../config/assessmentsOptions";
 import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
+import ExportAssetsModal from "../components/ExportAssetsModal";
+import LMSLoginModal from "../components/LMSLoginModal";
+import LMSCoursesModal from "../components/LMSCoursesModal";
+import LMSModulesModal from "../components/LMSModulesModal";
+import ActivitiesSelectionModal from "../components/ActivitiesSelectionModal";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -36,6 +41,13 @@ export default function Dashboard() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [assetModalLoading, setAssetModalLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [showLMSLoginModal, setShowLMSLoginModal] = useState(false);
+  const [showLMSCoursesModal, setShowLMSCoursesModal] = useState(false);
+  const [showLMSModulesModal, setShowLMSModulesModal] = useState(false);
+  const [showActivitiesModal, setShowActivitiesModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
+  const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const navigate = useNavigate();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
@@ -64,6 +76,79 @@ export default function Dashboard() {
       alert('Failed to download asset.');
     }
   };
+
+  // Helper to handle asset deletion
+  const handleResourceAdded = async () => {
+    // Refresh resources when a new one is added
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      
+      const data = await getAllResources(courseId);
+      const transformedResources = (data.resources || []).map(resource => ({
+        id: resource.resourceName,
+        fileName: resource.resourceName,
+        title: resource.resourceName,
+        url: `#${resource.resourceName}`
+      }));
+      setResources(transformedResources);
+    } catch (error) {
+      console.error('Error refreshing resources:', error);
+    }
+  };
+
+  const handleDeleteAsset = async (assetName) => {
+    try {
+      // Immediately remove the asset from local state for instant UI update
+      setAssets(prevAssets => {
+        const updatedAssets = { ...prevAssets };
+        
+        // Remove the asset from all categories
+        Object.keys(updatedAssets).forEach(category => {
+          updatedAssets[category] = updatedAssets[category].filter(asset => asset.name !== assetName);
+        });
+        
+        return updatedAssets;
+      });
+      
+      // Optionally refresh from server in background to ensure consistency
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+      
+      try {
+        const data = await assetService.getAssets(courseId);
+        const assetsList = data.assets || [];
+        
+        // Group assets by category
+        const groupedAssets = {
+          curriculum: [],
+          assessments: [],
+          evaluation: []
+        };
+        
+        assetsList.forEach(asset => {
+          const category = asset.asset_category;
+          if (groupedAssets.hasOwnProperty(category)) {
+            groupedAssets[category].push({
+              name: asset.asset_name,
+              type: asset.asset_type,
+              timestamp: asset.asset_last_updated_at,
+              updatedBy: asset.asset_last_updated_by
+            });
+          }
+        });
+        
+        // Update with server data to ensure consistency
+        setAssets(groupedAssets);
+      } catch (refreshError) {
+        console.error('Error refreshing assets from server:', refreshError);
+        // Keep the local state update even if server refresh fails
+      }
+    } catch (error) {
+      console.error('Error handling asset deletion:', error);
+    }
+  };
+
 
   // Fetch resources on component mount
   useEffect(() => {
@@ -327,7 +412,7 @@ export default function Dashboard() {
           title="Course Copilot"
           onLogout={handleLogout}
           onSettings={() => setShowSettingsModal(true)}
-          onExport={() => alert("Export to LMS coming soon!")}
+          onExport={() => setShowLMSLoginModal(true)}
           onGridView={() => setIsGridView(true)}
           onListView={() => setIsGridView(false)}
           isGridView={isGridView}
@@ -351,6 +436,9 @@ export default function Dashboard() {
                 onButtonClick={handleCurriculumCreate}
                 assets={assets.curriculum}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
               <SectionCard 
                 title="Assessments" 
@@ -358,6 +446,9 @@ export default function Dashboard() {
                 onButtonClick={handleAssessmentCreate}
                 assets={assets.assessments}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
               <SectionCard 
                 title="Evaluation" 
@@ -365,6 +456,9 @@ export default function Dashboard() {
                 onButtonClick={handleEvaluationCreate}
                 assets={assets.evaluation}
                 courseId={localStorage.getItem('currentCourseId')}
+                onDeleteAsset={handleDeleteAsset}
+                onResourceAdded={handleResourceAdded}
+                existingResources={resources}
               />
             </div>
             {/* Right panel: Knowledge Base */}
@@ -378,6 +472,7 @@ export default function Dashboard() {
                 onSelect={() => {}}
                 onAddResource={() => setShowAddResourceModal(true)}
                 onDelete={handleDeleteResource}
+                courseId={localStorage.getItem('currentCourseId')}
                 isUploading={isUploadingResources}
               />
             </div>
@@ -517,6 +612,121 @@ export default function Dashboard() {
             setShowSettingsModal(true);
           }}
           contentType={pendingContentType}
+        />
+
+        {/* ========================================
+            LMS Login Modal - Shows first when Export to LMS is clicked
+            BACKEND INTEGRATION: This modal calls /api/login-lms endpoint
+            ======================================== */}
+        <LMSLoginModal
+          open={showLMSLoginModal}
+          onClose={() => setShowLMSLoginModal(false)}
+          onLoginSuccess={(data) => {
+            console.log("✅ LMS login successful:", data);
+            
+            // Check if a course was selected directly
+            if (data.courses && data.courses.length === 1 && data.courses[0]) {
+              console.log("📚 Course selected directly:", data.courses[0]);
+              setShowLMSLoginModal(false);
+              setSelectedLMSCourse(data.courses[0]);
+              // Show modules modal instead of export modal
+              setShowLMSModulesModal(true);
+            } else {
+              // Log course information
+              if (data.courses && data.courses.length > 0) {
+                console.log(`📚 Loaded ${data.courses.length} courses from LMS`);
+              } else {
+                console.log("⚠️ No courses found or courses couldn't be loaded");
+              }
+              
+              setShowLMSLoginModal(false);
+              // Show LMS Courses modal to select a course
+              setShowLMSCoursesModal(true);
+            }
+          }}
+        />
+
+        {/* ========================================
+            LMS Courses Modal - Shows after successful LMS login
+            BACKEND INTEGRATION: This modal calls GET /api/lms/courses
+            ======================================== */}
+        <LMSCoursesModal
+          open={showLMSCoursesModal}
+          onClose={() => setShowLMSCoursesModal(false)}
+          onCourseSelected={(course) => {
+            console.log("LMS course selected:", course);
+            setShowLMSCoursesModal(false);
+            setSelectedLMSCourse(course);
+            // Show modules modal after course selection
+            setShowLMSModulesModal(true);
+          }}
+        />
+
+        {/* ========================================
+            LMS Modules Modal - Shows after course selection
+            BACKEND INTEGRATION: This modal calls /api/courses-lms/{course_id}/modules
+            ======================================== */}
+        <LMSModulesModal
+          open={showLMSModulesModal}
+          onClose={() => {
+            setShowLMSModulesModal(false);
+            setSelectedLMSCourse(null);
+            setSelectedLMSModule(null);
+          }}
+          selectedCourse={selectedLMSCourse}
+          onModuleSelected={(module) => {
+            console.log("LMS module selected:", module);
+            setShowLMSModulesModal(false);
+            setSelectedLMSModule(module);
+            // Show activities selection modal
+            setShowActivitiesModal(true);
+          }}
+        />
+
+        {/* ========================================
+            Activities Selection Modal - Shows after module selection
+            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-to-lms-module
+            ======================================== */}
+        <ActivitiesSelectionModal
+          open={showActivitiesModal}
+          onClose={() => {
+            setShowActivitiesModal(false);
+            setSelectedLMSModule(null);
+            setSelectedLMSCourse(null);
+          }}
+          selectedCourse={selectedLMSCourse}
+          selectedModule={selectedLMSModule}
+          onActivitiesSelected={(selected) => {
+            console.log('Selected activities to export:', selected);
+            console.log('Target LMS course:', selectedLMSCourse);
+            console.log('Target LMS module:', selectedLMSModule);
+            setShowActivitiesModal(false);
+            setSelectedLMSModule(null);
+            setSelectedLMSCourse(null);
+          }}
+        />
+
+        {/* ========================================
+            Export Assets Modal - Legacy modal (kept for backward compatibility)
+            BACKEND INTEGRATION: This modal calls /api/courses/{id}/export-lms
+            ======================================== */}
+        <ExportAssetsModal
+          open={showExportModal}
+          onClose={() => {
+            setShowExportModal(false);
+            setSelectedLMSCourse(null);
+          }}
+          assets={[
+            ...assets.curriculum.map(a => ({ id: `curriculum|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'curriculum', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
+            ...assets.assessments.map(a => ({ id: `assessments|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'assessments', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
+            ...assets.evaluation.map(a => ({ id: `evaluation|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
+          ]}
+          selectedLMSCourse={selectedLMSCourse}
+          onExportSelected={(selected) => {
+            // BACKEND: Selected assets are sent to backend for processing
+            console.log('Selected assets to export:', selected);
+            console.log('Target LMS course:', selectedLMSCourse);
+          }}
         />
       </div>
     </>

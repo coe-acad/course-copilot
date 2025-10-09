@@ -7,7 +7,7 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource
 from ..services.openai_service import clean_text
 
 logger = logging.getLogger(__name__)
@@ -163,7 +163,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     category_map = {
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
-        "modules-topics": "curriculum",
+        "modules": "curriculum",
         "lesson-plans": "curriculum",
         "concept-map": "curriculum",
         "course-notes": "curriculum",
@@ -225,5 +225,46 @@ def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(ve
     image_url = image.data[0].url
 
     return ImageResponse(image_url=image_url)
+
+#delete asset
+@router.delete("/courses/{course_id}/assets/{asset_name}", response_model=AssetCreateResponse)
+def delete_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
+    try:
+        # Check if asset exists
+        asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        # Delete asset using the dedicated function
+        delete_asset_from_db(course_id, asset_name)
+        
+        return AssetCreateResponse(message=f"Asset '{asset_name}' deleted successfully")
+    except Exception as e:
+        logger.error(f"Error deleting asset '{asset_name}': {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/courses/{course_id}/assets/{asset_name}/save-as-resource", response_model=AssetCreateResponse)
+def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreateRequest, user_id: str = Depends(verify_token)):
+    """Save an existing asset as a resource so it can be viewed in the resource view modal"""
+    try:
+        
+        # 2. Get the content from the frontend request
+        content = request.content
+        logger.info(f"Received content for asset '{asset_name}': {content[:100] if content else 'None'}...")
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not provided")
+
+        
+        # 5. Save the content as a resource
+        logger.info(f"Saving resource: {asset_name} with content length: {len(content)}")
+        create_resource(course_id, asset_name, content)
+        logger.info(f"Resource saved successfully: {asset_name}")
+        
+        return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{asset_name}' successfully")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving asset '{asset_name}' as resource: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 

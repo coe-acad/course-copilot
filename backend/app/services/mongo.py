@@ -50,8 +50,11 @@ def delete_from_collection(collection_name: str, query: dict):
     collection.delete_one(query)
 
 # Users
-def create_user(user_id: str, email: str):
-    add_to_collection("users", {"_id": user_id, "email": email})
+def create_user(user_id: str, email: str, display_name: str = None):
+    user_data = {"_id": user_id, "email": email}
+    if display_name:
+        user_data["display_name"] = display_name
+    add_to_collection("users", user_data)
 
 def get_user_by_user_id(user_id: str):
     return get_one_from_collection("users", {"_id": user_id})
@@ -81,11 +84,17 @@ def delete_course(course_id: str):
     delete_from_collection("courses", {"_id": course_id})
 
 # Resources
-def create_resource(course_id: str, resource_name: str):
-    add_to_collection("resources", {"course_id": course_id, "resource_name": resource_name})
+def create_resource(course_id: str, resource_name: str, content: str = None):
+    resource_data = {"course_id": course_id, "resource_name": resource_name}
+    if content is not None:
+        resource_data["content"] = content
+    add_to_collection("resources", resource_data)
 
 def get_resources_by_course_id(course_id: str):
     return get_many_from_collection("resources", {"course_id": course_id})
+
+def get_resource_by_course_id_and_resource_name(course_id: str, resource_name: str):
+    return get_one_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
 def delete_resource(course_id: str, resource_name: str):
     delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
@@ -99,6 +108,12 @@ def get_assets_by_course_id(course_id: str):
 
 def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+
+def get_asset_by_course_id_and_asset_type(course_id: str, asset_type: str):
+    return get_one_from_collection("assets", {"course_id": course_id, "asset_type": asset_type})
+
+def delete_asset_from_db(course_id: str, asset_name: str):
+    delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
 # Evaluation    
 def create_evaluation(evaluation_id: str, course_id: str,evaluation_assistant_id: str, vector_store_id: str, mark_scheme_file_id: str, answer_sheet_file_ids: list[str], answer_sheet_filenames: list[str] = None):
@@ -190,3 +205,10 @@ def update_question_score_feedback(evaluation_id: str, file_id: str, question_nu
         except Exception as e:
             logger.error(f"Error in alternative update approach: {str(e)}")
             raise
+
+# Extraction
+def create_extracted_data(evaluation_id: str, extracted_data: dict):
+    add_to_collection("extracted_data", {"evaluation_id": evaluation_id, "extracted_data": extracted_data})
+
+def get_extracted_data_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("extracted_data", {"evaluation_id": evaluation_id})

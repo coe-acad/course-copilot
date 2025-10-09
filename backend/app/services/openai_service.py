@@ -321,7 +321,7 @@ def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet
     failed_files = []
     
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             # Submit all extraction tasks
             future_to_file_id = {
                 executor.submit(extract_single_answer_sheet, evaluation_id, user_id, assistant_id, vector_store_id, file_id): file_id
@@ -953,4 +953,3 @@ def course_description(description: str, course_name: str):
     )
     description = chat_completion.choices[0].message.content
     return description
-

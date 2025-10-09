@@ -1,16 +1,6 @@
-import axios from 'axios';
+import axiosInstance from '../utils/axiosConfig';
 import jsPDF from 'jspdf';
 
-const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const API_BASE = new URL('/api', baseUrl).toString();
-
-function getToken() {
-  const token = localStorage.getItem('token');
-  if (!token || token === 'null') {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return token;
-}
 
 function handleAxiosError(error) {
   if (error.response && error.response.data && error.response.data.detail) {
@@ -23,11 +13,7 @@ export const assetService = {
   // Get all assets for a course
   getAssets: async (courseId) => {
     try {
-      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets`, {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`
-        }
-      });
+      const res = await axiosInstance.get(`/courses/${courseId}/assets`);
       return res.data;
     } catch (error) {
       handleAxiosError(error);
@@ -37,14 +23,9 @@ export const assetService = {
   // Create initial asset chat with selected files
   createAssetChat: async (courseId, assetTypeName, fileNames) => {
     try {
-      const res = await axios.post(`${API_BASE}/courses/${courseId}/asset_chat/${assetTypeName}`, 
-        { file_names: fileNames }, 
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getToken()}`
-          }
-        }
+      const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, 
+        { file_names: fileNames },
+        { timeout: 120000 } // 2 minutes timeout for AI processing
       );
       return res.data;
     } catch (error) {
@@ -55,14 +36,9 @@ export const assetService = {
   // Continue asset chat conversation
   continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
     try {
-      const res = await axios.put(`${API_BASE}/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
-        { user_prompt: userPrompt }, 
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getToken()}`
-          }
-        }
+      const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
+        { user_prompt: userPrompt },
+        { timeout: 120000 } // 2 minutes timeout for AI processing
       );
       return res.data;
     } catch (error) {
@@ -73,13 +49,9 @@ export const assetService = {
   // Save asset to database
   saveAsset: async (courseId, assetName, assetType, content) => {
     try {
-      const res = await axios.post(`${API_BASE}/courses/${courseId}/assets`, 
+      const res = await axiosInstance.post(`/courses/${courseId}/assets`, 
         { content: content }, 
         {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getToken()}`
-          },
           params: {
             asset_name: assetName,
             asset_type: assetType
@@ -95,11 +67,7 @@ export const assetService = {
   // View asset content
   viewAsset: async (courseId, assetName) => {
     try {
-      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets/${assetName}/view`, {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`
-        }
-      });
+      const res = await axiosInstance.get(`/courses/${courseId}/assets/${assetName}/view`);
       return res.data;
     } catch (error) {
       handleAxiosError(error);
@@ -114,11 +82,7 @@ export const assetService = {
         throw new Error('Course ID and Asset Name are required');
       }
 
-      const res = await axios.get(`${API_BASE}/courses/${courseId}/assets/${assetName}/view`, {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`
-        }
-      });
+      const res = await axiosInstance.get(`/courses/${courseId}/assets/${assetName}/view`);
       
       const asset = res.data;
       
@@ -1516,15 +1480,39 @@ export const assetService = {
   // Generate image for an asset type (e.g., concept-map)
   generateImageAsset: async (courseId, assetTypeName) => {
     try {
-      const res = await axios.post(
-        `${API_BASE}/courses/${courseId}/assets/image`,
+      const res = await axiosInstance.post(
+        `/courses/${courseId}/assets/image`,
         {},
         {
-          headers: { 'Authorization': `Bearer ${getToken()}` },
           params: { asset_type_name: assetTypeName }
         }
       );
       return res.data; // expects { image_url }
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // Delete asset
+  deleteAsset: async (courseId, assetName) => {
+    try {
+      const res = await axiosInstance.delete(`/courses/${courseId}/assets/${assetName}`);
+      return res.data;
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // Save asset as resource
+  saveAssetAsResource: async (courseId, assetName, content) => {
+    try {
+      const res = await axiosInstance.post(`/courses/${courseId}/assets/${assetName}/save-as-resource`, 
+        { 
+          content: content,
+          asset_name: assetName
+        }
+      );
+      return res.data;
     } catch (error) {
       handleAxiosError(error);
     }
