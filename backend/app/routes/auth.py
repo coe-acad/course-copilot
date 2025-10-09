@@ -55,7 +55,7 @@ async def signup(request: Request):
         # Ensure user exists in Mongo
         try:
             if not get_user_by_user_id(user.uid):
-                create_user(user.uid, email)
+                create_user(user.uid, email, name)
         except Exception as e:
             logger.warning(f"Mongo user create (signup) skipped or failed for {email}: {str(e)}")
         return JSONResponse(content={"message": "Signup successful", "user_id": user.uid}, status_code=200)
@@ -155,13 +155,17 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
 
         # Ensure user exists in Mongo and update email
         try:
+            display_name = decoded_token.get("name", "")
             existing_user = get_user_by_user_id(user_id)
             if not existing_user:
-                create_user(user_id, email)
+                create_user(user_id, email, display_name)
                 logger.info(f"Created new MongoDB user for Google sign-in: {email}")
             else:
-                # Update email in case it changed
-                update_in_collection("users", {"_id": user_id}, {"email": email})
+                # Update email and display name in case they changed
+                update_data = {"email": email}
+                if display_name:
+                    update_data["display_name"] = display_name
+                update_in_collection("users", {"_id": user_id}, update_data)
                 logger.info(f"Updated MongoDB user email for Google sign-in: {email}")
         except Exception as e:
             logger.warning(f"Mongo user create/update (google) skipped or failed for {email}: {str(e)}")

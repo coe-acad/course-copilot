@@ -50,8 +50,11 @@ def delete_from_collection(collection_name: str, query: dict):
     collection.delete_one(query)
 
 # Users
-def create_user(user_id: str, email: str):
-    add_to_collection("users", {"_id": user_id, "email": email})
+def create_user(user_id: str, email: str, display_name: str = None):
+    user_data = {"_id": user_id, "email": email}
+    if display_name:
+        user_data["display_name"] = display_name
+    add_to_collection("users", user_data)
 
 def get_user_by_user_id(user_id: str):
     return get_one_from_collection("users", {"_id": user_id})

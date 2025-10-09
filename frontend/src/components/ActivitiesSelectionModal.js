@@ -302,7 +302,7 @@ export default function ActivitiesSelectionModal({
               fontWeight: 600,
               color: "#2563eb"
             }}>
-              Adding activities to module, please wait...
+              Adding asset(s) to module, please wait...
             </div>
             <style>{`
               @keyframes spin {

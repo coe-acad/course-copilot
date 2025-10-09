@@ -24,7 +24,8 @@ export const assetService = {
   createAssetChat: async (courseId, assetTypeName, fileNames) => {
     try {
       const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, 
-        { file_names: fileNames }
+        { file_names: fileNames },
+        { timeout: 120000 } // 2 minutes timeout for AI processing
       );
       return res.data;
     } catch (error) {
@@ -36,7 +37,8 @@ export const assetService = {
   continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
     try {
       const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
-        { user_prompt: userPrompt }
+        { user_prompt: userPrompt },
+        { timeout: 120000 } // 2 minutes timeout for AI processing
       );
       return res.data;
     } catch (error) {
