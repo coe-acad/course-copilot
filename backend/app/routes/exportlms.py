@@ -51,6 +51,13 @@ class PostAssetRequest(BaseModel):
     lms_module_id: str  # LMS module ID (destination)
     order: int = 0  # Order of the activity in the module (optional, defaults to 0)
 
+class ExportToModuleRequest(BaseModel):
+    asset_names: list[str]  # List of asset names to export
+    asset_type: list[str]  # List of asset types
+    lms_cookies: str  # LMS authentication cookies
+    lms_course_id: str  # LMS course ID (destination)
+    lms_module_id: str  # LMS module ID (destination)
+
 def post_quiz_to_lms(request: PostQuizRequest, user_id: str):
     """
     Post quiz data to the LMS platform and link it to course/module
@@ -256,19 +263,32 @@ def get_modules_lms(request: GetModulesLMSRequest, user_id: str=Depends(verify_t
     """
     Get all modules for a course from the LMS platform using authentication cookies
     """
-    result = get_all_modules(request.lms_cookies, request.lms_course_id)
-    
-    # Filter to only include id and name fields
-    if result.get("success") and "data" in result:
-        filtered_data = [
-            {"id": module.get("id"), "name": module.get("name")}
-            for module in result["data"]
-        ]
-        return {
-            "data": filtered_data
-        }
-    
-    return result
+    try:
+        result = get_all_modules(request.lms_cookies, request.lms_course_id)
+        
+        # Filter to only include id and name fields
+        if result.get("success") and "data" in result:
+            filtered_data = [
+                {"id": module.get("id"), "name": module.get("name")}
+                for module in result["data"]
+            ]
+            return {
+                "data": filtered_data 
+            }
+        
+        # If not successful, return error with proper status code
+        error_message = result.get("error", "Failed to fetch modules from LMS")
+        status_code = result.get("status_code", 500)
+        
+        raise HTTPException(
+            status_code=status_code if status_code != 200 else 500,
+            detail=error_message
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_modules_lms: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 #route to create a module in LMS
 @router.post("/create-module-lms")
@@ -318,7 +338,7 @@ def create_module_lms(request: CreateModuleLMSRequest, user_id: str):
 
 #post asset to lms which will take the asset name and type and use the function to post to lms
 @router.post("/post-asset-to-lms")
-def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str):
+def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str=Depends(verify_token)):
     """
     Post asset to the LMS platform based on asset type
     
@@ -336,6 +356,16 @@ def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str):
         
         logger.info(f"User {user_id} posting {request.asset_type} '{request.asset_name}' to LMS")
         
+        # Define supported asset types
+        SUPPORTED_ASSET_TYPES = ['quiz', 'activity']
+        
+        # Check if asset type is supported
+        if request.asset_type not in SUPPORTED_ASSET_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Asset type '{request.asset_type}' is not supported for export. Supported types: {', '.join(SUPPORTED_ASSET_TYPES)}"
+            )
+        
         # Route to appropriate handler based on asset type
         if request.asset_type == "quiz":
             # Create PostQuizRequest from PostAssetRequest
@@ -350,20 +380,128 @@ def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str):
             # Call the quiz posting function
             return post_quiz_to_lms(quiz_request, user_id)
         
-        # Add more asset types here in the future
-        # elif request.asset_type == "activity":
-        #     return post_activity_to_lms(request, user_id)
-        # elif request.asset_type == "project":
-        #     return post_project_to_lms(request, user_id)
-        
-        else:
+        elif request.asset_type == "activity":
+            # TODO: Implement activity export
             raise HTTPException(
-                status_code=400, 
-                detail=f"Asset type '{request.asset_type}' is not supported yet. Supported types: quiz"
+                status_code=501,
+                detail="Activity export not yet implemented"
             )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error posting asset to LMS: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+#route to export multiple assets to an LMS module
+@router.post("/courses/{course_id}/export-to-lms-module")
+def export_multiple_assets_to_module(course_id: str, request: ExportToModuleRequest, user_id: str=Depends(verify_token)):
+    """
+    Export multiple assets to a specific LMS module
+    
+    This endpoint processes multiple assets at once and returns detailed status for each.
+    Supported asset types: quiz, activity
+    """
+    try:
+        # Validate input
+        if not request.lms_cookies:
+            raise HTTPException(status_code=400, detail="LMS authentication cookies are required")
+        if not request.lms_course_id:
+            raise HTTPException(status_code=400, detail="LMS course ID is required")
+        if not request.lms_module_id:
+            raise HTTPException(status_code=400, detail="LMS module ID is required")
+        if not request.asset_names or len(request.asset_names) == 0:
+            raise HTTPException(status_code=400, detail="At least one asset must be selected")
+        
+        logger.info(f"User {user_id} exporting {len(request.asset_names)} assets to LMS module {request.lms_module_id}")
+        
+        # Define supported asset types
+        SUPPORTED_ASSET_TYPES = ['quiz', 'activity']
+        
+        results = []
+        unsupported_assets = []
+        
+        # Process each asset
+        for i, asset_name in enumerate(request.asset_names):
+            asset_type_val = request.asset_type[i] if i < len(request.asset_type) else 'unknown'
+            
+            # Check if asset type is supported
+            if asset_type_val not in SUPPORTED_ASSET_TYPES:
+                logger.warning(f"Unsupported asset type '{asset_type_val}' for asset '{asset_name}'")
+                unsupported_assets.append({
+                    "asset_name": asset_name,
+                    "asset_type": asset_type_val,
+                    "reason": f"Asset type '{asset_type_val}' is not supported for export. Supported types: {', '.join(SUPPORTED_ASSET_TYPES)}"
+                })
+                continue
+            
+            try:
+                # Use the single asset endpoint
+                asset_request = PostAssetRequest(
+                    lms_cookies=request.lms_cookies,
+                    course_id=course_id,
+                    asset_name=asset_name,
+                    asset_type=asset_type_val,
+                    lms_course_id=request.lms_course_id,
+                    lms_module_id=request.lms_module_id,
+                    order=i
+                )
+                
+                # Call the single asset posting function
+                result = post_asset_to_lms_endpoint(asset_request, user_id)
+                
+                # Extract relevant info from result
+                results.append({
+                    "asset_name": asset_name,
+                    "asset_type": asset_type_val,
+                    "status": "success",
+                    "message": result.get("message", "Success")
+                })
+                    
+            except HTTPException as he:
+                logger.error(f"Error exporting asset '{asset_name}': {he.detail}")
+                results.append({
+                    "asset_name": asset_name,
+                    "asset_type": asset_type_val,
+                    "status": "failed",
+                    "error": he.detail
+                })
+            except Exception as e:
+                logger.error(f"Error exporting asset '{asset_name}': {str(e)}")
+                results.append({
+                    "asset_name": asset_name,
+                    "asset_type": asset_type_val,
+                    "status": "failed",
+                    "error": str(e)
+                })
+        
+        # Prepare response
+        success_count = len([r for r in results if r["status"] == "success"])
+        failed_count = len([r for r in results if r["status"] == "failed"])
+        unsupported_count = len(unsupported_assets)
+        
+        response_message = f"Export complete: {success_count} succeeded, {failed_count} failed"
+        if unsupported_count > 0:
+            response_message += f", {unsupported_count} unsupported"
+        
+        logger.info(f"Export completed for user {user_id}: {response_message}")
+        
+        return {
+            "message": response_message,
+            "data": {
+                "exported_assets": results,
+                "unsupported_assets": unsupported_assets,
+                "summary": {
+                    "total": len(request.asset_names),
+                    "success": success_count,
+                    "failed": failed_count,
+                    "unsupported": unsupported_count
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in export_multiple_assets_to_module: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

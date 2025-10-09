@@ -16,13 +16,15 @@ export default function ActivitiesSelectionModal({
   const [selected, setSelected] = useState({});
   const [search, setSearch] = useState("");
 
+  // Define asset type categories
+  const ASSESSMENT_TYPES = ['project', 'activity', 'quiz', 'question-paper', 'mark-scheme', 'mock-interview'];
+  const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lesson-plans', 'concept-map', 'course-notes'];
+  const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity']; // Only these can be exported to LMS
+
   useEffect(() => {
     if (!open) return;
     setError("");
     setSelected({});
-    
-    // Filter to only show activities and quizzes
-    const activityTypes = ['quiz', 'question-paper', 'mock-interview', 'test'];
     
     const load = async () => {
       try {
@@ -39,8 +41,11 @@ export default function ActivitiesSelectionModal({
           type: a.asset_type,
           category: a.asset_category,
           updatedAt: a.asset_last_updated_at,
-          updatedBy: a.asset_last_updated_by
-        })).filter(asset => activityTypes.includes(asset.type));
+          updatedBy: a.asset_last_updated_by,
+          isExportable: SUPPORTED_EXPORT_TYPES.includes(a.asset_type)
+        })).filter(asset => 
+          ASSESSMENT_TYPES.includes(asset.type) || CURRICULUM_TYPES.includes(asset.type)
+        );
         
         setAssets(list);
       } catch (e) {
@@ -63,27 +68,42 @@ export default function ActivitiesSelectionModal({
   }, [assets, search]);
 
   const grouped = useMemo(() => {
-    const groups = {};
+    const assessments = [];
+    const curriculum = [];
+    
     filteredAssets.forEach(a => {
-      const key = (a.category || "Other");
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(a);
+      if (ASSESSMENT_TYPES.includes(a.type)) {
+        assessments.push(a);
+      } else if (CURRICULUM_TYPES.includes(a.type)) {
+        curriculum.push(a);
+      }
     });
+    
+    const groups = {};
+    if (assessments.length > 0) groups['Assessments'] = assessments;
+    if (curriculum.length > 0) groups['Curriculum'] = curriculum;
+    
     return groups;
-  }, [filteredAssets]);
+  }, [filteredAssets, ASSESSMENT_TYPES, CURRICULUM_TYPES]);
 
   const totalCount = filteredAssets.length;
+  const exportableCount = filteredAssets.filter(a => a.isExportable).length;
   const selectedIds = Object.keys(selected).filter(k => selected[k]);
   const selectedCount = selectedIds.length;
-  const allChecked = totalCount > 0 && selectedCount === totalCount;
-  const someChecked = selectedCount > 0 && selectedCount < totalCount;
+  const allChecked = exportableCount > 0 && selectedCount === exportableCount;
+  const someChecked = selectedCount > 0 && selectedCount < exportableCount;
 
   const toggleAll = () => {
     if (allChecked) {
       setSelected({});
     } else {
       const next = {};
-      filteredAssets.forEach(a => { next[a.id] = true; });
+      // Only select exportable assets
+      filteredAssets.forEach(a => { 
+        if (a.isExportable) {
+          next[a.id] = true; 
+        }
+      });
       setSelected(next);
     }
   };
@@ -107,45 +127,18 @@ export default function ActivitiesSelectionModal({
       const courseId = localStorage.getItem("currentCourseId");
       if (courseId) {
         const assetNames = chosen.map(a => a.name);
-        const assetTypes = [...new Set(chosen.map(a => a.type))];
+        const assetTypes = chosen.map(a => a.type); // Array matching asset_names order
         const token = localStorage.getItem("token");
         
-        // ========================================
-        // BACKEND INTEGRATION REQUIRED
-        // ========================================
-        // 
-        // NEW ENDPOINT NEEDED: POST /api/courses/{course_id}/export-to-lms-module
-        // 
-        // REQUEST HEADERS:
-        // - Authorization: Bearer <user_auth_token>
-        // - Content-Type: application/json
-        // 
-        // REQUEST BODY:
-        // {
-        //   "asset_names": ["asset1", "asset2", ...],
-        //   "asset_type": ["quiz", "question-paper", ...],
-        //   "lms_course_id": "course_id",
-        //   "lms_module_id": "module_id",
-        //   "lms_cookies": "session=abc123; Path=/; HttpOnly"
-        // }
-        // 
-        // EXPECTED SUCCESS RESPONSE (200):
-        // {
-        //   "success": true,
-        //   "message": "Successfully exported activities to LMS module",
-        //   "data": {
-        //     "lms_module_id": "module_id",
-        //     "lms_activity_ids": ["activity1", "activity2", ...],
-        //     "exported_assets": [
-        //       {
-        //         "asset_name": "quiz1",
-        //         "lms_activity_id": "lms_quiz_id",
-        //         "status": "success"
-        //       }
-        //     ]
-        //   }
-        // }
-        
+        console.log('Export request:', {
+          courseId,
+          assetNames,
+          assetTypes,
+          lms_course_id: selectedCourse?.id,
+          lms_module_id: selectedModule?.id,
+          lms_cookies: localStorage.getItem("lms_cookies") ? 'present' : 'missing'
+        });
+
         const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses/${courseId}/export-to-lms-module`, {
           method: 'POST',
           headers: {
@@ -155,26 +148,81 @@ export default function ActivitiesSelectionModal({
           body: JSON.stringify({ 
             asset_names: assetNames,
             asset_type: assetTypes,
-            lms_course_id: selectedCourse?.id,
-            lms_module_id: selectedModule?.id,
-            lms_cookies: localStorage.getItem("lms_cookies")
+            lms_course_id: String(selectedCourse?.id || ''),
+            lms_module_id: String(selectedModule?.id || ''),
+            lms_cookies: String(localStorage.getItem("lms_cookies") || '')
           })
         });
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || 'Export failed');
+          console.error('Export error response:', errorData);
+          
+          // Handle validation errors properly
+          let errorMessage = 'Export failed';
+          if (errorData.detail) {
+            if (Array.isArray(errorData.detail)) {
+              // FastAPI validation errors
+              errorMessage = errorData.detail.map(e => {
+                if (e.msg && e.loc) {
+                  return `${e.loc.join('.')}: ${e.msg}`;
+                }
+                return e.msg || JSON.stringify(e);
+              }).join('; ');
+            } else if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+            } else {
+              errorMessage = JSON.stringify(errorData.detail);
+            }
+          }
+          
+          throw new Error(errorMessage);
         }
         
         const data = await response.json();
         console.log('Export data:', data);
         
-        // Show success message
-        alert(`Successfully exported ${chosen.length} activities to module "${selectedModule?.name}"`);
+        // Parse the results
+        const summary = data.data?.summary || {};
+        const exportedAssets = data.data?.exported_assets || [];
+        const unsupportedAssets = data.data?.unsupported_assets || [];
+        
+        // Build success message
+        let message = `Export to "${selectedModule?.name}" completed!\n\n`;
+        
+        if (summary.success > 0) {
+          message += `✅ ${summary.success} asset(s) exported successfully\n`;
+        }
+        
+        if (summary.failed > 0) {
+          message += `❌ ${summary.failed} asset(s) failed to export\n`;
+          const failed = exportedAssets.filter(a => a.status === 'failed');
+          if (failed.length > 0) {
+            message += `Failed assets: ${failed.map(a => a.asset_name).join(', ')}\n`;
+          }
+        }
+        
+        if (summary.unsupported > 0) {
+          message += `⚠️ ${summary.unsupported} asset(s) not supported for export\n`;
+          if (unsupportedAssets.length > 0) {
+            message += `Unsupported: ${unsupportedAssets.map(a => `${a.asset_name} (${a.asset_type})`).join(', ')}\n`;
+            message += `\nSupported types: quiz, activity`;
+          }
+        }
+        
+        // Show detailed alert
+        alert(message);
+        
+        // Only close if all succeeded or user acknowledges
+        if (summary.failed === 0 && summary.unsupported === 0) {
+          if (onActivitiesSelected) onActivitiesSelected(chosen);
+          onClose?.();
+        } else {
+          // Keep modal open to show error state
+          setError(message);
+        }
       }
       
-      if (onActivitiesSelected) onActivitiesSelected(chosen);
-      onClose?.();
     } catch (error) {
       console.error('Export error:', error);
       setError(error.message || 'Export failed');
@@ -265,10 +313,22 @@ export default function ActivitiesSelectionModal({
           </div>
         )}
         
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 700, fontSize: 22 }}>Select Activities & Quizzes</div>
-          <div style={{ color: "#6b7280", fontSize: 14 }}>
-            {selectedCount} selected{totalCount ? ` / ${totalCount}` : ""}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontWeight: 700, fontSize: 22 }}>Select Activities & Quizzes</div>
+            <div style={{ color: "#6b7280", fontSize: 14 }}>
+              {selectedCount} selected / {exportableCount} exportable
+            </div>
+          </div>
+          <div style={{
+            padding: '10px 12px',
+            background: '#eff6ff',
+            borderRadius: 8,
+            border: '1px solid #bfdbfe',
+            fontSize: 13,
+            color: '#1e40af'
+          }}>
+            <strong>ℹ️ Note:</strong> Only <strong>Quiz</strong> and <strong>Activity</strong> assets can be exported to LMS modules. Other asset types will be shown but cannot be selected.
           </div>
         </div>
 
@@ -321,22 +381,59 @@ export default function ActivitiesSelectionModal({
                   {grouped[group].map(item => (
                     <label key={item.id} style={{
                       display: "grid",
-                      gridTemplateColumns: "24px 1fr auto",
+                      gridTemplateColumns: "24px 1fr auto auto",
                       alignItems: "center",
                       gap: 10,
                       padding: "8px 10px",
                       borderBottom: "1px solid #eef2f7",
                       background: selected[item.id] ? "#eef6ff" : "transparent",
-                      cursor: "pointer",
-                      borderRadius: 6
+                      cursor: item.isExportable ? "pointer" : "not-allowed",
+                      borderRadius: 6,
+                      opacity: item.isExportable ? 1 : 0.6
                     }}>
-                      <input type="checkbox" checked={!!selected[item.id]} onChange={() => toggleOne(item.id)} />
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontWeight: 600 }}>{item.name}</span>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>{item.type}</span>
+                      <input 
+                        type="checkbox" 
+                        checked={!!selected[item.id]} 
+                        onChange={() => item.isExportable && toggleOne(item.id)}
+                        disabled={!item.isExportable}
+                        style={{ cursor: item.isExportable ? 'pointer' : 'not-allowed' }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontWeight: 600 }}>{item.name}</span>
+                          {!item.isExportable && (
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              background: '#fee2e2',
+                              color: '#b91c1c',
+                              textTransform: 'uppercase'
+                            }}>
+                              Not Exportable
+                            </span>
+                          )}
+                          {item.isExportable && (
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              background: '#dcfce7',
+                              color: '#16a34a',
+                              textTransform: 'uppercase'
+                            }}>
+                              ✓ Exportable
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          {item.type.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
                       </div>
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : ""}
+                      <div style={{ fontSize: 11, color: "#9ca3af", whiteSpace: 'nowrap' }}>
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : ""}
                       </div>
                     </label>
                   ))}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
+import { getLMSModules, createLMSModule } from "../services/lms";
 
 export default function LMSModulesModal({
   open,
@@ -13,81 +14,63 @@ export default function LMSModulesModal({
   const [isGridView, setIsGridView] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newModuleName, setNewModuleName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const fetchLMSModules = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       
-      const token = localStorage.getItem("token");
-      const lmsCookies = localStorage.getItem("lms_cookies");
-
-      if (!lmsCookies) {
-        throw new Error("LMS cookies not found. Please login to LMS first.");
-      }
-
-      // ========================================
-      // LMS MODULES FETCH - NEW ENDPOINT NEEDED
-      // ========================================
-      // 
-      // ENDPOINT: POST /api/courses-lms/{course_id}/modules
-      // 
-      // REQUEST HEADERS:
-      // - Authorization: Bearer <user_auth_token>
-      // - Content-Type: application/json
-      // 
-      // REQUEST BODY:
-      // {
-      //   "lms_cookies": "session=abc123; Path=/; HttpOnly"
-      // }
-      // 
-      // EXPECTED SUCCESS RESPONSE (200):
-      // {
-      //   "message": "Successfully fetched modules from LMS course",
-      //   "data": [
-      //     {
-      //       "id": "module_id_123",
-      //       "name": "Introduction to Machine Learning",
-      //       "description": "Module description here...",
-      //       "position": 1,
-      //       "visible": true,
-      //       "completion_tracking": true,
-      //       "created_at": "2024-01-01T00:00:00Z",
-      //       "updated_at": "2024-01-10T00:00:00Z"
-      //     }
-      //   ]
-      // }
+      console.log('fetchLMSModules - selectedCourse:', selectedCourse);
       
-      const response = await fetch(
-        `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/courses-lms/${selectedCourse.id}/modules`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            lms_cookies: lmsCookies
-          })
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("LMS session expired. Please login again.");
-        }
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to fetch modules');
+      if (!selectedCourse) {
+        throw new Error("No course selected");
+      }
+      
+      if (!selectedCourse.id) {
+        throw new Error(`Course ID is missing. Available keys: ${Object.keys(selectedCourse).join(', ')}`);
       }
 
-      const data = await response.json();
-      const normalized = Array.isArray(data) ? data : (data.data || data.modules || data.results || []);
-      console.log('LMS Modules fetched:', normalized);
-      setModules(normalized);
+      console.log('fetchLMSModules - calling getLMSModules with courseId:', selectedCourse.id);
+      
+      // Call the getLMSModules service function
+      const result = await getLMSModules(selectedCourse.id);
+      
+      console.log('LMS Modules fetched:', result.modules);
+      setModules(result.modules || []);
       
     } catch (err) {
       console.error('Error fetching LMS modules:', err);
-      setError(err.message || 'Failed to load modules from LMS');
+      
+      // Properly extract error message from various error formats
+      let errorMessage = 'Failed to load modules from LMS';
+      
+      console.log('Error details for debugging:', err);
+      
+      if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err?.detail) {
+        // FastAPI validation errors or custom error detail
+        if (Array.isArray(err.detail)) {
+          // Validation errors array - show detailed validation info
+          errorMessage = err.detail.map(e => {
+            if (e.msg && e.loc) {
+              return `${e.loc.join('.')}: ${e.msg}`;
+            }
+            return e.msg || JSON.stringify(e);
+          }).join('; ');
+        } else if (typeof err.detail === 'string') {
+          errorMessage = err.detail;
+        } else {
+          errorMessage = JSON.stringify(err.detail);
+        }
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -97,6 +80,8 @@ export default function LMSModulesModal({
     if (open && selectedCourse) {
       fetchLMSModules();
       setSelectedModuleId(null);
+      setShowCreateForm(false);
+      setNewModuleName("");
     }
   }, [open, selectedCourse, fetchLMSModules]);
 
@@ -110,6 +95,71 @@ export default function LMSModulesModal({
     
     const selectedModule = modules.find(m => m.id === selectedModuleId);
     onModuleSelected(selectedModule);
+  };
+
+  const handleCreateModule = async () => {
+    if (!newModuleName.trim()) {
+      setError("Please enter a module name");
+      return;
+    }
+
+    try {
+      setCreating(true);
+      setError("");
+      
+      // Create the module
+      const result = await createLMSModule(
+        selectedCourse.id,
+        newModuleName.trim(),
+        modules.length + 1 // Set order as next position
+      );
+
+      console.log('Module created:', result);
+
+      // Refresh the modules list
+      await fetchLMSModules();
+
+      // Close the create form
+      setShowCreateForm(false);
+      setNewModuleName("");
+
+      // Auto-select the newly created module if we have its ID
+      if (result.module && result.module.id) {
+        setSelectedModuleId(result.module.id);
+      }
+    } catch (err) {
+      console.error('Error creating module:', err);
+      
+      // Properly extract error message from various error formats
+      let errorMessage = 'Failed to create module';
+      
+      console.log('Error details for debugging:', err);
+      
+      if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err?.detail) {
+        // FastAPI validation errors or custom error detail
+        if (Array.isArray(err.detail)) {
+          // Validation errors array - show detailed validation info
+          errorMessage = err.detail.map(e => {
+            if (e.msg && e.loc) {
+              return `${e.loc.join('.')}: ${e.msg}`;
+            }
+            return e.msg || JSON.stringify(e);
+          }).join('; ');
+        } else if (typeof err.detail === 'string') {
+          errorMessage = err.detail;
+        } else {
+          errorMessage = JSON.stringify(err.detail);
+        }
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setCreating(false);
+    }
   };
 
   // Filter modules based on search query
@@ -199,8 +249,138 @@ export default function LMSModulesModal({
         )}
 
         <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>
-          Choose a module to add activities and quizzes to
+          Choose a module to add activities and quizzes to, or create a new one
         </p>
+
+        {/* Create New Module Button */}
+        {!loading && !error && !showCreateForm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              borderRadius: 8,
+              border: '2px dashed #2563eb',
+              background: '#eff6ff',
+              color: '#2563eb',
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#dbeafe';
+              e.currentTarget.style.borderColor = '#1d4ed8';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#eff6ff';
+              e.currentTarget.style.borderColor = '#2563eb';
+            }}
+          >
+            <span style={{ fontSize: 18 }}>➕</span>
+            Create New Module
+          </button>
+        )}
+
+        {/* Create Module Form */}
+        {showCreateForm && (
+          <div style={{
+            padding: 16,
+            background: '#f0fdf4',
+            border: '2px solid #22c55e',
+            borderRadius: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#15803d', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>📝</span> Create New Module
+            </div>
+            <input
+              type="text"
+              value={newModuleName}
+              onChange={(e) => setNewModuleName(e.target.value)}
+              placeholder="Enter module name..."
+              disabled={creating}
+              style={{
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid #86efac',
+                fontSize: 14,
+                boxSizing: 'border-box',
+                opacity: creating ? 0.6 : 1
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !creating) {
+                  handleCreateModule();
+                }
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setNewModuleName("");
+                  setError("");
+                }}
+                disabled={creating}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  color: '#374151',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: creating ? 'not-allowed' : 'pointer',
+                  opacity: creating ? 0.6 : 1
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateModule}
+                disabled={creating || !newModuleName.trim()}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: (creating || !newModuleName.trim()) ? '#94a3b8' : '#22c55e',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: (creating || !newModuleName.trim()) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6
+                }}
+              >
+                {creating ? (
+                  <>
+                    <div style={{
+                      width: 14,
+                      height: 14,
+                      border: "2px solid #fff",
+                      borderTop: "2px solid transparent",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite"
+                    }}></div>
+                    Creating...
+                  </>
+                ) : (
+                  '✓ Create Module'
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search Bar */}
         {!loading && !error && modules.length > 0 && (
@@ -208,7 +388,7 @@ export default function LMSModulesModal({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by module name or description..."
+            placeholder="Search by module name..."
             style={{
               width: '100%',
               padding: '10px 12px',
@@ -264,7 +444,7 @@ export default function LMSModulesModal({
               ❌ Error Loading Modules
             </div>
             <div style={{ fontSize: 14, color: '#991b1b', marginBottom: 12 }}>
-              {error}
+              {String(error)}
             </div>
             <button
               onClick={fetchLMSModules}
@@ -298,10 +478,42 @@ export default function LMSModulesModal({
               <div style={{ 
                 padding: '40px 20px',
                 textAlign: 'center',
-                color: '#6b7280',
-                fontSize: 14
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12
               }}>
-                {searchQuery ? `No modules found matching "${searchQuery}"` : "No modules available"}
+                <div style={{ fontSize: 48 }}>📚</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>
+                  {searchQuery ? `No modules found matching "${searchQuery}"` : "No modules found"}
+                </div>
+                <div style={{ fontSize: 13, color: '#6b7280' }}>
+                  {searchQuery 
+                    ? "Try a different search term or create a new module" 
+                    : "Create a new module to get started"}
+                </div>
+                {!searchQuery && !showCreateForm && (
+                  <button
+                    onClick={() => setShowCreateForm(true)}
+                    style={{
+                      marginTop: 8,
+                      padding: '10px 20px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: '#2563eb',
+                      color: '#fff',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    <span>➕</span>
+                    Create Your First Module
+                  </button>
+                )}
               </div>
             ) : isGridView ? (
               /* Grid View */
@@ -352,7 +564,7 @@ export default function LMSModulesModal({
                     )}
 
                     {/* Module Header */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
                       <div style={{ flex: 1 }}>
                         <h3 style={{ 
                           fontSize: 16, 
@@ -360,13 +572,11 @@ export default function LMSModulesModal({
                           color: '#2563eb',
                           margin: '0 0 4px 0'
                         }}>
-                          {module.name}
+                          {module.name || 'Unnamed Module'}
                         </h3>
-                        {module.position && (
-                          <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 600 }}>
-                            Position: {module.position}
-                          </div>
-                        )}
+                        <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 600 }}>
+                          Module ID: {module.id}
+                        </div>
                       </div>
                       {module.visible !== undefined && (
                         <span style={{
@@ -385,7 +595,7 @@ export default function LMSModulesModal({
 
                     {/* Module Description */}
                     {module.description && (
-                      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>
+                      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.4, marginTop: 8 }}>
                         {module.description}
                       </div>
                     )}
@@ -430,24 +640,33 @@ export default function LMSModulesModal({
                           style={{ width: 18, height: 18, cursor: 'pointer' }}
                         />
                       </td>
-                      <td style={{ padding: '12px', fontSize: 14, fontWeight: 600, color: '#2563eb' }}>
-                        {module.name}
+                      <td style={{ padding: '12px' }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#2563eb' }}>
+                          {module.name || 'Unnamed Module'}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                          ID: {module.id}
+                        </div>
                       </td>
                       <td style={{ padding: '12px', fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
                         {module.position || '-'}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: 10,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          background: module.visible ? '#dcfce7' : '#f3f4f6',
-                          color: module.visible ? '#16a34a' : '#6b7280'
-                        }}>
-                          {module.visible ? 'visible' : 'hidden'}
-                        </span>
+                        {module.visible !== undefined ? (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: 10,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            background: module.visible ? '#dcfce7' : '#f3f4f6',
+                            color: module.visible ? '#16a34a' : '#6b7280'
+                          }}>
+                            {module.visible ? 'visible' : 'hidden'}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 13, color: '#9ca3af' }}>-</span>
+                        )}
                       </td>
                     </tr>
                   ))}

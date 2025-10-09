@@ -93,6 +93,58 @@ export async function getLMSCourses() {
 }
 
 /**
+ * Get modules for a specific LMS course
+ * @param {string} lmsCourseId - LMS course ID
+ * @returns {Promise<Object>} Response with list of modules
+ */
+export async function getLMSModules(lmsCourseId) {
+  try {
+    const lmsCookies = getLMSCookies();
+
+    // Log the request data for debugging
+    console.log('getLMSModules - Request data:', {
+      lms_cookies: lmsCookies ? `${lmsCookies.substring(0, 50)}...` : 'MISSING',
+      lms_course_id: lmsCourseId || 'MISSING',
+      lmsCourseIdType: typeof lmsCourseId
+    });
+
+    // Validate required data
+    if (!lmsCookies) {
+      throw new Error('LMS cookies not found. Please login to LMS first.');
+    }
+    if (!lmsCourseId) {
+      throw new Error('Course ID is required');
+    }
+
+    const response = await axiosInstance.post(
+      '/modules-lms',
+      { 
+        lms_cookies: String(lmsCookies),
+        lms_course_id: String(lmsCourseId)
+      }
+    );
+
+    return {
+      success: true,
+      modules: response.data.data || [],
+      message: response.data.message
+    };
+  } catch (error) {
+    console.error('Get LMS modules error:', error);
+    console.error('Error response data:', error.response?.data);
+    
+    // If cookies expired or invalid, clear LMS data
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      localStorage.removeItem('lms_cookies');
+      localStorage.removeItem('lms_token');
+      localStorage.removeItem('lms_user');
+    }
+    
+    throw error.response?.data || { detail: 'Failed to fetch LMS modules' };
+  }
+}
+
+/**
  * Create a new module in LMS platform
  * @param {string} lmsCourseId - LMS course ID
  * @param {string} moduleTitle - Title of the module
@@ -103,13 +155,34 @@ export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
   try {
     const lmsCookies = getLMSCookies();
 
+    // Log the request data for debugging
+    console.log('createLMSModule - Request data:', {
+      lms_cookies: lmsCookies ? `${lmsCookies.substring(0, 50)}...` : 'MISSING',
+      lms_course_id: lmsCourseId || 'MISSING',
+      module_title: moduleTitle || 'MISSING',
+      order: order,
+      lmsCourseIdType: typeof lmsCourseId,
+      moduleTitleType: typeof moduleTitle
+    });
+
+    // Validate required data
+    if (!lmsCookies) {
+      throw new Error('LMS cookies not found. Please login to LMS first.');
+    }
+    if (!lmsCourseId) {
+      throw new Error('Course ID is required');
+    }
+    if (!moduleTitle || !moduleTitle.trim()) {
+      throw new Error('Module title is required');
+    }
+
     const response = await axiosInstance.post(
       '/create-module-lms',
       { 
-        lms_cookies: lmsCookies,
-        lms_course_id: lmsCourseId,
-        module_title: moduleTitle,
-        order: order
+        lms_cookies: String(lmsCookies),
+        lms_course_id: String(lmsCourseId),
+        module_title: String(moduleTitle),
+        order: Number(order) || 1
       }
     );
 
@@ -120,6 +193,7 @@ export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
     };
   } catch (error) {
     console.error('Create LMS module error:', error);
+    console.error('Error response data:', error.response?.data);
     
     // If cookies expired or invalid, clear LMS data
     if (error.response?.status === 401 || error.response?.status === 403) {
@@ -180,6 +254,7 @@ export function clearStoredLMSCourses() {
 export default {
   loginToLMS,
   getLMSCourses,
+  getLMSModules,
   createLMSModule,
   isLoggedIntoLMS,
   logoutFromLMS,
