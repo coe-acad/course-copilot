@@ -32,15 +32,3 @@ def parse_answer_paper(text):
     return {
         "responses": responses
     }
-
-# if __name__ == "__main__":
-#     mark_scheme_path = "/Users/IRFAN/Downloads/RAG (Retrieval Augmented Generation) SET A - AEC 01_answer_sheets/mark-scheme_RAG.pdf"
-#     answer_sheet_path = "/Users/IRFAN/Downloads/RAG (Retrieval Augmented Generation) SET A - AEC 01_answer_sheets/Aman Rathor_exam_answers.pdf"
-
-#     mark_scheme_text = extract_text_from_mark_scheme(mark_scheme_path)
-#     print(mark_scheme_text)
-
-#     answer_sheet_text = extract_text_from_answer_sheet(answer_sheet_path)
-#     answer_sheet = parse_answer_paper(answer_sheet_text)
-#     print(answer_sheet)
-

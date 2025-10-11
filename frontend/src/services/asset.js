@@ -20,26 +20,85 @@ export const assetService = {
     }
   },
 
-  // Create initial asset chat with selected files
+  // Create initial asset chat with selected files (async with polling)
   createAssetChat: async (courseId, assetTypeName, fileNames) => {
     try {
+      // Start the background task
       const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, 
-        { file_names: fileNames },
-        { timeout: 120000 } // 2 minutes timeout for AI processing
+        { file_names: fileNames }
       );
+      const taskData = res.data; // { task_id, status, message }
+      
+      // Poll for completion
+      return await assetService.pollTaskUntilComplete(taskData.task_id);
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // Continue asset chat conversation (async with polling)
+  continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
+    try {
+      // Start the background task
+      const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
+        { user_prompt: userPrompt }
+      );
+      const taskData = res.data; // { task_id, status, message }
+      
+      // Poll for completion
+      return await assetService.pollTaskUntilComplete(taskData.task_id);
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // Poll task status until completion
+  pollTaskUntilComplete: async (taskId, maxAttempts = 180, intervalMs = 1000) => {
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const statusRes = await axiosInstance.get(`/tasks/${taskId}`);
+        const taskStatus = statusRes.data; // { task_id, status, result, error }
+        
+        if (taskStatus.status === 'completed') {
+          // Return result in the same format as before
+          return taskStatus.result; // { response, thread_id }
+        } else if (taskStatus.status === 'failed') {
+          throw new Error(taskStatus.error || 'Task failed');
+        } else if (taskStatus.status === 'cancelled') {
+          throw new Error('Task was cancelled');
+        }
+        
+        // Status is 'pending' or 'processing', wait and retry
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        attempts++;
+      } catch (error) {
+        if (error.response && error.response.status === 404) {
+          throw new Error('Task not found');
+        }
+        throw error;
+      }
+    }
+    
+    // Timeout after maxAttempts
+    throw new Error('Task polling timeout - operation is taking longer than expected');
+  },
+
+  // Get task status (for checking without polling)
+  getTaskStatus: async (taskId) => {
+    try {
+      const res = await axiosInstance.get(`/tasks/${taskId}`);
       return res.data;
     } catch (error) {
       handleAxiosError(error);
     }
   },
 
-  // Continue asset chat conversation
-  continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
+  // Cancel a running task
+  cancelTask: async (taskId) => {
     try {
-      const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
-        { user_prompt: userPrompt },
-        { timeout: 120000 } // 2 minutes timeout for AI processing
-      );
+      const res = await axiosInstance.delete(`/tasks/${taskId}`);
       return res.data;
     } catch (error) {
       handleAxiosError(error);
