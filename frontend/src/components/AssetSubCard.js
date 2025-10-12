@@ -4,6 +4,7 @@ import { FiEye, FiTrash2, FiSave } from "react-icons/fi";
 import { assetService } from "../services/asset";
 import AssetViewModal from "./AssetViewModal";
 import Toast from "./Toast";
+import Tooltip from "./Tooltip";
 import { resolveNameConflict } from "../utils/nameConflictHandler";
 
 export default function AssetSubCard({ 
@@ -154,96 +155,99 @@ export default function AssetSubCard({
             gap: 6,
           }}
         >
-          <button
-            onClick={handleView}
-            disabled={isLoading}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#666",
-              cursor: isLoading ? "not-allowed" : "pointer",
-              padding: "4px",
-              borderRadius: "4px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.2s ease",
-              opacity: isLoading ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading) {
-                e.currentTarget.style.background = "#f3f4f6";
-                e.currentTarget.style.color = "#2563eb";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "#666";
-            }}
-            title="View asset"
-          >
-            <FiEye size={16} />
-          </button>
-          <button
-            onClick={handleSaveAsResource}
-            disabled={isSavingAsResource}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#666",
-              cursor: isSavingAsResource ? "not-allowed" : "pointer",
-              padding: "4px",
-              borderRadius: "4px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.2s ease",
-              opacity: isSavingAsResource ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isSavingAsResource) {
-                e.currentTarget.style.background = "#f0f9ff";
-                e.currentTarget.style.color = "#2563eb";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "#666";
-            }}
-            title="Save as resource"
-          >
-            <FiSave size={16} />
-          </button>
-          <button
-            onClick={handleDeleteClick}
-            disabled={isDeleting}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#666",
-              cursor: isDeleting ? "not-allowed" : "pointer",
-              padding: "4px",
-              borderRadius: "4px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.2s ease",
-              opacity: isDeleting ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isDeleting) {
-                e.currentTarget.style.background = "#fef2f2";
-                e.currentTarget.style.color = "#dc2626";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "#666";
-            }}
-            title="Delete asset"
-          >
-            <FiTrash2 size={16} />
-          </button>
+          <Tooltip text="View asset" position="top">
+            <button
+              onClick={handleView}
+              disabled={isLoading}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#666",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                padding: "4px",
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                opacity: isLoading ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.background = "#f3f4f6";
+                  e.currentTarget.style.color = "#2563eb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#666";
+              }}
+            >
+              <FiEye size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip text="Add to resource" position="top">
+            <button
+              onClick={handleSaveAsResource}
+              disabled={isSavingAsResource}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#666",
+                cursor: isSavingAsResource ? "not-allowed" : "pointer",
+                padding: "4px",
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                opacity: isSavingAsResource ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isSavingAsResource) {
+                  e.currentTarget.style.background = "#f0f9ff";
+                  e.currentTarget.style.color = "#2563eb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#666";
+              }}
+            >
+              <FiSave size={16} />
+            </button>
+          </Tooltip>
+          <Tooltip text="Delete asset" position="top">
+            <button
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#666",
+                cursor: isDeleting ? "not-allowed" : "pointer",
+                padding: "4px",
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                opacity: isDeleting ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isDeleting) {
+                  e.currentTarget.style.background = "#fef2f2";
+                  e.currentTarget.style.color = "#dc2626";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#666";
+              }}
+            >
+              <FiTrash2 size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Pill label */}
