@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiEye } from "react-icons/fi";
 import Header from "../components/header/Header";
 import AssetViewModal from "../components/AssetViewModal";
 import SectionCard from "../components/SectionCard";
@@ -527,14 +528,8 @@ export default function Dashboard() {
                     .flatMap(category =>
                       assets[category].map(asset => (
                         <tr key={asset.name + asset.type + category}>
-                          <td>
-                            <button
-                              style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 16 }}
-                              onClick={() => handleViewAsset(category, asset)}
-                              disabled={assetModalLoading}
-                            >
-                              {asset.name}
-                            </button>
+                          <td style={{ color: '#222', fontWeight: 600, fontSize: 16 }}>
+                            {asset.name}
                           </td>
                           <td>{asset.type}</td>
                           <td style={{ textTransform: 'capitalize' }}>{category}</td>
@@ -542,7 +537,15 @@ export default function Dashboard() {
                           <td>{asset.updatedBy}</td>
                           <td>
                             <button
-                              style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18, marginRight: 8 }}
+                              style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 16, marginRight: 8 }}
+                              title="View asset"
+                              onClick={() => handleViewAsset(category, asset)}
+                              disabled={assetModalLoading}
+                            >
+                              <FiEye />
+                            </button>
+                            <button
+                              style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18 }}
                               title="Download"
                               onClick={() => handleDownloadAsset(asset)}
                             >
