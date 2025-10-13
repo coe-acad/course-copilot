@@ -695,6 +695,7 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
+            temperature=0.3,
             assistant_id=evaluation_assistant_id,
             response_format={
                 "type": "json_schema",

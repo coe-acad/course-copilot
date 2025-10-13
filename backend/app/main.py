@@ -83,12 +83,6 @@ app = FastAPI(
     debug=settings.DEBUG
 )
 
-# Log CORS configuration for debugging
-logger.info(f"CORS Origins configured: {settings.CORS_ORIGINS}")
-logger.info(f"CORS Allow Credentials: {settings.CORS_ALLOW_CREDENTIALS}")
-logger.info(f"CORS Allow Methods: {settings.CORS_ALLOW_METHODS}")
-logger.info(f"CORS Allow Headers: {settings.CORS_ALLOW_HEADERS}")
-
 # Configure CORS middleware with settings
 app.add_middleware(
     CORSMiddleware,

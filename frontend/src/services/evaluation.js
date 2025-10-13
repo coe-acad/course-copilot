@@ -92,7 +92,7 @@ export const evaluationService = {
       }
 
 
-      // Idempotent trigger: backend returns completed if already done, or processing once
+      // Trigger backend evaluation (runs in background)
       const res = await axiosInstance.get('/evaluation/evaluate-files', {
         params: {
           evaluation_id: evaluationId,
@@ -102,20 +102,8 @@ export const evaluationService = {
         signal
       });
       
-      
-      // If backend is processing in background, poll for completion
-      if (res.data.evaluation_result?.status === 'processing') {
-        ongoingEvaluations.delete(evaluationId);
-        return await this.waitForCompletion(evaluationId);
-      }
-      
-      // Mark as completed to prevent re-evaluation
-      if (res.data.evaluation_result && res.data.evaluation_result.status !== 'processing') {
-        completedEvaluations.add(evaluationId);
-      }
-      
       ongoingEvaluations.delete(evaluationId); // Clean up tracking
-      return res.data; // { evaluation_id: "uuid", evaluation_result: {...} }
+      return res.data; // { evaluation_id: "uuid", message: "Evaluation started in background" }
     } catch (error) {
       console.error('Evaluation error details:', {
         message: error.message,
@@ -130,16 +118,10 @@ export const evaluationService = {
         throw new Error('Authentication failed. Please try again.');
       }
       
-      // On timeout, switch to polling mode via status endpoint
+      // On timeout, the evaluation is still running in background
       if (error.response?.status === 504 || error.code === 'ECONNABORTED') {
         ongoingEvaluations.delete(evaluationId);
-        
-        // Start polling immediately when timeout occurs
-        try {
-          return await this.waitForCompletion(evaluationId);
-        } catch (pollingError) {
-          throw new Error('Evaluation is taking longer than expected. The process may still be running. Please check back later or contact support if the issue persists.');
-        }
+        throw new Error('Evaluation started successfully. You will receive an email when it completes.');
       }
       
       if (error.response?.status >= 500) {
@@ -157,38 +139,6 @@ export const evaluationService = {
         }
   },
 
-  async waitForCompletion(evaluationId, { signal } = {}) {
-    // Poll status every 5 seconds for up to 20 minutes
-    for (let i = 0; i < 240; i++) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      try {
-        const res = await axiosInstance.get(`/evaluation/status/${evaluationId}`, {
-          timeout: 10000,
-          signal
-        });
-        
-        
-        if (res.data.status === 'completed') {
-          // Mark as completed to prevent re-evaluation
-          completedEvaluations.add(evaluationId);
-          return { evaluation_id: evaluationId, evaluation_result: res.data.evaluation_result };
-        }
-        
-        // Log progress for debugging
-        if (i % 6 === 0) { // Every 30 seconds
-        }
-      } catch (error) {
-        console.warn(`Polling attempt ${i + 1} failed:`, error.message);
-        // Continue polling even if individual requests fail
-        if (error.response?.status === 401) {
-          throw new Error('Authentication failed during polling');
-        }
-      }
-    }
-    
-    throw new Error('Evaluation timed out after 20 minutes. Please check the evaluation status manually.');
-  },
 
   async checkEvaluationStatus(evaluationId, { signal } = {}) {
     try {

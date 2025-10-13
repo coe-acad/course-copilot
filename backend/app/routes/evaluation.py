@@ -5,6 +5,7 @@ from typing import List, Optional
 import logging
 import json
 from uuid import uuid4
+import shutil
 import asyncio
 from datetime import datetime
 from flask import request
@@ -15,7 +16,8 @@ from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_i
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email
-from app.utils.extraction import extract_text_from_mark_scheme, parse_answer_paper, extract_text_from_answer_sheet
+from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
+from app.utils.extraction_markscheme import extract_text_from_mark_scheme
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -34,64 +36,6 @@ class EditresultRequest(BaseModel):
     question_number: str
     score: float
     feedback: str
-
-def _process_evaluation(evaluation_id: str, user_id: str):
-    """Process evaluation in background using local file extraction"""
-    try:
-        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-        if not evaluation:
-            logger.error(f"Evaluation {evaluation_id} not found")
-            return
-        
-        mark_scheme_path = evaluation.get("mark_scheme_path")
-        answer_sheet_paths = evaluation.get("answer_sheet_paths", [])
-        answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
-        
-        if not mark_scheme_path or not answer_sheet_paths:
-            logger.error(f"Missing file paths for evaluation {evaluation_id}")
-            return
-        
-        # Extract mark scheme - returns {"mark_scheme": [...]}
-        logger.info(f"Extracting mark scheme from {mark_scheme_path}")
-        extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
-        
-        # Extract answer sheets - returns {"student_name": "...", "answers": [...]}
-        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
-        extracted_answer_sheets = []
-        for i, answer_sheet_path in enumerate(answer_sheet_paths):
-            answer_sheet_data = extract_text_from_answer_sheet(answer_sheet_path)
-            # Add file_id and use original filename if available
-            answer_sheet_data["file_id"] = f"answer_sheet_{i+1}"
-            if i < len(answer_sheet_filenames):
-                answer_sheet_data["filename"] = answer_sheet_filenames[i]
-            extracted_answer_sheets.append(answer_sheet_data)
-        
-        # Format as expected by evaluation function
-        answer_sheets_data = {"answer_sheets": extracted_answer_sheets}
-        
-        logger.info(f"Starting evaluation for {evaluation_id}")
-        evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, answer_sheets_data)
-        
-        # Verify and recalculate scores for each student
-        for student in evaluation_result.get("students", []):
-            answers = student.get("answers", [])
-            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
-            calculated_max = sum((a.get("max_score") or 0) for a in answers)
-            student["total_score"] = calculated_total
-            student["max_total_score"] = calculated_max
-
-        # Calculate aggregate totals
-        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
-        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
-        evaluation_result["total_score"] = overall_total
-        evaluation_result["max_total_score"] = overall_max
-        
-        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
-        update_evaluation_with_result(evaluation_id, evaluation_result)
-        
-    except Exception as e:
-        logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
-        update_evaluation(evaluation_id, {"status": "failed", "error": str(e)})
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
@@ -202,8 +146,157 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
+def _process_evaluation(evaluation_id: str, user_id: str):
+    """Process evaluation in background using local file extraction with parallel workers"""
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            logger.error(f"Evaluation {evaluation_id} not found")
+            return
+        
+        mark_scheme_path = evaluation.get("mark_scheme_path")
+        answer_sheet_paths = evaluation.get("answer_sheet_paths", [])
+        answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
+        
+        if not mark_scheme_path or not answer_sheet_paths:
+            logger.error(f"Missing file paths for evaluation {evaluation_id}")
+            return
+        
+        # Extract mark scheme - returns {"mark_scheme": [...]}
+        logger.info(f"Extracting mark scheme from {mark_scheme_path}")
+        extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        
+        # Extract answer sheets - split_into_qas returns a list of Q&A pairs
+        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
+        extracted_answer_sheets = []
+        for i, answer_sheet_path in enumerate(answer_sheet_paths):
+            pages = extract_text_tables(answer_sheet_path)
+            qas_list = split_into_qas(pages)  # Returns list of {"question": "...", "answer": [...]}
+            
+            # Wrap in proper structure
+            answer_sheet_data = {
+                "file_id": f"answer_sheet_{i+1}",
+                "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
+                "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
+                "answers": qas_list
+            }
+            extracted_answer_sheets.append(answer_sheet_data)
+        
+        # Log for debugging
+        logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
+        logger.info(f"Mark scheme has {len(extracted_mark_scheme.get('mark_scheme', []))} questions")
+
+        # Parallel processing logic: Process in batches of 10, each batch split between 2 workers
+        total_sheets = len(extracted_answer_sheets)
+        logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
+        
+        BATCH_SIZE = 10  # Maximum sheets per batch
+        all_students = []
+        
+        # Process in batches of 10
+        for batch_start in range(0, total_sheets, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_sheets)
+            batch_sheets = extracted_answer_sheets[batch_start:batch_end]
+            batch_num = (batch_start // BATCH_SIZE) + 1
+            
+            logger.info(f"Processing batch {batch_num}: sheets {batch_start + 1} to {batch_end}")
+            
+            if len(batch_sheets) <= 5:
+                # Use single worker for small batches (5 or fewer sheets)
+                logger.info(f"Batch {batch_num}: Using 1 worker for {len(batch_sheets)} sheets")
+                batch_data = {"answer_sheets": batch_sheets}
+                batch_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, batch_data)
+                all_students.extend(batch_result.get("students", []))
+            else:
+                # Split batch in half and use 2 workers
+                mid_point = len(batch_sheets) // 2
+                worker1_sheets = batch_sheets[:mid_point]
+                worker2_sheets = batch_sheets[mid_point:]
+                
+                logger.info(f"Batch {batch_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
+                
+                def evaluate_worker_batch(sheets, worker_num):
+                    """Helper function to evaluate sheets in a worker"""
+                    logger.info(f"Batch {batch_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
+                    worker_data = {"answer_sheets": sheets}
+                    result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
+                    logger.info(f"Batch {batch_num}, Worker {worker_num}: Completed processing")
+                    return result
+                
+                # Use ThreadPoolExecutor with 2 workers for this batch
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
+                    future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
+                    
+                    # Get results from both workers
+                    result1 = future1.result()
+                    result2 = future2.result()
+                
+                # Merge results from both workers in this batch
+                batch_students = result1.get("students", []) + result2.get("students", [])
+                all_students.extend(batch_students)
+                logger.info(f"Batch {batch_num}: Completed with {len(batch_students)} students")
+        
+        # Create final evaluation result with all students
+        evaluation_result = {
+            "evaluation_id": evaluation_id,
+            "students": all_students
+        }
+        logger.info(f"All batches completed: {len(all_students)} total students processed")
+        logger.info(f"Evaluation result: {evaluation_result}")
+        logger.info(f"Extracted mark scheme: {extracted_mark_scheme}")
+        logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
+        # Verify and recalculate scores for each student
+        for student in evaluation_result.get("students", []):
+            answers = student.get("answers", [])
+            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+            calculated_max = sum((a.get("max_score") or 0) for a in answers)
+            student["total_score"] = calculated_total
+            student["max_total_score"] = calculated_max
+
+        # Calculate aggregate totals
+        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+        evaluation_result["total_score"] = overall_total
+        evaluation_result["max_total_score"] = overall_max
+        
+        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
+        update_evaluation_with_result(evaluation_id, evaluation_result)
+        
+        # Clean up: Delete temporary files after successful evaluation
+        try:
+            eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+            if eval_dir.exists():
+                shutil.rmtree(eval_dir)
+                logger.info(f"Successfully deleted temporary files for evaluation {evaluation_id}")
+            else:
+                logger.warning(f"Temporary directory not found for evaluation {evaluation_id}")
+        except Exception as cleanup_error:
+            logger.error(f"Failed to delete temporary files for evaluation {evaluation_id}: {str(cleanup_error)}")
+            # Don't raise the error - evaluation was successful, cleanup is just housekeeping
+        
+        return evaluation_result
+    except Exception as e:
+        logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Clean up temporary files even on error
+        try:
+            eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+            if eval_dir.exists():
+                shutil.rmtree(eval_dir)
+                logger.info(f"Deleted temporary files after error for evaluation {evaluation_id}")
+        except Exception as cleanup_error:
+            logger.error(f"Failed to delete temporary files after error: {str(cleanup_error)}")
+        
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @router.get("/evaluation/evaluate-files")
-async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
+async def evaluate_files(evaluation_id: str, user_id: str):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
@@ -215,13 +308,6 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
                 "evaluation_id": evaluation_id,
                 "evaluation_result": evaluation["evaluation_result"]
             }
-
-        # If processing already started, don't start another run
-        if evaluation.get("status") == "processing":
-            return {
-                "evaluation_id": evaluation_id,
-                "evaluation_result": {"status": "processing"}
-            }
         
         # Verify files are uploaded
         if not evaluation.get("mark_scheme_path"):
@@ -230,13 +316,13 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
         if not evaluation.get("answer_sheet_paths"):
             raise HTTPException(status_code=400, detail="Answer sheets not uploaded")
 
-        # Mark as processing and start background task
+        # Mark as processing and start evaluation in background
         update_evaluation(evaluation_id, {"status": "processing"})
         asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id))
         
         return {
             "evaluation_id": evaluation_id,
-            "evaluation_result": {"status": "processing"}
+            "message": "Evaluation started in background"
         }
         
     except HTTPException:

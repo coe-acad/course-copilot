@@ -1,16 +1,6 @@
 // LMS Service - Handles all LMS platform operations
 import axiosInstance from '../utils/axiosConfig';
-
-/**
- * Get user authentication token
- */
-function getUserToken() {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  if (!user.token) {
-    throw new Error('User not authenticated. Please log in.');
-  }
-  return user.token;
-}
+import { isAuthenticated } from './auth';
 
 /**
  * Get LMS authentication cookies (session-based auth)
@@ -31,6 +21,10 @@ function getLMSCookies() {
  */
 export async function loginToLMS(email, password) {
   try {
+    // Ensure user is authenticated before LMS operations
+    if (!isAuthenticated()) {
+      throw new Error('User not authenticated. Please log in first.');
+    }
     const response = await axiosInstance.post(
       '/login-lms',
       { email, password }
@@ -66,6 +60,10 @@ export async function loginToLMS(email, password) {
  */
 export async function getLMSCourses() {
   try {
+    // Ensure user is authenticated before LMS operations
+    if (!isAuthenticated()) {
+      throw new Error('User not authenticated. Please log in first.');
+    }
     const lmsCookies = getLMSCookies();
 
     const response = await axiosInstance.post(
@@ -99,6 +97,10 @@ export async function getLMSCourses() {
  */
 export async function getLMSModules(lmsCourseId) {
   try {
+    // Ensure user is authenticated before LMS operations
+    if (!isAuthenticated()) {
+      throw new Error('User not authenticated. Please log in first.');
+    }
     const lmsCookies = getLMSCookies();
 
     // Log the request data for debugging
@@ -153,6 +155,10 @@ export async function getLMSModules(lmsCourseId) {
  */
 export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
   try {
+    // Ensure user is authenticated before LMS operations
+    if (!isAuthenticated()) {
+      throw new Error('User not authenticated. Please log in first.');
+    }
     const lmsCookies = getLMSCookies();
 
     // Log the request data for debugging
@@ -251,7 +257,7 @@ export function clearStoredLMSCourses() {
 }
 
 // Export default object with all functions
-export default {
+const lmsService = {
   loginToLMS,
   getLMSCourses,
   getLMSModules,
@@ -262,4 +268,6 @@ export default {
   getStoredLMSCourses,
   clearStoredLMSCourses
 };
+
+export default lmsService;
 
