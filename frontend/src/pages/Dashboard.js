@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiEye, FiDownload } from "react-icons/fi";
+import Tooltip from "../components/Tooltip";
 import Header from "../components/header/Header";
 import AssetViewModal from "../components/AssetViewModal";
 import SectionCard from "../components/SectionCard";
@@ -527,27 +529,73 @@ export default function Dashboard() {
                     .flatMap(category =>
                       assets[category].map(asset => (
                         <tr key={asset.name + asset.type + category}>
-                          <td>
-                            <button
-                              style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 16 }}
-                              onClick={() => handleViewAsset(category, asset)}
-                              disabled={assetModalLoading}
-                            >
-                              {asset.name}
-                            </button>
+                          <td style={{ color: '#222', fontWeight: 600, fontSize: 16 }}>
+                            {asset.name}
                           </td>
                           <td>{asset.type}</td>
                           <td style={{ textTransform: 'capitalize' }}>{category}</td>
                           <td>{asset.timestamp}</td>
                           <td>{asset.updatedBy}</td>
                           <td>
-                            <button
-                              style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 18, marginRight: 8 }}
-                              title="Download"
-                              onClick={() => handleDownloadAsset(asset)}
-                            >
-                              ⬇️
-                            </button>
+                            <Tooltip text="View asset" position="top">
+                              <button
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "#666",
+                                  cursor: assetModalLoading ? "not-allowed" : "pointer",
+                                  padding: "4px",
+                                  borderRadius: "4px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s ease",
+                                  marginRight: 8,
+                                  opacity: assetModalLoading ? 0.5 : 1,
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!assetModalLoading) {
+                                    e.currentTarget.style.background = "#f3f4f6";
+                                    e.currentTarget.style.color = "#2563eb";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "transparent";
+                                  e.currentTarget.style.color = "#666";
+                                }}
+                                onClick={() => handleViewAsset(category, asset)}
+                                disabled={assetModalLoading}
+                              >
+                                <FiEye size={16} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip text="Download asset" position="top">
+                              <button
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "#666",
+                                  cursor: "pointer",
+                                  padding: "4px",
+                                  borderRadius: "4px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "#f3f4f6";
+                                  e.currentTarget.style.color = "#2563eb";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "transparent";
+                                  e.currentTarget.style.color = "#666";
+                                }}
+                                onClick={() => handleDownloadAsset(asset)}
+                              >
+                                <FiDownload size={16} />
+                              </button>
+                            </Tooltip>
                           </td>
                         </tr>
                       ))
