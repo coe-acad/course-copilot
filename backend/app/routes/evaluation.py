@@ -8,9 +8,11 @@ from uuid import uuid4
 import asyncio
 from datetime import datetime
 from flask import request
+import os
+from pathlib import Path
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id
-from app.services.openai_service import upload_mark_scheme_file, upload_answer_sheet_files, create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one, extract_answer_sheets_batched, extract_mark_scheme, mark_scheme_check
+from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email
 from app.utils.extraction import extract_text_from_mark_scheme, parse_answer_paper, extract_text_from_answer_sheet
@@ -25,8 +27,6 @@ class UploadFilesRequest(BaseModel):
 class EvaluationResponse(BaseModel):
     evaluation_id: str
     evaluation_result: dict
-    mark_scheme_path: list
-    answer_sheet_path: list
 
 class EditresultRequest(BaseModel):
     evaluation_id: str
@@ -35,81 +35,115 @@ class EditresultRequest(BaseModel):
     score: float
     feedback: str
 
-def _process_evaluation(evaluation_id: str, user_id: str, mark_scheme_path:List[UploadFile] = File(...), answer_sheets_path: List[UploadFile] = File(...)):
-    """Process evaluation in background"""
-    extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
-    extracted_answer_sheets_text = extract_text_from_answer_sheet(answer_sheets_path)
-    extracted_answer_sheets = [parse_answer_paper(extracted_answer_sheets_text)]
-    print(extracted_mark_scheme, extracted_answer_sheets)
+def _process_evaluation(evaluation_id: str, user_id: str):
+    """Process evaluation in background using local file extraction"""
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            logger.error(f"Evaluation {evaluation_id} not found")
+            return
+        
+        mark_scheme_path = evaluation.get("mark_scheme_path")
+        answer_sheet_paths = evaluation.get("answer_sheet_paths", [])
+        answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
+        
+        if not mark_scheme_path or not answer_sheet_paths:
+            logger.error(f"Missing file paths for evaluation {evaluation_id}")
+            return
+        
+        # Extract mark scheme - returns {"mark_scheme": [...]}
+        logger.info(f"Extracting mark scheme from {mark_scheme_path}")
+        extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        
+        # Extract answer sheets - returns {"student_name": "...", "answers": [...]}
+        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
+        extracted_answer_sheets = []
+        for i, answer_sheet_path in enumerate(answer_sheet_paths):
+            answer_sheet_data = extract_text_from_answer_sheet(answer_sheet_path)
+            # Add file_id and use original filename if available
+            answer_sheet_data["file_id"] = f"answer_sheet_{i+1}"
+            if i < len(answer_sheet_filenames):
+                answer_sheet_data["filename"] = answer_sheet_filenames[i]
+            extracted_answer_sheets.append(answer_sheet_data)
+        
+        # Format as expected by evaluation function
+        answer_sheets_data = {"answer_sheets": extracted_answer_sheets}
+        
+        logger.info(f"Starting evaluation for {evaluation_id}")
+        evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, answer_sheets_data)
+        
+        # Verify and recalculate scores for each student
+        for student in evaluation_result.get("students", []):
+            answers = student.get("answers", [])
+            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
+            calculated_max = sum((a.get("max_score") or 0) for a in answers)
+            student["total_score"] = calculated_total
+            student["max_total_score"] = calculated_max
 
-    # evaluation_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, extracted_answer_sheets)
-    
-    # # Always verify and potentially recalculate scores for each student
-    # for student in evaluation_result.get("students", []):
-    #     answers = student.get("answers", [])
+        # Calculate aggregate totals
+        overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
+        overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
+        evaluation_result["total_score"] = overall_total
+        evaluation_result["max_total_score"] = overall_max
         
-    #     # Calculate what the total should be based on individual question scores
-    #     calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
-    #     calculated_max = sum((a.get("max_score") or 0) for a in answers)
+        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
+        update_evaluation_with_result(evaluation_id, evaluation_result)
         
-    #     # Log the current vs calculated scores
-    #     current_total = student.get("total_score", 0)
-    #     current_max = student.get("max_total_score", 0)
-        
-    #     logger.info(f"Student {student.get('file_id', 'unknown')}: AI says {current_total}/{current_max}, calculated {calculated_total}/{calculated_max}")
-        
-    #     # Always use the calculated scores to ensure accuracy
-    #     student["total_score"] = calculated_total
-    #     student["max_total_score"] = calculated_max
-
-    # # Calculate and save aggregate totals across all students
-    # overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
-    # overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
-    
-    # # Add overall totals to the evaluation result
-    # evaluation_result["total_score"] = overall_total
-    # evaluation_result["max_total_score"] = overall_max
-    
-    # logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students, aggregate: {overall_total}/{overall_max}")
-    
-    # # Store the final evaluation result (now includes overall totals)
-    # update_evaluation_with_result(evaluation_id, evaluation_result)
+    except Exception as e:
+        logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
+        update_evaluation(evaluation_id, {"status": "failed", "error": str(e)})
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
-    evaluation_id = str(uuid4())
-    eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
-    evaluation_assistant_id = eval_info[0]
-    vector_store_id = eval_info[1]
-
-    mark_scheme_file_id = upload_mark_scheme_file(mark_scheme, vector_store_id)
-
-    mark_scheme_check_result = mark_scheme_check(evaluation_assistant_id, user_id, mark_scheme_file_id)
-    logger.info(f"Mark scheme check result: {mark_scheme_check_result}")
-    
-    # Check if mark scheme format is correct
-    if "not in the correct format" in mark_scheme_check_result:
-        raise HTTPException(status_code=400, detail=mark_scheme_check_result)
-    
-    # Create evaluation
-    create_evaluation(
-        evaluation_id=evaluation_id,
-        course_id=course_id,
-        evaluation_assistant_id=evaluation_assistant_id,
-        vector_store_id=vector_store_id,
-        mark_scheme_file_id=mark_scheme_file_id,
-        answer_sheet_file_ids=[],
-        answer_sheet_filenames=[]
-    )
-    # Verify the evaluation was created successfully
-    created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    if not created_evaluation:
-        logger.error(f"Failed to create evaluation {evaluation_id} - not found after creation")
-        raise HTTPException(status_code=500, detail="Failed to create evaluation record")
-    
-    logger.info(f"Successfully created evaluation {evaluation_id} with fields: {list(created_evaluation.keys())}")
-    
-    return {"evaluation_id": evaluation_id, "mark_scheme_file_id": mark_scheme_file_id, "message": mark_scheme_check_result}
+    try:
+        evaluation_id = str(uuid4())
+        
+        # Create directory for this evaluation
+        eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save mark scheme file locally
+        mark_scheme_filename = f"mark_scheme_{mark_scheme.filename}"
+        mark_scheme_path = eval_dir / mark_scheme_filename
+        
+        with open(mark_scheme_path, "wb") as f:
+            content = mark_scheme.file.read()
+            f.write(content)
+        
+        logger.info(f"Saved mark scheme to {mark_scheme_path}")
+        
+        # Create evaluation assistant for LLM evaluation later
+        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
+        evaluation_assistant_id = eval_info[0]
+        vector_store_id = eval_info[1]
+        
+        # Create evaluation record
+        create_evaluation(
+            evaluation_id=evaluation_id,
+            course_id=course_id,
+            evaluation_assistant_id=evaluation_assistant_id,
+            vector_store_id=vector_store_id,
+            mark_scheme_path=str(mark_scheme_path),
+            answer_sheet_paths=[],
+            answer_sheet_filenames=[]
+        )
+        
+        # Verify creation
+        created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not created_evaluation:
+            logger.error(f"Failed to create evaluation {evaluation_id}")
+            raise HTTPException(status_code=500, detail="Failed to create evaluation record")
+        
+        logger.info(f"Successfully created evaluation {evaluation_id}")
+        
+        return {
+            "evaluation_id": evaluation_id,
+            "message": "Mark scheme uploaded successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading mark scheme: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
 
 @router.post("/evaluation/upload-answer-sheets")
 def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
@@ -126,20 +160,41 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
             raise HTTPException(status_code=404, detail="Evaluation not found")
         
         # Check if mark scheme exists
-        if not evaluation.get("mark_scheme_file_id"):
+        if not evaluation.get("mark_scheme_path"):
             raise HTTPException(status_code=400, detail="Mark scheme must be uploaded first")
         
-        # Upload answer sheets
-        answer_sheet_file_ids, answer_sheet_filenames = upload_answer_sheet_files(answer_sheets)
+        # Save answer sheets locally
+        eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        
+        answer_sheet_paths = []
+        answer_sheet_filenames = []
+        
+        for i, answer_sheet in enumerate(answer_sheets):
+            filename = f"answer_sheet_{i+1}_{answer_sheet.filename}"
+            file_path = eval_dir / filename
+            
+            with open(file_path, "wb") as f:
+                content = answer_sheet.file.read()
+                f.write(content)
+            
+            answer_sheet_paths.append(str(file_path))
+            answer_sheet_filenames.append(answer_sheet.filename)
+            logger.info(f"Saved answer sheet to {file_path}")
         
         # Update evaluation record
         update_evaluation(evaluation_id, {
-            "answer_sheet_file_ids": answer_sheet_file_ids,
+            "answer_sheet_paths": answer_sheet_paths,
             "answer_sheet_filenames": answer_sheet_filenames
         })
-        logger.info(f"Successfully uploaded {len(answer_sheet_file_ids)} answer sheets for evaluation {evaluation_id}")
+        
+        logger.info(f"Successfully uploaded {len(answer_sheet_paths)} answer sheets for evaluation {evaluation_id}")
 
-        return {"evaluation_id": evaluation_id, "answer_sheet_file_ids": answer_sheet_file_ids, "answer_sheet_filenames": answer_sheet_filenames}
+        return {
+            "evaluation_id": evaluation_id,
+            "answer_sheet_count": len(answer_sheet_paths),
+            "answer_sheet_filenames": answer_sheet_filenames
+        }
         
     except HTTPException:
         raise
@@ -147,33 +202,48 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
-@router.get("/evaluation/evaluate-files", response_model=EvaluationResponse)
-async def evaluate_files(evaluation_id: str, user_id: str, mark_scheme_path:List[UploadFile] = File(...), answer_sheets: List[UploadFile] = File(...)):
+@router.get("/evaluation/evaluate-files")
+async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
             raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+        
         # If results already exist, return completed immediately (idempotent)
         if "evaluation_result" in evaluation:
             return {
                 "evaluation_id": evaluation_id,
-                "evaluation_result": evaluation["evaluation_result"],
+                "evaluation_result": evaluation["evaluation_result"]
             }
 
         # If processing already started, don't start another run
         if evaluation.get("status") == "processing":
-            return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
+            return {
+                "evaluation_id": evaluation_id,
+                "evaluation_result": {"status": "processing"}
+            }
+        
+        # Verify files are uploaded
+        if not evaluation.get("mark_scheme_path"):
+            raise HTTPException(status_code=400, detail="Mark scheme not uploaded")
+        
+        if not evaluation.get("answer_sheet_paths"):
+            raise HTTPException(status_code=400, detail="Answer sheets not uploaded")
 
         # Mark as processing and start background task
         update_evaluation(evaluation_id, {"status": "processing"})
-        asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id, evaluation))
-        return {"evaluation_id": evaluation_id, "evaluation_result": {"status": "processing"}}
+        asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id))
+        
+        return {
+            "evaluation_id": evaluation_id,
+            "evaluation_result": {"status": "processing"}
+        }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error extracting answer sheets for evaluation {evaluation_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error extracting answer sheets: {str(e)}")
+        logger.error(f"Error starting evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error starting evaluation: {str(e)}")
 
 @router.put("/evaluation/edit-results")
 def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token)):
