@@ -685,10 +685,11 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         logger.info(f"Evaluating batch {batch_num}/{len(batches)} with {len(batch)} answer sheets")
 
         batch_payload = {
-            "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
-            "answer_sheets": json.dumps({"answer_sheets": batch}, indent=2),
+            "mark_scheme": json.dumps(extracted_mark_scheme),
+            "answer_sheets": json.dumps({"answer_sheets": batch}),
             "evaluation_id": evaluation_id
         }
+        print(batch_payload)
         evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
 
         # Create thread and run evaluation

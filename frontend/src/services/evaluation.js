@@ -241,5 +241,46 @@ export const evaluationService = {
       }
       throw new Error(error.response?.data?.detail || 'Failed to save evaluation');
     }
+  },
+
+  async getCombinedReport(evaluationId, { signal } = {}) {
+    try {
+      const res = await axiosInstance.get(`/evaluation/report/${evaluationId}`, {
+        timeout: 10000,
+        signal
+      });
+      return res.data; // { report: "markdown string" }
+    } catch (error) {
+      console.error('Get combined report error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      if (error.response?.status === 400) {
+        throw new Error('Evaluation not yet completed');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to get combined report');
+    }
+  },
+
+  async getStudentReport(evaluationId, studentIndex, { signal } = {}) {
+    try {
+      const res = await axiosInstance.get(`/evaluation/report/${evaluationId}/student/${studentIndex}`, {
+        timeout: 10000,
+        signal
+      });
+      return res.data; // { report: "markdown string", student_index: 0, total_students: 10 }
+    } catch (error) {
+      console.error('Get student report error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      if (error.response?.status === 400) {
+        throw new Error('Evaluation not yet completed');
+      }
+      if (error.response?.status === 404) {
+        throw new Error('Student not found');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to get student report');
+    }
   }
 }; 

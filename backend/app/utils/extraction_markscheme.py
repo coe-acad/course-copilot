@@ -1,14 +1,3 @@
-"""
-Mark Scheme Extraction Module
-Extracts structured mark scheme data from PDF files with fields:
-- questionnumber
-- question-text
-- answertemplate
-- markingscheme (array)
-- deductions (array)
-- notes
-"""
-
 import pdfplumber
 import re
 import json
@@ -32,6 +21,8 @@ def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
     try:
         # Extract full text from PDF
         full_text = _extract_full_text_from_pdf(pdf_path)
+        logger.info(f"Extracted {len(full_text)} characters from PDF")
+        logger.debug(f"PDF text preview (first 500 chars): {full_text[:500]}")
         
         # Try JSON format first (if the PDF contains JSON structure)
         json_questions = _try_extract_json_format(full_text)
@@ -68,30 +59,129 @@ def _extract_full_text_from_pdf(pdf_path: str) -> str:
     return "\n".join(text_parts)
 
 
+def _fix_unescaped_quotes(json_str: str) -> str:
+    """
+    Fix unescaped quotes within JSON string values.
+    This handles cases where PDF extraction includes literal quotes in strings.
+    
+    Strategy: Parse character by character, track string state, and escape quotes
+    that appear within string values (not at string boundaries).
+    """
+    result = []
+    i = 0
+    in_string = False
+    escape_next = False
+    
+    while i < len(json_str):
+        char = json_str[i]
+        
+        # Handle escape sequences - if previous char was \, this char is escaped
+        if escape_next:
+            result.append(char)
+            escape_next = False
+            i += 1
+            continue
+        
+        # Check for escape character
+        if char == '\\':
+            result.append(char)
+            escape_next = True
+            i += 1
+            continue
+        
+        # Handle quotes - the tricky part
+        if char == '"':
+            if not in_string:
+                # Starting a new string
+                in_string = True
+                result.append(char)
+            else:
+                # We're in a string, this could be:
+                # 1. The closing quote (followed by : , } ] or whitespace then one of those)
+                # 2. A quote within the string that should be escaped
+                
+                # Look ahead to see what follows this quote
+                j = i + 1
+                # Skip any whitespace (including newlines, spaces, tabs)
+                while j < len(json_str) and json_str[j] in ' \t\n\r':
+                    j += 1
+                
+                # Check if what follows indicates this is a closing quote
+                if j < len(json_str) and json_str[j] in ':,}]':
+                    # This is a legitimate closing quote
+                    in_string = False
+                    result.append(char)
+                elif j >= len(json_str):
+                    # End of string, this is a closing quote
+                    in_string = False
+                    result.append(char)
+                else:
+                    # This quote is within the string value, escape it
+                    result.append('\\"')
+            i += 1
+            continue
+        
+        result.append(char)
+        i += 1
+    
+    return ''.join(result)
+
+
 def _try_extract_json_format(text: str) -> Optional[List[Dict[str, Any]]]:
     """
     Try to extract JSON format from text.
     Handles cases where PDF contains JSON structure (with or without markdown code blocks)
     """
     try:
-        # Remove markdown code blocks if present
-        cleaned_text = re.sub(r'```json\s*', '', text)
-        cleaned_text = re.sub(r'```\s*', '', cleaned_text)
+        # Remove markdown code blocks if present (handle both 2 and 3 backticks)
+        cleaned_text = re.sub(r'`{2,3}json\s*', '', text)
+        cleaned_text = re.sub(r'`{2,3}\s*', '', cleaned_text)
         
-        # Try to find JSON array pattern
-        json_match = re.search(r'\[\s*\{.*?\}\s*\]', cleaned_text, re.DOTALL)
+        # Remove common PDF page headers/footers that might break JSON
+        cleaned_text = re.sub(r'Generated on.*?Page \d+ of \d+', '', cleaned_text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'Page \d+ of \d+', '', cleaned_text, flags=re.IGNORECASE)
+        
+        # Try to find JSON array pattern - use greedy match to capture all objects
+        json_match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_text, re.DOTALL)
         if json_match:
             json_str = json_match.group(0)
+            logger.info(f"Found JSON pattern, attempting to parse {len(json_str)} characters")
+            
+            # Clean up control characters that break JSON parsing
+            # Replace various types of newlines and control characters within string values
+            json_str = json_str.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+            json_str = json_str.replace('\t', ' ')
+            # Remove other common control characters
+            json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
+            # Clean up multiple spaces
+            json_str = re.sub(r'\s+', ' ', json_str)
+            
+            # Fix unescaped quotes within JSON string values
+            json_str = _fix_unescaped_quotes(json_str)
+            
             questions_data = json.loads(json_str)
+            logger.info(f"Successfully parsed JSON with {len(questions_data)} items")
             
             # Normalize the format
             normalized_questions = []
             for item in questions_data:
                 normalized_questions.append(_normalize_question_format(item))
             
+            logger.info(f"Normalized {len(normalized_questions)} questions")
             return normalized_questions
+        else:
+            logger.debug("No JSON array pattern found in text")
+            return None
     except (json.JSONDecodeError, AttributeError) as e:
-        logger.debug(f"JSON extraction failed: {str(e)}")
+        logger.error(f"JSON extraction failed: {str(e)}")
+        # Try to provide helpful context about the error
+        if isinstance(e, json.JSONDecodeError):
+            error_pos = e.pos
+            context_start = max(0, error_pos - 100)
+            context_end = min(len(json_str) if 'json_str' in locals() else 0, error_pos + 100)
+            if 'json_str' in locals():
+                logger.error(f"JSON around error (chars {context_start} to {context_end}):")
+                logger.error(f"...{json_str[context_start:context_end]}...")
         return None
 
 
@@ -133,9 +223,7 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
         "questionnumber": None,
         "question-text": "",
         "answertemplate": "",
-        "markingscheme": [],
-        "deductions": [],
-        "notes": ""
+        "markingscheme": []
     }
     
     # Extract question number
@@ -170,24 +258,6 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     if marking_match:
         question_data["markingscheme"] = _extract_array_items(marking_match.group(1))
     
-    # Extract deductions array
-    deductions_match = re.search(
-        r'(?:deductions|"deductions")\s*:\s*\[(.*?)\]',
-        block,
-        re.DOTALL | re.IGNORECASE
-    )
-    if deductions_match:
-        question_data["deductions"] = _extract_array_items(deductions_match.group(1))
-    
-    # Extract notes
-    notes_match = re.search(
-        r'(?:notes|"notes")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:\}|questionnumber|$))',
-        block,
-        re.DOTALL | re.IGNORECASE
-    )
-    if notes_match:
-        question_data["notes"] = _clean_text(notes_match.group(1))
-    
     return question_data
 
 
@@ -216,9 +286,7 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
             "questionnumber": int(qnum),
             "question-text": "",
             "answertemplate": "",
-            "markingscheme": [],
-            "deductions": [],
-            "notes": ""
+            "markingscheme": []
         }
         
         # Extract question text (before answer/template)
@@ -232,7 +300,7 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
         
         # Extract answer template
         answer_match = re.search(
-            r'(?:answer\s*template|correct\s*answer|answer)\s*[:=]?\s*(.*?)(?=(?:marking|mark\s+scheme|deductions|notes|$))',
+            r'(?:answer\s*template|correct\s*answer|answer)\s*[:=]?\s*(.*?)(?=(?:marking|mark\s+scheme|$))',
             content,
             re.DOTALL | re.IGNORECASE
         )
@@ -241,32 +309,13 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
         
         # Extract marking scheme
         marking_match = re.search(
-            r'(?:marking\s*scheme|mark\s*scheme)\s*[:=]?\s*(.*?)(?=(?:deductions|notes|$))',
+            r'(?:marking\s*scheme|mark\s*scheme)\s*[:=]?\s*(.*?)$',
             content,
             re.DOTALL | re.IGNORECASE
         )
         if marking_match:
             marking_text = marking_match.group(1)
             question_data["markingscheme"] = _extract_bullet_points(marking_text)
-        
-        # Extract deductions
-        deductions_match = re.search(
-            r'deductions\s*[:=]?\s*(.*?)(?=(?:notes|$))',
-            content,
-            re.DOTALL | re.IGNORECASE
-        )
-        if deductions_match:
-            deductions_text = deductions_match.group(1)
-            question_data["deductions"] = _extract_bullet_points(deductions_text)
-        
-        # Extract notes
-        notes_match = re.search(
-            r'notes\s*[:=]?\s*(.*?)$',
-            content,
-            re.DOTALL | re.IGNORECASE
-        )
-        if notes_match:
-            question_data["notes"] = _clean_text(notes_match.group(1))
         
         questions.append(question_data)
     
@@ -357,48 +406,132 @@ def _normalize_question_format(item: Dict[str, Any]) -> Dict[str, Any]:
     Normalize question format to ensure consistent structure.
     Handles variations in field names.
     """
+    # Log the incoming keys for debugging
+    logger.debug(f"Normalizing question with keys: {list(item.keys())}")
+    
     normalized = {
         "questionnumber": None,
         "question-text": "",
         "answertemplate": "",
-        "markingscheme": [],
-        "deductions": [],
-        "notes": ""
+        "markingscheme": []
     }
     
-    # Question number
-    qnum = item.get('questionnumber') or item.get('question_number') or item.get('questionNumber')
+    # Question number - handle variations including spaces
+    qnum = (item.get('questionnumber') or item.get('question_number') or 
+            item.get('questionNumber') or item.get('Question number') or 
+            item.get('Question Number'))
+    
+    # If not found, search for keys containing "question" and "number"
+    if not qnum:
+        for key in item.keys():
+            key_lower = key.lower()
+            if 'question' in key_lower and 'number' in key_lower:
+                qnum = item.get(key)
+                logger.debug(f"Found question number with key: '{key}'")
+                break
+    
     if qnum:
-        normalized["questionnumber"] = int(qnum) if not isinstance(qnum, int) else qnum
+        # Handle string numbers
+        if isinstance(qnum, str):
+            qnum = qnum.strip()
+            if qnum.isdigit():
+                normalized["questionnumber"] = int(qnum)
+            else:
+                # Try to extract first number from string
+                num_match = re.search(r'\d+', qnum)
+                if num_match:
+                    normalized["questionnumber"] = int(num_match.group())
+        else:
+            normalized["questionnumber"] = int(qnum) if not isinstance(qnum, int) else qnum
     
-    # Question text
+    # Question text - handle variations including spaces
     qtext = (item.get('question-text') or item.get('question_text') or 
-             item.get('questionText') or item.get('question') or "")
-    normalized["question-text"] = str(qtext).strip()
+             item.get('questionText') or item.get('question') or 
+             item.get('Question text') or item.get('Question Text'))
     
-    # Answer template
+    # If not found, search for keys containing "question" and "text"
+    if not qtext:
+        for key in item.keys():
+            key_lower = key.lower()
+            if 'question' in key_lower and ('text' in key_lower or key_lower == 'question'):
+                qtext = item.get(key)
+                logger.debug(f"Found question text with key: '{key}'")
+                break
+    
+    normalized["question-text"] = str(qtext).strip() if qtext else ""
+    
+    # Answer template - handle variations including spaces and special formats
     answer = (item.get('answertemplate') or item.get('answer_template') or 
-              item.get('answerTemplate') or item.get('answer') or "")
-    normalized["answertemplate"] = str(answer).strip()
+              item.get('answerTemplate') or item.get('answer') or 
+              item.get('Answer template') or item.get('Answer Template'))
     
-    # Marking scheme
+    # If not found, search for keys that contain "answer" and "template" (case-insensitive)
+    if not answer:
+        for key in item.keys():
+            key_lower = key.lower()
+            if 'answer' in key_lower and 'template' in key_lower:
+                answer = item.get(key)
+                logger.debug(f"Found answer template with key: '{key}'")
+                break
+    
+    # If still not found, look for just "answer" or "correct answer"
+    if not answer:
+        for key in item.keys():
+            key_lower = key.lower()
+            if key_lower in ['answer', 'correct answer', 'correct_answer', 'correctanswer']:
+                answer = item.get(key)
+                logger.debug(f"Found answer with key: '{key}'")
+                break
+    
+    # Handle list format for answer templates
+    if isinstance(answer, list):
+        normalized["answertemplate"] = "\n".join(str(a).strip() for a in answer if a)
+    elif answer:
+        normalized["answertemplate"] = str(answer).strip()
+    else:
+        normalized["answertemplate"] = ""
+    
+    # Marking scheme - handle variations including spaces, parentheses, and object format
+    # First try exact matches
     marking = (item.get('markingscheme') or item.get('marking_scheme') or 
-               item.get('markingScheme') or item.get('mark_scheme') or [])
-    if isinstance(marking, list):
+               item.get('markingScheme') or item.get('mark_scheme') or 
+               item.get('Marking scheme') or item.get('Marking Scheme'))
+    
+    # If not found, search for keys that contain "marking" or "mark" + "scheme" (case-insensitive)
+    # This handles cases like "Marking scheme (Total = 5)"
+    if not marking:
+        for key in item.keys():
+            key_lower = key.lower()
+            if ('marking' in key_lower or 'mark' in key_lower) and 'scheme' in key_lower:
+                marking = item.get(key)
+                logger.debug(f"Found marking scheme with key: '{key}'")
+                break
+    
+    # Default to empty list if still not found
+    if marking is None:
+        marking = []
+    
+    # Process the marking scheme based on its type
+    if isinstance(marking, dict):
+        # Convert dict to list of strings (e.g., {"A [2]": "description"} -> ["A [2]: description"])
+        marking_list = []
+        for key, value in marking.items():
+            if key.lower() == 'total':
+                # Handle total marks separately or include it
+                marking_list.append(f"Total: {value}")
+            else:
+                marking_list.append(f"{key}: {value}")
+        normalized["markingscheme"] = marking_list
+    elif isinstance(marking, list):
         normalized["markingscheme"] = [str(m).strip() for m in marking if m]
     elif isinstance(marking, str):
         normalized["markingscheme"] = [marking.strip()] if marking.strip() else []
+    else:
+        normalized["markingscheme"] = []
     
-    # Deductions
-    deductions = item.get('deductions') or []
-    if isinstance(deductions, list):
-        normalized["deductions"] = [str(d).strip() for d in deductions if d]
-    elif isinstance(deductions, str):
-        normalized["deductions"] = [deductions.strip()] if deductions.strip() else []
-    
-    # Notes
-    notes = item.get('notes') or ""
-    normalized["notes"] = str(notes).strip()
+    # Log the normalized result for debugging
+    logger.debug(f"Normalized question {normalized.get('questionnumber')}: "
+                f"has {len(normalized.get('markingscheme', []))} marking scheme items")
     
     return normalized
 
@@ -417,7 +550,7 @@ def validate_mark_scheme(questions: List[Dict[str, Any]]) -> bool:
         return False
     
     required_fields = ["questionnumber", "question-text", "answertemplate", 
-                      "markingscheme", "deductions", "notes"]
+                      "markingscheme"]
     
     for question in questions:
         # Check all required fields exist

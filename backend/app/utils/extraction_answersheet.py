@@ -11,40 +11,6 @@ def _group_words_by_row(page):
         rows[round(w["top"], 1)].append(w)
     return rows
 
-def _rows_to_lines(rows):
-    lines = []
-    for top in sorted(rows):
-        words = sorted(rows[top], key=lambda w: w["x0"])
-        lines.append({"y": float(top), "text": " ".join(w["text"] for w in words)})
-    return lines
-
-def _extract_tables_on_page(page):
-    tables = []
-    for t in page.find_tables(table_settings={
-        "vertical_strategy": "lines",
-        "horizontal_strategy": "lines"
-    }):
-        x0, top, x1, bottom = t.bbox
-        tables.append({"bbox": (x0, top, x1, bottom), "data": t.extract()})
-    return tables
-
-def _build_page_entry(page, lines, tables):
-    # NOTE: keep original logic using page.extract_text()
-    return {
-        "text": page.extract_text() or "",
-        "lines": lines,
-        "height": page.height,
-        "tables": tables
-    }
-
-
-
-def _group_words_by_row(page):
-    rows = defaultdict(list)
-    for w in page.extract_words():
-        rows[round(w["top"], 1)].append(w)
-    return rows
-
 
 def _rows_to_lines(rows):
     lines = []
@@ -64,16 +30,25 @@ def _extract_tables_on_page(page):
         tables.append({"bbox": (x0, top, x1, bottom), "data": t.extract()})
     return tables
 
-
 def _build_page_entry(page, lines, tables):
-    # NOTE: keep original logic using page.extract_text()
+    # Extract text excluding table regions to avoid duplication
+    text = page.extract_text() or ""
+    
+    # If there are tables, filter out text from those regions
+    if tables:
+        # Create a filtered page by excluding table bboxes
+        filtered_page = page
+        for table in tables:
+            # Crop out the table region
+            filtered_page = filtered_page.outside_bbox(table["bbox"])
+        text = filtered_page.extract_text() or ""
+    
     return {
-        "text": page.extract_text() or "",
+        "text": text,
         "lines": lines,
         "height": page.height,
         "tables": tables
     }
-
 
 def extract_text_tables(pdf_path):
     """Return per-page text, line anchors (y), page height, and tables with bbox."""
@@ -86,7 +61,6 @@ def extract_text_tables(pdf_path):
             pages.append(_build_page_entry(page, lines, tables))
     return pages
 
-
 def _stitch_full_text(pages_content):
     parts, offsets = [], []
     off = 0
@@ -96,13 +70,11 @@ def _stitch_full_text(pages_content):
         off += len(p["text"]) + 1  # newline between pages
     return "\n".join(parts), offsets
 
-
 def _qa_pattern():
     return re.compile(
         r"(Question\s*\d+\..*?)(?:\n| )Answer:\s*(.*?)(?=(?:\n?Question\s*\d+\.|$))",
         re.DOTALL
     )
-
 
 def _qa_matches_to_results(matches):
     return [{
@@ -110,14 +82,11 @@ def _qa_matches_to_results(matches):
         "answer": [{"type": "text", "content": m.group(2).strip()}]
     } for m in matches]
 
-
 def _is_question_line(ln):
     return re.match(r"\s*Question\s*\d+\.", ln["text"] or "") is not None
 
-
 def _is_answer_line(ln):
     return re.match(r"\s*Answer:\s*", ln["text"] or "") is not None
-
 
 def _collect_line_anchors(pages_content):
     q_anchors, a_anchors = [], []  # tuples of (page_idx, y)
@@ -150,14 +119,11 @@ def _compute_answer_spans(a_anchors, q_anchors, pages_content, results_len):
         spans.append((ap, ay, ep, ey))
     return spans
 
-
 def _pos_le(p1, y1, p2, y2):
     return (p1 < p2) or (p1 == p2 and y1 <= y2)
 
-
 def _pos_ge(p1, y1, p2, y2):
     return (p1 > p2) or (p1 == p2 and y1 >= y2)
-
 
 def _attach_tables_to_spans(results, pages_content, spans):
     if not spans:
@@ -184,8 +150,6 @@ def _attach_tables_to_spans(results, pages_content, spans):
                 target = latest
             if target is not None:
                 results[target]["answer"].append({"type": "table", "content": t["data"]})
-
-
 
 def split_into_qas(pages_content):
     """Global Q&A parse (handles page spill) + attach tables to the correct answer via (page,y) spans."""

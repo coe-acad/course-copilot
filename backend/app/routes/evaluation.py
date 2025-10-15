@@ -263,6 +263,15 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
         update_evaluation_with_result(evaluation_id, evaluation_result)
         
+        # Send completion email
+        try:
+            send_eval_completion_email(evaluation_id, user_id)
+            update_evaluation(evaluation_id, {"email_sent": True})
+            logger.info(f"Completion email sent for evaluation {evaluation_id}")
+        except Exception as email_error:
+            logger.error(f"Failed to send completion email for {evaluation_id}: {str(email_error)}")
+            # Don't raise - evaluation was successful, email is just notification
+        
         # Clean up: Delete temporary files after successful evaluation
         try:
             eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
@@ -280,7 +289,8 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        
+
+
         # Clean up temporary files even on error
         try:
             eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
@@ -324,6 +334,7 @@ async def evaluate_files(evaluation_id: str, user_id: str):
             "evaluation_id": evaluation_id,
             "message": "Evaluation started in background"
         }
+        
         
     except HTTPException:
         raise
@@ -380,7 +391,7 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             # Trigger completion email once
             try:
                 if not evaluation.get("email_sent"):
-                    send_eval_completion_email(evaluation_id, user_id)
+                    # send_eval_completion_email(evaluation_id, user_id)
                     update_evaluation(evaluation_id, {"email_sent": True})
             except Exception as e:
                 logger.error(f"Failed to send completion email for {evaluation_id}: {str(e)}")
@@ -430,7 +441,7 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         raise HTTPException(status_code=500, detail=f"Error saving evaluation: {str(e)}")
 
 def format_evaluation_report(evaluation):
-    """Format evaluation data into a readable report"""
+    """Format evaluation data into a readable combined report for all students"""
     result = evaluation["evaluation_result"]
     students = result.get("students", [])
     stored_filenames = evaluation.get("answer_sheet_filenames", [])
@@ -465,3 +476,91 @@ def format_evaluation_report(evaluation):
         report += "---\n\n"
     
     return report
+
+def format_student_report(evaluation, student_index: int):
+    """Format evaluation data into a readable report for a single student"""
+    result = evaluation["evaluation_result"]
+    students = result.get("students", [])
+    stored_filenames = evaluation.get("answer_sheet_filenames", [])
+    
+    if student_index < 0 or student_index >= len(students):
+        return None
+    
+    student = students[student_index]
+    
+    # Use stored filename if available, otherwise fall back to student_name or file_id
+    original_filename = "Unknown"
+    if student_index < len(stored_filenames):
+        original_filename = stored_filenames[student_index]
+    elif student.get('student_name'):
+        original_filename = student.get('student_name')
+    elif student.get('file_id'):
+        original_filename = f"File_{student.get('file_id')}"
+    
+    report = f"# Student Report\n\n"
+    report += f"**Student:** {student_index + 1}\n"
+    report += f"**File:** {original_filename}\n"
+    report += f"**Total Score:** {student.get('total_score', 0)}/{student.get('max_total_score', 0)}\n"
+    report += f"**Status:** {student.get('status', 'completed')}\n"
+    report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
+    
+    answers = student.get('answers', [])
+    for j, answer in enumerate(answers, 1):
+        report += f"## Question {j}\n"
+        report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
+        report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
+        report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
+        report += f"**Feedback:** {answer.get('feedback', 'N/A')}\n\n"
+    
+    return report
+
+@router.get("/evaluation/report/{evaluation_id}")
+def get_evaluation_report(evaluation_id: str, user_id: str = Depends(verify_token)):
+    """Get combined evaluation report for all students"""
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        if not evaluation.get("evaluation_result"):
+            raise HTTPException(status_code=400, detail="Evaluation not yet completed")
+        report = format_evaluation_report(evaluation)
+        return {"report": report}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting evaluation report for {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting evaluation report: {str(e)}")
+
+@router.get("/evaluation/report/{evaluation_id}/student/{student_index}")
+def get_student_report(evaluation_id: str, student_index: int, user_id: str = Depends(verify_token)):
+    """Get evaluation report for a specific student by index (0-based)"""
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        if not evaluation.get("evaluation_result"):
+            raise HTTPException(status_code=400, detail="Evaluation not yet completed")
+        
+        result = evaluation["evaluation_result"]
+        students = result.get("students", [])
+        
+        if student_index < 0 or student_index >= len(students):
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Student index {student_index} not found. Valid range: 0-{len(students)-1}"
+            )
+        
+        report = format_student_report(evaluation, student_index)
+        if report is None:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        return {
+            "report": report,
+            "student_index": student_index,
+            "total_students": len(students)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting student report for {evaluation_id}, student {student_index}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting student report: {str(e)}")
