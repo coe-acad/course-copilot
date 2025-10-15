@@ -3,6 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
 import { evaluationService } from "../services/evaluation";
+import { FiEye } from "react-icons/fi";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import { jsPDF } from "jspdf";
 
 export default function Evaluation() {
   const navigate = useNavigate();
@@ -19,10 +24,6 @@ export default function Evaluation() {
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [showResults, setShowResults] = useState(false);
-  // eslint-disable-next-line no-unused-vars
-  const [evaluationProgress, setEvaluationProgress] = useState(0);
-  // eslint-disable-next-line no-unused-vars
-  const [evaluationStatus, setEvaluationStatus] = useState('');
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
@@ -37,11 +38,11 @@ export default function Evaluation() {
   const [assetName, setAssetName] = useState(''); // Asset name for saving
   const [showNameInputScreen, setShowNameInputScreen] = useState(false); // Show name input screen
   const [showProcessStartedPopup, setShowProcessStartedPopup] = useState(false); // Show process started popup
-  const manualProgressRef = React.useRef(false);
-  const evaluationCompletedRef = React.useRef(false);
-  const pollIntervalRef = React.useRef(null);
+  const [showReportModal, setShowReportModal] = useState(false); // Show report modal
+  const [currentReport, setCurrentReport] = useState(''); // Current report content
+  const [reportTitle, setReportTitle] = useState(''); // Report title
+  const [isLoadingReport, setIsLoadingReport] = useState(false); // Loading report
   const pendingSavePromiseRef = React.useRef(null);
-  const abortControllerRef = React.useRef(null);
 
   const evaluationInProgressRef = React.useRef(false);
 
@@ -49,18 +50,9 @@ export default function Evaluation() {
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
   const openedFromCardRef = React.useRef(false);
 
-  // Clear any background timers when unmounting to avoid blocking the rest of the app
-  useEffect(() => {
-    return () => {
-      try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-    };
-  }, []);
-
   
 
   const handleClose = () => {
-    try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-    try { if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; } } catch {}
     const maybeWaitForSave = async () => {
       try {
         if (pendingSavePromiseRef.current) {
@@ -83,12 +75,10 @@ export default function Evaluation() {
       openedFromCardRef.current = true;
       setEvaluationId(evalId);
       setShowResults(true);
-      setIsEvaluating(true);
       // Fetch status and populate results
       (async () => {
         try {
-          abortControllerRef.current = new AbortController();
-          const status = await evaluationService.checkEvaluationStatus(evalId, { signal: abortControllerRef.current.signal });
+          const status = await evaluationService.checkEvaluationStatus(evalId);
           // If filenames are available, populate the table's file list to render rows
           if (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0) {
             const files = status.answer_sheet_filenames.map(name => ({ name }));
@@ -97,94 +87,12 @@ export default function Evaluation() {
           }
           if (status.status === 'completed' && status.evaluation_result) {
             setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
-            setEvaluationProgress(100);
-            setEvaluationStatus('Evaluation completed!');
+            setIsEvaluating(false);
           } else {
-            setEvaluationStatus('Processing...');
-            // Start same progress simulation as Evaluate flow (90s per file), then poll
-            try {
-              manualProgressRef.current = true;
-              evaluationCompletedRef.current = false;
-              const filesCount = (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0)
-                ? status.answer_sheet_filenames.length
-                : ((answerSheetFiles && answerSheetFiles.length > 0) ? answerSheetFiles.length : 1);
-              setIsEvaluating(true);
-              setShowResults(true);
-              setEvaluationProgress(0);
-              let elapsedSeconds = 0;
-              const totalSecondsTo95 = Math.max(1, filesCount * 90);
-              const progressTimer = setInterval(() => {
-                if (evaluationCompletedRef.current) {
-                  clearInterval(progressTimer);
-                  return;
-                }
-                elapsedSeconds += 1;
-                const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
-                setEvaluationProgress(prev => (target > prev ? target : prev));
-                if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
-                else if (target < 40) setEvaluationStatus('Processing answer sheets...');
-                else if (target < 60) setEvaluationStatus('Evaluating student responses...');
-                else if (target < 80) setEvaluationStatus('Calculating scores...');
-                else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
-                else setEvaluationStatus('Waiting for backend to complete...');
-
-                if (target >= 95) {
-                  clearInterval(progressTimer);
-                  // Begin polling until completion
-                  let consecutiveFailures = 0;
-                  const maxConsecutiveFailures = 3;
-                  const pollInterval = setInterval(async () => {
-                    if (evaluationCompletedRef.current) {
-                      clearInterval(pollInterval);
-                      return;
-                    }
-                    try {
-                      const controller = new AbortController();
-                      abortControllerRef.current = controller;
-                      const statusResponse = await evaluationService.checkEvaluationStatus(evalId, { signal: controller.signal });
-                      consecutiveFailures = 0;
-                      if (statusResponse.status === 'completed') {
-                        clearInterval(pollInterval);
-                        try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-                        evaluationCompletedRef.current = true;
-                        setIsEvaluating(false);
-                        manualProgressRef.current = false;
-                        setEvaluationProgress(100);
-                        setEvaluationStatus('Evaluation completed!');
-                        if (statusResponse.evaluation_result) {
-                          setEvaluationResult({ evaluation_id: evalId, evaluation_result: statusResponse.evaluation_result });
-                        }
-                      } else {
-                        setEvaluationStatus('Backend still processing... Please wait...');
-                      }
-                    } catch (pollError) {
-                      consecutiveFailures++;
-                      if (pollError.message && pollError.message.includes('Authentication')) {
-                        clearInterval(pollInterval);
-                        setIsEvaluating(false);
-                        setEvaluationStatus('Authentication failed during polling');
-                        manualProgressRef.current = false;
-                        return;
-                      }
-                      if (pollError.message && pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
-                        clearInterval(pollInterval);
-                        setIsEvaluating(false);
-                        setEvaluationStatus('Evaluation session lost - please try again');
-                        setEvaluationProgress(0);
-                        manualProgressRef.current = false;
-                        return;
-                      }
-                    }
-                  }, 15000);
-                  pollIntervalRef.current = pollInterval;
-                }
-              }, 1000);
-            } catch {}
+            setIsEvaluating(true);
           }
         } catch (e) {
           console.warn('Failed to load saved evaluation:', e.message);
-          setEvaluationStatus('Unable to load evaluation');
-        } finally {
           setIsEvaluating(false);
         }
       })();
@@ -198,8 +106,6 @@ export default function Evaluation() {
   useEffect(() => {
     // This effect will run whenever forceUpdate changes, forcing a re-render
   }, [forceUpdate]);
-
-  // Progress bar removed: no simulated progress updates
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -311,7 +217,12 @@ export default function Evaluation() {
       return;
     }
 
-    // Show process started popup on the name screen (do not hide name screen)
+    // Prevent duplicate evaluation calls
+    if (evaluationInProgressRef.current || isEvaluating) {
+      return;
+    }
+
+    // Show process started popup on the name screen
     setShowProcessStartedPopup(true);
 
     // Save the evaluation with the provided name
@@ -349,8 +260,6 @@ export default function Evaluation() {
       });
     pendingSavePromiseRef.current = savePromise;
 
-    // Do not auto-redirect; wait for user to click the button on the popup
-
     // Clear any previous evaluation tracking state
     evaluationService.clearCompletedEvaluations();
     
@@ -358,188 +267,19 @@ export default function Evaluation() {
     
     try {
       setIsEvaluating(true);
-      setEvaluationProgress(0);
-      setEvaluationStatus('Starting evaluation...');
 
-      // Start precise progress simulation up to 95%: 90 seconds per file
-      manualProgressRef.current = true;
-      evaluationCompletedRef.current = false;
-      const totalSecondsTo95 = Math.max(1, (answerSheetFiles?.length || 1) * 90);
-      let elapsedSeconds = 0;
-      const progressTimer = setInterval(() => {
-        if (evaluationCompletedRef.current) {
-          clearInterval(progressTimer);
-          return;
-        }
-        elapsedSeconds += 1;
-        const target = Math.min(95, (elapsedSeconds / totalSecondsTo95) * 95);
-        setEvaluationProgress(prev => (target > prev ? target : prev));
-        // Update status bands
-        if (target < 20) setEvaluationStatus('Analyzing mark scheme...');
-        else if (target < 40) setEvaluationStatus('Processing answer sheets...');
-        else if (target < 60) setEvaluationStatus('Evaluating student responses...');
-        else if (target < 80) setEvaluationStatus('Calculating scores...');
-        else if (target < 95) setEvaluationStatus('Finalizing evaluation...');
-        else setEvaluationStatus('Waiting for backend to complete...');
-
-        if (target >= 95) {
-          clearInterval(progressTimer); // Stop at exactly 95% and wait for backend
-          // Start polling for completion after reaching 95%
-          startPollingForCompletion();
-        }
-      }, 1000);
-
-      // Trigger backend evaluation; whenever it finishes, jump to 100%
-      const finishWithResult = (result) => {
-        evaluationCompletedRef.current = true;
-        evaluationInProgressRef.current = false; // Reset the flag
-        setEvaluationResult(result);
-        setEvaluationProgress(100);
-        setEvaluationStatus('Evaluation completed!');
-        setIsEvaluating(false);
-        manualProgressRef.current = false;
-        
-        // Clear any ongoing polling to prevent duplicate requests
-      };
-
-      // Start polling function that monitors status after 95%
-      const startPollingForCompletion = async () => {
-        if (evaluationCompletedRef.current) {
-          return;
-        }
-        
-        setEvaluationStatus('Backend processing complete files... Please wait...');
-        
-        let consecutiveFailures = 0;
-        const maxConsecutiveFailures = 3;
-        let pollInterval;
-        
-        try {
-          // Poll every 15 seconds until completion
-          pollInterval = setInterval(async () => {
-            if (evaluationCompletedRef.current) {
-              clearInterval(pollInterval);
-              return;
-            }
-            
-            try {
-              const controller = new AbortController();
-              abortControllerRef.current = controller;
-              const statusResponse = await evaluationService.checkEvaluationStatus(evaluationId, { signal: controller.signal });
-              
-              // Reset failure counter on successful response
-              consecutiveFailures = 0;
-              
-              if (statusResponse.status === 'completed') {
-                clearInterval(pollInterval);
-                try { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } } catch {}
-                evaluationCompletedRef.current = true;
-                evaluationInProgressRef.current = false;
-                setIsEvaluating(false);
-                manualProgressRef.current = false;
-                setEvaluationProgress(100);
-                setEvaluationStatus('Evaluation completed!');
-                if (statusResponse.evaluation_result) {
-                  finishWithResult({
-                    evaluation_id: evaluationId,
-                    evaluation_result: statusResponse.evaluation_result
-                  });
-                }
-                return; // Exit immediately after completion
-              } else {
-                setEvaluationStatus('Backend still processing... Please wait...');
-              }
-            } catch (pollError) {
-              consecutiveFailures++;
-              console.warn(`Polling error (attempt ${consecutiveFailures}/${maxConsecutiveFailures}):`, pollError.message);
-              
-              // If it's a 404 error and we've had consecutive failures, try fallback
-              if (pollError.message.includes('Evaluation not found') && consecutiveFailures >= maxConsecutiveFailures) {
-                try {
-                  const controller2 = new AbortController();
-                  abortControllerRef.current = controller2;
-                  const fallbackResponse = await evaluationService.checkCompletedEvaluation(evaluationId, { signal: controller2.signal });
-                  if (fallbackResponse.status === 'completed' && fallbackResponse.evaluation_result) {
-                    clearInterval(pollInterval);
-                    finishWithResult({
-                      evaluation_id: evaluationId,
-                      evaluation_result: fallbackResponse.evaluation_result
-                    });
-                    return; // Exit immediately after completion
-                  }
-                  // Reset failure counter if fallback works
-                  consecutiveFailures = 0;
-                  setEvaluationStatus('Using fallback monitoring... Please wait...');
-                } catch (fallbackError) {
-                  console.error('Fallback check also failed:', fallbackError.message);
-                  // If fallback also fails, stop polling
-                  clearInterval(pollInterval);
-                  evaluationInProgressRef.current = false;
-                  setIsEvaluating(false);
-                  setEvaluationStatus('Evaluation session lost - please try again');
-                  setEvaluationProgress(0);
-                  manualProgressRef.current = false;
-                  alert('The evaluation session was lost and could not be recovered. This might be due to a server restart or timeout. Please try restarting the evaluation process.');
-                  return;
-                }
-              } else {
-                // For other errors or first few 404s, just log and continue
-                setEvaluationStatus(`Checking status... (${consecutiveFailures} retries)`);
-              }
-            }
-          }, 15000); // Poll every 15 seconds
-          // Store globally so we can clear on unmount/close
-          pollIntervalRef.current = pollInterval;
-          
-          // Safety timeout after 1 hour of polling
-          setTimeout(() => {
-            if (!evaluationCompletedRef.current) {
-              clearInterval(pollInterval);
-              evaluationInProgressRef.current = false;
-              setIsEvaluating(false);
-              setEvaluationStatus('Evaluation timed out - please try again');
-              setEvaluationProgress(0);
-              manualProgressRef.current = false;
-              alert('Evaluation timed out after 1 hour. Please try refreshing and checking again, or contact support.');
-            }
-          }, 60 * 60 * 1000); // 1 hour
-          
-        } catch (error) {
-          console.error('Error starting polling:', error);
-          if (pollInterval) clearInterval(pollInterval);
-          evaluationInProgressRef.current = false;
-          setIsEvaluating(false);
-          setEvaluationStatus('Polling failed - please try again');
-          alert('Failed to monitor evaluation status: ' + error.message);
-        }
-      };
-
-      // Also try the original evaluation service call (for single files or immediate completion)
-      evaluationService.evaluateFiles(evaluationId)
-        .then((result) => {
-          finishWithResult(result);
-        })
-        .catch(err => {
-          console.warn('Evaluation service call failed, relying on polling:', err?.message || err);
-          // Don't fail here - let polling handle the completion
-          // Only fail if it's a clear authentication or setup error
-          if (err?.message?.includes('Authentication failed') || err?.message?.includes('not found')) {
-            evaluationInProgressRef.current = false;
-            setIsEvaluating(false);
-            setEvaluationStatus('Evaluation failed - please try again');
-            setEvaluationProgress(0);
-            manualProgressRef.current = false;
-            alert('Evaluation failed: ' + (err?.message || 'Unknown error'));
-          }
-        });
+      // Start the evaluation in the background
+      await evaluationService.evaluateFiles(evaluationId);
+      
+      // Evaluation started successfully
+      evaluationInProgressRef.current = false;
        
     } catch (err) {
       console.error('Evaluation error:', err);
-      evaluationInProgressRef.current = false; // Reset the flag
-      setIsEvaluating(false); // Stop the progress simulation
-      setEvaluationStatus('Evaluation failed');
-      setEvaluationProgress(0);
-      alert(err?.message || 'Evaluation failed');
+      evaluationInProgressRef.current = false;
+      setIsEvaluating(false);
+      setShowProcessStartedPopup(false);
+      alert(err?.message || 'Failed to start evaluation');
     }
   };
 
@@ -894,6 +634,211 @@ export default function Evaluation() {
     }
     
     return [];
+  };
+
+  const handleViewStudentReport = async (studentIndex) => {
+    if (!evaluationId) {
+      alert('Evaluation ID not found');
+      return;
+    }
+
+    setIsLoadingReport(true);
+    setShowReportModal(true);
+    
+    try {
+      const reportData = await evaluationService.getStudentReport(evaluationId, studentIndex);
+      setCurrentReport(reportData.report);
+      const fileName = answerSheetFiles[studentIndex]?.name || `Student ${studentIndex + 1}`;
+      setReportTitle(`Report: ${fileName}`);
+    } catch (error) {
+      console.error('Error fetching student report:', error);
+      alert(error.message || 'Failed to load student report');
+      setShowReportModal(false);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const handleViewCombinedReport = async () => {
+    if (!evaluationId) {
+      alert('Evaluation ID not found');
+      return;
+    }
+
+    setIsLoadingReport(true);
+    setShowReportModal(true);
+    
+    try {
+      const reportData = await evaluationService.getCombinedReport(evaluationId);
+      setCurrentReport(reportData.report);
+      setReportTitle('Combined Evaluation Report');
+    } catch (error) {
+      console.error('Error fetching combined report:', error);
+      alert(error.message || 'Failed to load combined report');
+      setShowReportModal(false);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const handleDownloadReport = () => {
+    if (!currentReport) {
+      alert('No report to download');
+      return;
+    }
+
+    try {
+      // Create PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      const maxWidth = pageWidth - 2 * margin;
+      let yPosition = margin;
+
+      // Helper function to render text with inline bold formatting
+      const renderTextWithFormatting = (text, xPos, yPos, fontSize, maxW) => {
+        doc.setFontSize(fontSize);
+        let currentX = xPos;
+        let currentY = yPos;
+        const lineHeight = fontSize * 0.5;
+        
+        // Split text by bold markers
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        
+        parts.forEach(part => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            // Bold text
+            const boldText = part.replace(/\*\*/g, '');
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(31, 41, 55);
+            
+            // Check if text fits on current line
+            const textWidth = doc.getTextWidth(boldText);
+            if (currentX + textWidth > xPos + maxW && currentX > xPos) {
+              // Move to next line
+              currentY += lineHeight;
+              currentX = xPos;
+              
+              // Check if new page needed
+              if (currentY > pageHeight - margin) {
+                doc.addPage();
+                currentY = margin;
+              }
+            }
+            
+            doc.text(boldText, currentX, currentY);
+            currentX += textWidth;
+          } else if (part) {
+            // Normal text
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(51, 51, 51);
+            
+            // Split by spaces to wrap words
+            const words = part.split(' ');
+            words.forEach((word, idx) => {
+              const wordText = idx === 0 ? word : ' ' + word;
+              const wordWidth = doc.getTextWidth(wordText);
+              
+              // Check if word fits on current line
+              if (currentX + wordWidth > xPos + maxW && currentX > xPos) {
+                // Move to next line
+                currentY += lineHeight;
+                currentX = xPos;
+                
+                // Check if new page needed
+                if (currentY > pageHeight - margin) {
+                  doc.addPage();
+                  currentY = margin;
+                }
+              }
+              
+              doc.text(wordText.trim(), currentX, currentY);
+              currentX += wordWidth;
+            });
+          }
+        });
+        
+        return currentY;
+      };
+
+      // Parse markdown and convert to PDF
+      const lines = currentReport.split('\n');
+      
+      lines.forEach((line, index) => {
+        // Check if we need a new page
+        if (yPosition > pageHeight - margin - 20) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        // Handle different markdown elements
+        if (line.startsWith('# ')) {
+          // H1 - Main title
+          doc.setFontSize(24);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(30, 64, 175);
+          const text = line.replace('# ', '');
+          const textLines = doc.splitTextToSize(text, maxWidth);
+          doc.text(textLines, margin, yPosition);
+          yPosition += textLines.length * 12 + 8;
+        } else if (line.startsWith('## ')) {
+          // H2 - Section title
+          yPosition += 4; // Add some top margin
+          doc.setFontSize(18);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          const text = line.replace('## ', '');
+          const textLines = doc.splitTextToSize(text, maxWidth);
+          doc.text(textLines, margin, yPosition);
+          yPosition += textLines.length * 9 + 6;
+        } else if (line.startsWith('### ')) {
+          // H3 - Subsection
+          yPosition += 2;
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(55, 65, 81);
+          const text = line.replace('### ', '');
+          const textLines = doc.splitTextToSize(text, maxWidth);
+          doc.text(textLines, margin, yPosition);
+          yPosition += textLines.length * 7 + 4;
+        } else if (line.trim() === '---') {
+          // Horizontal rule
+          yPosition += 4;
+          doc.setDrawColor(233, 236, 239);
+          doc.setLineWidth(0.5);
+          doc.line(margin, yPosition, pageWidth - margin, yPosition);
+          yPosition += 6;
+        } else if (line.trim() === '') {
+          // Empty line - add spacing
+          yPosition += 4;
+        } else if (line.includes('**')) {
+          // Line contains inline bold formatting
+          const newY = renderTextWithFormatting(line, margin, yPosition, 10, maxWidth);
+          yPosition = newY + 6;
+        } else if (line.trim()) {
+          // Regular text without formatting
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(51, 51, 51);
+          const textLines = doc.splitTextToSize(line, maxWidth);
+          doc.text(textLines, margin, yPosition);
+          yPosition += textLines.length * 5 + 3;
+        }
+      });
+
+      // Generate filename based on report type
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = reportTitle.includes('Combined') 
+        ? `Combined_Evaluation_Report_${timestamp}.pdf`
+        : `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
+      
+      // Save the PDF
+      doc.save(filename);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
   };
 
   // If showing review page, display the review interface
@@ -1253,8 +1198,8 @@ export default function Evaluation() {
         </div>
 
 
-        {/* Total Submissions Summary */}
-        <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%' }}>
+        {/* Total Submissions Summary and Combined Report Button */}
+        <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ 
             display: 'inline-block',
             background: '#e3f2fd', 
@@ -1267,6 +1212,39 @@ export default function Evaluation() {
               {answerSheetFiles.length || 0}
             </div>
           </div>
+          
+          {/* View Combined Report Button */}
+          {evaluationResult && (
+            <button
+              onClick={handleViewCombinedReport}
+              style={{
+                padding: '14px 28px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: '16px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>📊</span>
+              View Combined Report
+            </button>
+          )}
         </div>
 
         {/* Evaluation Results Table */}
@@ -1275,7 +1253,7 @@ export default function Evaluation() {
             {/* Table Header */}
             <div style={{ 
               display: 'grid', 
-              gridTemplateColumns: '2fr 1fr 1fr 1fr',
+              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
               background: '#f8f9fa',
               borderBottom: '1px solid #dee2e6',
               padding: '16px 20px',
@@ -1287,6 +1265,7 @@ export default function Evaluation() {
               <div>Marks</div>
               <div>Result</div>
               <div>Status</div>
+              <div style={{ textAlign: 'center' }}>Report</div>
             </div>
 
             {/* Table Rows */}
@@ -1295,15 +1274,15 @@ export default function Evaluation() {
                 key={index}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
                   padding: '16px 20px',
                   borderBottom: '1px solid #f1f3f4',
                   alignItems: 'center',
                   background: index % 2 === 0 ? '#fff' : '#fafbfc',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.target.parentElement.style.background = '#f8f9fa'}
-                onMouseLeave={(e) => e.target.parentElement.style.background = index % 2 === 0 ? '#fff' : '#fafbfc'}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f8f9fa'}
+                onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? '#fff' : '#fafbfc'}
               >
                 {/* Filename - Now Clickable */}
                 <div 
@@ -1381,6 +1360,45 @@ export default function Evaluation() {
                   fontWeight: 500
                 }}>
                   {evaluationResult?.evaluation_result?.students?.[index]?.status === 'modified' ? 'modified' : 'unmodified'}
+                </div>
+
+                {/* Eye Button - View Individual Report */}
+                <div style={{ textAlign: 'center' }}>
+                  {evaluationResult ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewStudentReport(index);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #2563eb',
+                        background: '#fff',
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s',
+                        width: '40px',
+                        height: '40px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#2563eb';
+                        e.currentTarget.style.color = '#fff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#fff';
+                        e.currentTarget.style.color = '#2563eb';
+                      }}
+                      title="View Report"
+                    >
+                      <FiEye size={18} />
+                    </button>
+                  ) : (
+                    <span style={{ color: '#ccc', fontSize: '18px' }}>-</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -1470,6 +1488,198 @@ export default function Evaluation() {
                   }}
                 >
                   {isSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Report Modal */}
+        {showReportModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 16,
+              padding: 32,
+              width: '900px',
+              maxWidth: '95vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+            }}>
+              {/* Modal Header */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: 24,
+                paddingBottom: 16,
+                borderBottom: '2px solid #e9ecef'
+              }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#1e40af' }}>
+                  {reportTitle}
+                </h2>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: 28,
+                    cursor: 'pointer',
+                    color: '#666',
+                    padding: 0,
+                    width: 32,
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div style={{ 
+                flex: 1, 
+                overflowY: 'auto',
+                marginBottom: 24,
+                padding: '0 20px 0 4px'
+              }}>
+                {isLoadingReport ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '300px'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ 
+                        fontSize: 48, 
+                        marginBottom: 16,
+                        animation: 'spin 1s linear infinite'
+                      }}>⏳</div>
+                      <div style={{ color: '#666', fontSize: 16 }}>Loading report...</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                    fontSize: 15,
+                    lineHeight: 1.7,
+                    color: '#333'
+                  }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                      components={{
+                        h1: ({node, ...props}) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
+                        h2: ({node, ...props}) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
+                        h3: ({node, ...props}) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
+                        h4: ({node, ...props}) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
+                        p: ({node, ...props}) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
+                        strong: ({node, ...props}) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: 8 }} {...props} />,
+                        code: ({node, inline, ...props}) => 
+                          inline ? 
+                            <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: 14, fontFamily: 'monospace', color: '#dc2626' }} {...props} /> :
+                            <code style={{ background: '#1f2937', color: '#f3f4f6', padding: 16, borderRadius: 8, display: 'block', overflow: 'auto', fontSize: 14, fontFamily: 'monospace' }} {...props} />,
+                        pre: ({node, ...props}) => <pre style={{ background: '#1f2937', borderRadius: 8, padding: 16, marginBottom: 16, overflow: 'auto' }} {...props} />,
+                        blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #2563eb', paddingLeft: 16, margin: '16px 0', color: '#4b5563', fontStyle: 'italic', background: '#f8f9fa', padding: '12px 16px', borderRadius: '0 8px 8px 0' }} {...props} />,
+                        hr: ({node, ...props}) => <hr style={{ border: 'none', borderTop: '2px solid #e9ecef', margin: '24px 0' }} {...props} />,
+                        table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, border: '1px solid #dee2e6' }} {...props} />,
+                        thead: ({node, ...props}) => <thead style={{ background: '#f8f9fa' }} {...props} />,
+                        th: ({node, ...props}) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
+                        td: ({node, ...props}) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
+                        a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
+                      }}
+                    >
+                      {currentReport}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: 12,
+                paddingTop: 16,
+                borderTop: '2px solid #e9ecef'
+              }}>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: 8,
+                    border: '1px solid #dee2e6',
+                    background: '#fff',
+                    color: '#495057',
+                    cursor: 'pointer',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f8f9fa';
+                    e.currentTarget.style.borderColor = '#adb5bd';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#fff';
+                    e.currentTarget.style.borderColor = '#dee2e6';
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleDownloadReport}
+                  disabled={isLoadingReport}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: isLoadingReport ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: '#fff',
+                    cursor: isLoadingReport ? 'not-allowed' : 'pointer',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isLoadingReport) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isLoadingReport) {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                    }
+                  }}
+                >
+                  <span>📥</span>
+                  Download Report
                 </button>
               </div>
             </div>

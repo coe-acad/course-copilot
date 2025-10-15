@@ -6,7 +6,6 @@ const API_BASE = new URL('/api', baseUrl).toString();
 // Create axios instance with default config
 const axiosInstance = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }

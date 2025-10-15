@@ -66,7 +66,7 @@ class ExportToModuleRequest(BaseModel):
     lms_course_id: str  # LMS course ID (destination)
     lms_module_id: str  # LMS module ID (destination)
 
-def post_quiz_to_lms(request: PostQuizRequest, user_id: str):
+def post_quiz_to_lms(request: PostQuizRequest, user_id: str=Depends(verify_token)):
     """
     Post quiz data to the LMS platform and link it to course/module
     
@@ -172,7 +172,7 @@ def post_quiz_to_lms(request: PostQuizRequest, user_id: str):
         logger.error(f"Error posting quiz to LMS: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-def post_activity_to_lms(request: PostActivityRequest, user_id: str):
+def post_activity_to_lms(request: PostActivityRequest, user_id: str=Depends(verify_token)):
     """
     Post activity data to the LMS platform and link it to course/module
     
@@ -417,7 +417,7 @@ def get_modules_lms(request: GetModulesLMSRequest, user_id: str=Depends(verify_t
 
 #route to create a module in LMS
 @router.post("/create-module-lms")
-def create_module_lms(request: CreateModuleLMSRequest, user_id: str):
+def create_module_lms(request: CreateModuleLMSRequest, user_id: str=Depends(verify_token)):
     """
     Create a new module in the LMS platform using authentication cookies
     """
@@ -463,7 +463,7 @@ def create_module_lms(request: CreateModuleLMSRequest, user_id: str):
 
 #post asset to lms which will take the asset name and type and use the function to post to lms
 @router.post("/post-asset-to-lms")
-def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str):
+def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str=Depends(verify_token)):
     """
     Post asset to the LMS platform based on asset type
     
