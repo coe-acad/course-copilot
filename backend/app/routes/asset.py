@@ -104,8 +104,40 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
 
         assistant_id = course["assistant_id"]
 
+        # Check if mark-scheme and extract questions first
+        extracted_questions = ""
+        if asset_type_name == "mark-scheme":
+            # First extract questions using qp-extraction
+            input_variables_qp = construct_input_variables(course, file_names)
+            parser_qp = PromptParser()
+            prompt_qp = parser_qp.get_asset_prompt("qp-extraction", input_variables_qp)
+            
+            thread_qp = client.beta.threads.create()
+            client.beta.threads.messages.create(
+                thread_id=thread_qp.id,
+                role="user",
+                content=prompt_qp
+            )
+            
+            handler_qp = AssetChatStreamHandler()
+            with client.beta.threads.runs.stream(
+                thread_id=thread_qp.id,
+                assistant_id=assistant_id,
+                event_handler=handler_qp
+            ) as stream:
+                stream.until_done()
+            
+            messages_qp = client.beta.threads.messages.list(thread_id=thread_qp.id)
+            extracted_questions = messages_qp.data[0].content[0].text.value
+            logger.info(f"Extracted questions: {extracted_questions}")
+
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names)
+        
+        # Add extracted_questions to input_variables if mark-scheme
+        if asset_type_name == "mark-scheme":
+            input_variables["extracted_questions"] = extracted_questions
+        
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
         logger.info(f"Prompt for asset '{asset_type_name}': {prompt}")
