@@ -984,26 +984,71 @@ export default function Evaluation() {
                 Question {selectedQuestionIndex + 1}
               </h3>
               
-                             <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
-                 <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
+                <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', lineHeight: '1.6' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline ? 
+                          <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                    }}
+                  >
+                    {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
+                  </ReactMarkdown>
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
-                 <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
+                <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe', lineHeight: '1.6' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline ? 
+                          <code style={{ background: '#dbeafe', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                    }}
+                  >
+                    {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
+                  </ReactMarkdown>
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
-                 <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
+                <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24', lineHeight: '1.6' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#78350f' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline ? 
+                          <code style={{ background: '#fed7aa', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                    }}
+                  >
+                    {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
+                  </ReactMarkdown>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1154,8 +1199,23 @@ export default function Evaluation() {
                     }}
                   />
                 ) : (
-                  <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', fontSize: '14px', lineHeight: '1.5' }}>
-                    {student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available'}
+                  <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', fontSize: '14px', lineHeight: '1.6' }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                      components={{
+                        p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                        strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                        code: ({node, inline, ...props}) => 
+                          inline ? 
+                            <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                            <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                      }}
+                    >
+                      {student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available'}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>

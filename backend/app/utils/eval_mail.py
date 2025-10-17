@@ -1,5 +1,5 @@
 # This file contains the logic for sending emails to the user about evlaution completion
-from ..services.mongo import get_evaluation_by_evaluation_id, get_email_by_user_id
+from ..services.mongo import get_evaluation_by_evaluation_id, get_email_by_user_id, get_asset_by_evaluation_id
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -41,14 +41,19 @@ def send_eval_completion_email(evaluation_id: str, user_id: str):
     if not user_email:
         print(f"[EMAIL-WARN] No email found for user_id={user_id}; skipping email.")
         return
+    
+    # Get the asset name for this evaluation
+    asset = get_asset_by_evaluation_id(evaluation_id)
+    asset_name = asset.get("asset_name", "Unnamed Evaluation") if asset else "Unnamed Evaluation"
+    
     subject = "Evaluation Completed"
     body = f"""
 Dear User,
 
-Your evaluation (ID: {evaluation_id}) has been successfully completed.  
-You can view the results on the evaluation card of the course.  
+Your evaluation "{asset_name}" has been successfully completed.
+You can view the results on the evaluation card of the course.
 
-Regards,  
+Regards,
 ACAD
 """
     send_email(user_email, subject, body)
