@@ -27,7 +27,15 @@ def _extract_tables_on_page(page):
         "horizontal_strategy": "lines"
     }):
         x0, top, x1, bottom = t.bbox
-        tables.append({"bbox": (x0, top, x1, bottom), "data": t.extract()})
+        # Clip table bbox to page boundaries to avoid errors
+        x0 = max(0, min(x0, page.width))
+        x1 = max(0, min(x1, page.width))
+        top = max(0, min(top, page.height))
+        bottom = max(0, min(bottom, page.height))
+        
+        # Only add valid tables (with non-zero area)
+        if x1 > x0 and bottom > top:
+            tables.append({"bbox": (x0, top, x1, bottom), "data": t.extract()})
     return tables
 
 def _build_page_entry(page, lines, tables):
@@ -39,8 +47,14 @@ def _build_page_entry(page, lines, tables):
         # Create a filtered page by excluding table bboxes
         filtered_page = page
         for table in tables:
-            # Crop out the table region
-            filtered_page = filtered_page.outside_bbox(table["bbox"])
+            try:
+                # Crop out the table region
+                filtered_page = filtered_page.outside_bbox(table["bbox"])
+            except ValueError as e:
+                # If bbox is still invalid, skip filtering for this table
+                # This shouldn't happen after clipping, but safety first
+                warnings.warn(f"Skipping table bbox filtering due to: {e}")
+                continue
         text = filtered_page.extract_text() or ""
     
     return {

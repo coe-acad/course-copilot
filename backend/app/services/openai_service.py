@@ -757,18 +757,30 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             logger.error(f"Batch {batch_num} evaluation failed: {run.last_error}")
             raise HTTPException(status_code=500, detail=f"Batch {batch_num} evaluation failed: {run.last_error}")
 
-        # Get assistant message content
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
+        # Get assistant message content with robust structured output handling
         structured_output = None
-        for msg in messages.data:
-            if msg.role == "assistant" and msg.content and len(msg.content) > 0:
-                content = msg.content[0]
-                if hasattr(content, "text") and content.text.value:
-                    structured_output = content.text.value
+
+        # Prefer structured output from run if available
+        if hasattr(run, "output") and run.output and hasattr(run.output, "data"):
+            try:
+                structured_output = run.output.data[0].content[0].text.value
+            except Exception:
+                pass
+
+        # Fallback to message parsing if run.output missing
+        if not structured_output:
+            messages = client.beta.threads.messages.list(thread_id=thread.id)
+            for msg in messages.data:
+                if msg.role == "assistant" and msg.content:
+                    for content in msg.content:
+                        if hasattr(content, "text") and content.text.value:
+                            structured_output = content.text.value
+                            break
+                if structured_output:
                     break
 
         if not structured_output:
-            raise HTTPException(status_code=500, detail=f"No content returned for batch {batch_num}")
+            raise HTTPException(status_code=500, detail=f"No structured content returned for batch {batch_num}")
 
         # Parse and enforce minimal invariants
         try:
