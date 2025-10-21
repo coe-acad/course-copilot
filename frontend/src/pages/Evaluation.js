@@ -841,6 +841,24 @@ export default function Evaluation() {
     }
   };
 
+  const handleDownloadCSV = async () => {
+    if (!evaluationId) {
+      alert('No evaluation available to download');
+      return;
+    }
+
+    try {
+      setIsLoadingReport(true);
+      await evaluationService.downloadReportCSV(evaluationId);
+      alert('CSV report downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading CSV:', error);
+      alert(error.message || 'Failed to download CSV report. Please try again.');
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
   // If showing review page, display the review interface
   if (showReview && selectedStudentIndex !== null && evaluationResult) {
     // Add safety checks for evaluation data
@@ -1273,37 +1291,76 @@ export default function Evaluation() {
             </div>
           </div>
           
-          {/* View Combined Report Button */}
+          {/* Action Buttons */}
           {evaluationResult && (
-            <button
-              onClick={handleViewCombinedReport}
-              style={{
-                padding: '14px 28px',
-                borderRadius: '10px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '16px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>📊</span>
-              View Combined Report
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Download CSV Button */}
+              <button
+                onClick={handleDownloadCSV}
+                disabled={isLoadingReport}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: isLoadingReport ? '#ccc' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: '16px',
+                  cursor: isLoadingReport ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoadingReport) {
+                    e.target.style.transform = 'translateY(-2px)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.4)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoadingReport) {
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                  }
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>📥</span>
+                {isLoadingReport ? 'Downloading...' : 'Download CSV'}
+              </button>
+              
+              {/* View Combined Report Button */}
+              <button
+                onClick={handleViewCombinedReport}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>📊</span>
+                View Combined Report
+              </button>
+            </div>
           )}
         </div>
 

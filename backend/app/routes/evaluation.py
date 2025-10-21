@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, UploadFile, Depends
 from pydantic import BaseModel
 from fastapi import Form, File, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import List, Optional
 import logging
 import json
@@ -11,6 +12,8 @@ from datetime import datetime
 from flask import request
 import os
 from pathlib import Path
+import csv
+import io
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
@@ -543,6 +546,75 @@ def format_student_report(evaluation, student_index: int):
     
     return report
 
+def format_evaluation_csv(evaluation):
+    """Format evaluation data into CSV format matching the template structure"""
+    result = evaluation["evaluation_result"]
+    students = result.get("students", [])
+    stored_filenames = evaluation.get("answer_sheet_filenames", [])
+    
+    # Determine the maximum number of questions across all students
+    max_questions = 0
+    for student in students:
+        answers = student.get('answers', [])
+        if len(answers) > max_questions:
+            max_questions = len(answers)
+    
+    # Build CSV header
+    header = ["email"]
+    for i in range(1, max_questions + 1):
+        header.extend([f"Q{i}_score", f"Q{i}_feedback"])
+    header.extend(["total_marks", "max_score", "overall_feedback"])
+    
+    # Build CSV rows
+    rows = []
+    for idx, student in enumerate(students):
+        # Extract email from filename if possible, otherwise use stored filename
+        email = ""
+        if idx < len(stored_filenames):
+            filename = stored_filenames[idx]
+            # Try to extract email from filename
+            if '@' in filename:
+                # Extract email from filename (e.g., "john.doe@example.com.pdf" -> "john.doe@example.com")
+                email = filename.split('.pdf')[0] if '.pdf' in filename else filename
+            else:
+                email = filename
+        elif student.get('student_name'):
+            email = student.get('student_name')
+        else:
+            email = f"student_{idx + 1}"
+        
+        row = [email]
+        
+        # Add question scores and feedback
+        answers = student.get('answers', [])
+        for i in range(max_questions):
+            if i < len(answers):
+                answer = answers[i]
+                score = answer.get('score', '')
+                feedback = answer.get('feedback', '')
+                # Clean feedback text - remove newlines and quotes
+                if feedback:
+                    feedback = str(feedback).replace('\n', ' ').replace('\r', ' ').replace('"', '""')
+                row.extend([score if score != '' else '', feedback])
+            else:
+                # Empty cells for questions this student doesn't have
+                row.extend(['', ''])
+        
+        # Add total marks, max score, and overall feedback
+        total_score = student.get('total_score', 0)
+        max_total_score = student.get('max_total_score', 0)
+        row.extend([total_score, max_total_score, ''])
+        
+        rows.append(row)
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(header)
+    writer.writerows(rows)
+    
+    return output.getvalue()
+
 @router.get("/evaluation/report/{evaluation_id}")
 def get_evaluation_report(evaluation_id: str, user_id: str = Depends(verify_token)):
     """Get combined evaluation report for all students"""
@@ -593,3 +665,34 @@ def get_student_report(evaluation_id: str, student_index: int, user_id: str = De
     except Exception as e:
         logger.error(f"Error getting student report for {evaluation_id}, student {student_index}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting student report: {str(e)}")
+
+@router.get("/evaluation/report/{evaluation_id}/csv")
+def download_evaluation_csv(evaluation_id: str, user_id: str = Depends(verify_token)):
+    """Download evaluation report as CSV file"""
+    try:
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        if not evaluation.get("evaluation_result"):
+            raise HTTPException(status_code=400, detail="Evaluation not yet completed")
+        
+        # Generate CSV content
+        csv_content = format_evaluation_csv(evaluation)
+        
+        # Create a streaming response with CSV content
+        output = io.BytesIO(csv_content.encode('utf-8'))
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"evaluation_report_{evaluation_id[:8]}_{timestamp}.csv"
+        
+        return StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading CSV report for {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading CSV report: {str(e)}")
