@@ -1646,9 +1646,13 @@ export default function Evaluation() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkBreaks]}
                       components={{
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h1: ({node, ...props}) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h2: ({node, ...props}) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h3: ({node, ...props}) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h4: ({node, ...props}) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
                         p: ({node, ...props}) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
                         strong: ({node, ...props}) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
@@ -1666,6 +1670,7 @@ export default function Evaluation() {
                         thead: ({node, ...props}) => <thead style={{ background: '#f8f9fa' }} {...props} />,
                         th: ({node, ...props}) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
                         td: ({node, ...props}) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/anchor-has-content
                         a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
                       }}
                     >
