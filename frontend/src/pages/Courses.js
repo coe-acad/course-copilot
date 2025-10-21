@@ -68,13 +68,14 @@ export default function Courses() {
   const renderCourseCard = (course, index) => (
     <div
       key={index}
+      className="course-card"
       style={{
         background: "#fff",
         border: "1.5px solid #f3f4f6",
         borderRadius: 16,
         boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-        minWidth: 220,
-        maxWidth: 260,
+        width: "100%",
+        maxWidth: "280px",
         minHeight: 90,
         padding: "24px 20px",
         cursor: "pointer",
@@ -86,7 +87,8 @@ export default function Courses() {
         fontWeight: 600,
         color: "#222",
         position: 'relative',
-        transition: "transform 0.18s, box-shadow 0.18s, border 0.18s"
+        transition: "transform 0.18s, box-shadow 0.18s, border 0.18s",
+        boxSizing: "border-box"
       }}
       onClick={e => {
         // Only navigate if not clicking the menu
@@ -179,15 +181,17 @@ export default function Courses() {
       >
         {/* ✅ Course Cards go here */}
         <div
+          className="courses-grid"
           style={{
             padding: "24px 5vw",
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1.5fr)",
+            gridTemplateColumns: "repeat(4, 1fr)",
             gap: "40px",
             justifyItems: "center",
             alignItems: "stretch",
-            // width: "100vh",
-            minHeight: "120px"
+            minHeight: "120px",
+            maxWidth: "100%",
+            overflow: "hidden"
           }}
         >
           {savedCourses.length > 0 ? (
