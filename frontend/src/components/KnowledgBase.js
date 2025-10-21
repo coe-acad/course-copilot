@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { FiMoreVertical } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
 import ResourceViewModal from "./ResourceViewModal";
@@ -19,9 +20,11 @@ export default function KnowledgeBase({
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
+  const buttonRefs = useRef({});
   const [deletingId, setDeletingId] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState(null);
+  const [buttonPosition, setButtonPosition] = useState({ top: 0, left: 0 });
   // const [loadingViewId, setLoadingViewId] = useState(null);
   // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
 
@@ -37,8 +40,20 @@ export default function KnowledgeBase({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpenId]);
 
-  const toggleMenu = (id) => {
-    setMenuOpenId(menuOpenId === id ? null : id);
+  const toggleMenu = (id, event) => {
+    if (menuOpenId === id) {
+      setMenuOpenId(null);
+    } else {
+      const button = buttonRefs.current[id];
+      if (button) {
+        const rect = button.getBoundingClientRect();
+        setButtonPosition({
+          top: rect.bottom + window.scrollY,
+          left: rect.right - 120 + window.scrollX // 120 is dropdown width
+        });
+      }
+      setMenuOpenId(id);
+    }
   };
 
   const handleCheckboxToggle = (id) => {
@@ -94,7 +109,9 @@ export default function KnowledgeBase({
         padding: 18,
         minHeight: '60vh',
         maxHeight: '65vh',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        overflowX: 'visible',
+        position: 'relative'
       }}>
       <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
       <div style={{ color: "#888", fontSize: 13, marginBottom: 10 }}>
@@ -216,53 +233,12 @@ export default function KnowledgeBase({
                 </label>
 
                 {/* Three-dot menu */}
-                <div style={{ position: "relative" }} ref={menuOpenId === id ? menuRef : null}>
+                <div style={{ position: "relative" }}>
                   <FiMoreVertical
+                    ref={el => buttonRefs.current[id] = el}
                     style={{ cursor: "pointer", fontSize: 18 }}
-                    onClick={() => toggleMenu(id)}
+                    onClick={(e) => toggleMenu(id, e)}
                   />
-                  {menuOpenId === id && (
-                    <ul style={{
-                      position: "absolute",
-                      top: 24,
-                      right: 0,
-                      background: "#fff",
-                      border: "1px solid #ddd",
-                      boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-                      borderRadius: 6,
-                      padding: "6px 0",
-                      width: 120,
-                      zIndex: 10,
-                      fontSize: 14,
-                      listStyleType: "none"
-                    }}>
-                      <li
-                        style={{ ...menuItemStyle, color: "#2563eb", cursor: "pointer" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewResource(res.resourceName || res.fileName || res.name);
-                        }}
-                      >
-                        View
-                      </li>
-                      <li
-                        style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (deletingId === id) return;
-                          setDeletingId(id);
-                          try {
-                            await onDelete(id);
-                            setMenuOpenId(null);
-                          } finally {
-                            setDeletingId(null);
-                          }
-                        }}
-                      >
-                        Delete
-                      </li>
-                    </ul>
-                  )}
                 </div>
               </li>
             );
@@ -270,6 +246,58 @@ export default function KnowledgeBase({
         )}
       </ul>
       </div>
+
+      {/* Portal-based dropdown */}
+      {menuOpenId && ReactDOM.createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: buttonPosition.top,
+            left: buttonPosition.left,
+            background: "#fff",
+            border: "1px solid #ddd",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            borderRadius: 6,
+            padding: "6px 0",
+            width: 120,
+            zIndex: 99999,
+            fontSize: 14,
+            listStyleType: "none"
+          }}
+        >
+          <div
+            style={{ ...menuItemStyle, color: "#2563eb", cursor: "pointer" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const selectedRes = resources.find(res => (res.id || res.resourceName || res.fileName) === menuOpenId);
+              if (selectedRes) {
+                handleViewResource(selectedRes.resourceName || selectedRes.fileName || selectedRes.name);
+              }
+              setMenuOpenId(null);
+            }}
+          >
+            View
+          </div>
+          <div
+            style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === menuOpenId ? "wait" : "pointer", opacity: deletingId === menuOpenId ? 0.6 : 1 }}
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (deletingId === menuOpenId) return;
+              setDeletingId(menuOpenId);
+              try {
+                await onDelete(menuOpenId);
+                setMenuOpenId(null);
+              } finally {
+                setDeletingId(null);
+              }
+            }}
+          >
+            Delete
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Resource View Modal */}
       <ResourceViewModal

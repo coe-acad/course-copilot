@@ -429,7 +429,7 @@ export default function Dashboard() {
 
         {/* Conditional main content: grid or list view */}
         {isGridView ? (
-          <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
             {/* ...existing grid view code... */}
             <div className="dashboard-scroll-area" style={{ flex: 2, maxWidth: 900, width: '100%', margin: '0 auto', overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 28 }}>
               <SectionCard 
