@@ -15,7 +15,7 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email
@@ -217,7 +217,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         # Log for debugging
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
         logger.info(f"Mark scheme has {len(extracted_mark_scheme.get('mark_scheme', []))} questions")
-
+        logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
         # Parallel processing logic: Process in batches of 10, each batch split between 2 workers
         total_sheets = len(extracted_answer_sheets)
         logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
@@ -295,6 +295,29 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
         update_evaluation_with_result(evaluation_id, evaluation_result)
         
+        # Extract all feedback from students' answers
+        all_feedback = []
+        for student in evaluation_result.get("students", []):
+            student_feedback = {
+                "file_id": student.get("file_id"),
+                "student_name": student.get("student_name"),
+                "answers_feedback": []
+            }
+            
+            for answer in student.get("answers", []):
+                if answer.get("feedback"):
+                    student_feedback["answers_feedback"].append({
+                        "question_number": answer.get("question_number"),
+                        "feedback": answer.get("feedback")
+                    })
+            
+            if student_feedback["answers_feedback"]:  # Only add if there's feedback
+                all_feedback.append(student_feedback)
+        
+        # Save AI feedback to MongoDB
+        if all_feedback:
+            create_ai_feedback(evaluation_id, {"feedback": all_feedback})
+        logger.info(f"AI feedback saved to ai_feedback collection for evaluation {evaluation_id}")
         # Send completion email
         try:
             send_eval_completion_email(evaluation_id, user_id)
@@ -572,12 +595,8 @@ def format_evaluation_csv(evaluation):
         email = ""
         if idx < len(stored_filenames):
             filename = stored_filenames[idx]
-            # Try to extract email from filename
-            if '@' in filename:
-                # Extract email from filename (e.g., "john.doe@example.com.pdf" -> "john.doe@example.com")
-                email = filename.split('.pdf')[0] if '.pdf' in filename else filename
-            else:
-                email = filename
+            # Remove .pdf extension from filename
+            email = filename.replace('.pdf', '') if filename.endswith('.pdf') else filename
         elif student.get('student_name'):
             email = student.get('student_name')
         else:

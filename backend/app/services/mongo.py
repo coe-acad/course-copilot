@@ -230,3 +230,14 @@ def create_extracted_data(evaluation_id: str, extracted_data: dict):
 
 def get_extracted_data_by_evaluation_id(evaluation_id: str):
     return get_one_from_collection("extracted_data", {"evaluation_id": evaluation_id})
+
+# AI Feedback
+def create_ai_feedback(evaluation_id: str, ai_feedback: dict):
+    add_to_collection("ai_feedback", {"evaluation_id": evaluation_id, "ai_feedback": ai_feedback})
+
+def get_ai_feedback_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("ai_feedback", {"evaluation_id": evaluation_id})
+
+def update_ai_feedback(evaluation_id: str, ai_feedback: dict):
+    """Update AI feedback in ai_feedback collection"""
+    update_in_collection("ai_feedback", {"evaluation_id": evaluation_id}, {"ai_feedback": ai_feedback})

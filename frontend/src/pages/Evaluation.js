@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
+import Modal from "../components/Modal";
 import { evaluationService } from "../services/evaluation";
 import { FiEye } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
@@ -42,6 +43,7 @@ export default function Evaluation() {
   const [currentReport, setCurrentReport] = useState(''); // Current report content
   const [reportTitle, setReportTitle] = useState(''); // Report title
   const [isLoadingReport, setIsLoadingReport] = useState(false); // Loading report
+  const [showDownloadSuccessModal, setShowDownloadSuccessModal] = useState(false); // Show download success popup
   const pendingSavePromiseRef = React.useRef(null);
 
   const evaluationInProgressRef = React.useRef(false);
@@ -850,7 +852,11 @@ export default function Evaluation() {
     try {
       setIsLoadingReport(true);
       await evaluationService.downloadReportCSV(evaluationId);
-      alert('CSV report downloaded successfully!');
+      setShowDownloadSuccessModal(true);
+      // Auto-hide popup after 3 seconds
+      setTimeout(() => {
+        setShowDownloadSuccessModal(false);
+      }, 3000);
     } catch (error) {
       console.error('Error downloading CSV:', error);
       alert(error.message || 'Failed to download CSV report. Please try again.');
@@ -1046,27 +1052,6 @@ export default function Evaluation() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
-                <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24', lineHeight: '1.6' }}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                    components={{
-                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#78350f' }} {...props} />,
-                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                      code: ({node, inline, ...props}) => 
-                        inline ? 
-                          <code style={{ background: '#fed7aa', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
-                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
-                    }}
-                  >
-                    {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
-                  </ReactMarkdown>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -2245,6 +2230,42 @@ export default function Evaluation() {
           </div>
         </div>
       )}
+
+      {/* Download Success Modal */}
+      <Modal 
+        open={showDownloadSuccessModal} 
+        onClose={() => setShowDownloadSuccessModal(false)}
+        modalStyle={{
+          minWidth: 400,
+          maxWidth: 500,
+          padding: '32px',
+          textAlign: 'center'
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+          <div style={{ 
+            width: '60px', 
+            height: '60px', 
+            borderRadius: '50%', 
+            background: '#10b981', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            fontSize: '24px',
+            color: 'white'
+          }}>
+            ✓
+          </div>
+          <div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '600', color: '#374151' }}>
+              CSV Report Downloaded Successfully!
+            </h3>
+            <p style={{ margin: '0', fontSize: '14px', color: '#6b7280' }}>
+              Your evaluation report has been saved to your downloads folder.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 } 
