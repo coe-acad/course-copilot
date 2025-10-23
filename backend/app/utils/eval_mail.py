@@ -57,3 +57,29 @@ Regards,
 ACAD
 """
     send_email(user_email, subject, body)
+
+def send_eval_error_email(evaluation_id: str, user_id: str, error_message: str = ""):
+    """Send an error email to the user when evaluation processing fails"""
+    user_email = get_email_by_user_id(user_id)
+    if not user_email:
+        print(f"[EMAIL-WARN] No email found for user_id={user_id}; skipping error email.")
+        return
+    
+    # Get the asset name for this evaluation
+    asset = get_asset_by_evaluation_id(evaluation_id)
+    asset_name = asset.get("asset_name", "Unnamed Evaluation") if asset else "Unnamed Evaluation"
+    
+    subject = "Evaluation Processing Error"
+    body = f"""
+Dear User,
+
+We encountered an error while processing your evaluation "{asset_name}".
+
+Please try uploading your files again. If the problem persists, please contact our support team for assistance.
+
+Error Details: {error_message}
+
+Regards,
+ACAD Support Team
+"""
+    send_email(user_email, subject, body)

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { FiMoreVertical } from "react-icons/fi";
+import { FiMoreVertical, FiAlertCircle } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
 import ResourceViewModal from "./ResourceViewModal";
 // import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
@@ -25,8 +25,53 @@ export default function KnowledgeBase({
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState(null);
   const [buttonPosition, setButtonPosition] = useState({ top: 0, left: 0 });
+  const [uploadErrors, setUploadErrors] = useState([]);
   // const [loadingViewId, setLoadingViewId] = useState(null);
   // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
+
+  // Supported file types for OpenAI Assistants API
+  const SUPPORTED_FILE_TYPES = [
+    // Documents
+    '.pdf', '.txt', '.md', '.docx',
+    // Spreadsheets
+    '.xlsx', '.csv',
+    // Presentations
+    '.pptx',
+    // Code files
+    '.py', '.js', '.html', '.css', '.json',
+    // Additional common formats
+    '.rtf', '.odt'
+  ];
+
+  const SUPPORTED_MIME_TYPES = [
+    'application/pdf',
+    'text/plain',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/javascript',
+    'text/html',
+    'text/css',
+    'application/json',
+    'application/rtf',
+    'application/vnd.oasis.opendocument.text',
+    'text/x-python'
+  ];
+
+  // Validate file type
+  const validateFile = (file) => {
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+    const isValidExtension = SUPPORTED_FILE_TYPES.includes(fileExtension);
+    const isValidMimeType = SUPPORTED_MIME_TYPES.includes(file.type);
+    
+    return {
+      isValid: isValidExtension && isValidMimeType,
+      error: !isValidExtension ? `File type ${fileExtension} is not supported` : 
+             !isValidMimeType ? `File MIME type ${file.type} is not supported` : null
+    };
+  };
 
   // Close menu on outside click
   useEffect(() => {
@@ -74,11 +119,40 @@ export default function KnowledgeBase({
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
+    // Validate files before upload
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach(file => {
+      const validation = validateFile(file);
+      if (validation.isValid) {
+        validFiles.push(file);
+      } else {
+        errors.push({
+          fileName: file.name,
+          error: validation.error
+        });
+      }
+    });
+
+    // Show errors if any
+    if (errors.length > 0) {
+      setUploadErrors(errors);
+      // Clear errors after 5 seconds
+      setTimeout(() => setUploadErrors([]), 5000);
+    }
+
+    // Only upload valid files
+    if (validFiles.length === 0) {
+      event.target.value = '';
+      return;
+    }
+
     try {
       const courseId = localStorage.getItem('currentCourseId');
 
-      // Call the upload API
-      await uploadCourseResources(courseId, files);
+      // Call the upload API with only valid files
+      await uploadCourseResources(courseId, validFiles);
       
       // Clear the file input
       event.target.value = '';
@@ -124,6 +198,7 @@ export default function KnowledgeBase({
         style={{ display: "none" }}
         multiple
         onChange={handleFileUpload}
+        accept={SUPPORTED_FILE_TYPES.join(',')}
       />
 
       <button
@@ -168,6 +243,42 @@ export default function KnowledgeBase({
             animation: "spin 1s linear infinite"
           }} />
           Uploading resources...
+        </div>
+      )}
+
+      {/* Upload Errors */}
+      {uploadErrors.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            padding: "8px 12px",
+            background: "#ffebee",
+            border: "1px solid #ffcdd2",
+            borderRadius: 6,
+            fontSize: 14,
+            color: "#c62828",
+            marginBottom: 8
+          }}>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>
+              <FiAlertCircle style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              Unsupported files ({uploadErrors.length})
+            </div>
+            <div style={{ fontSize: 12 }}>
+              These file types are not supported by OpenAI Assistants API
+            </div>
+          </div>
+          {uploadErrors.map((error, idx) => (
+            <div key={idx} style={{
+              padding: "6px 12px",
+              background: "#fff5f5",
+              border: "1px solid #fecaca",
+              borderRadius: 4,
+              fontSize: 12,
+              color: "#dc2626",
+              marginBottom: 4
+            }}>
+              <strong>{error.fileName}:</strong> {error.error}
+            </div>
+          ))}
         </div>
       )}
 
