@@ -112,6 +112,10 @@ def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
 def get_asset_by_course_id_and_asset_type(course_id: str, asset_type: str):
     return get_one_from_collection("assets", {"course_id": course_id, "asset_type": asset_type})
 
+def get_asset_by_evaluation_id(evaluation_id: str):
+    """Get asset that references this evaluation_id"""
+    return get_one_from_collection("assets", {"asset_content": evaluation_id, "asset_type": "evaluation"})
+
 def delete_asset_from_db(course_id: str, asset_name: str):
     delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
@@ -226,3 +230,14 @@ def create_extracted_data(evaluation_id: str, extracted_data: dict):
 
 def get_extracted_data_by_evaluation_id(evaluation_id: str):
     return get_one_from_collection("extracted_data", {"evaluation_id": evaluation_id})
+
+# AI Feedback
+def create_ai_feedback(evaluation_id: str, ai_feedback: dict):
+    add_to_collection("ai_feedback", {"evaluation_id": evaluation_id, "ai_feedback": ai_feedback})
+
+def get_ai_feedback_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("ai_feedback", {"evaluation_id": evaluation_id})
+
+def update_ai_feedback(evaluation_id: str, ai_feedback: dict):
+    """Update AI feedback in ai_feedback collection"""
+    update_in_collection("ai_feedback", {"evaluation_id": evaluation_id}, {"ai_feedback": ai_feedback})

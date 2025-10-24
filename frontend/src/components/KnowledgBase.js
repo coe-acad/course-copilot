@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FiMoreVertical } from "react-icons/fi";
+import ReactDOM from "react-dom";
+import { FiMoreVertical, FiAlertCircle } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
 import ResourceViewModal from "./ResourceViewModal";
 // import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
@@ -19,11 +20,58 @@ export default function KnowledgeBase({
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
+  const buttonRefs = useRef({});
   const [deletingId, setDeletingId] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState(null);
+  const [buttonPosition, setButtonPosition] = useState({ top: 0, left: 0 });
+  const [uploadErrors, setUploadErrors] = useState([]);
   // const [loadingViewId, setLoadingViewId] = useState(null);
   // const [loadingDownloadId, setLoadingDownloadId] = useState(null);
+
+  // Supported file types for OpenAI Assistants API
+  const SUPPORTED_FILE_TYPES = [
+    // Documents
+    '.pdf', '.txt', '.md', '.docx',
+    // Spreadsheets
+    '.xlsx', '.csv',
+    // Presentations
+    '.pptx',
+    // Code files
+    '.py', '.js', '.html', '.css', '.json',
+    // Additional common formats
+    '.rtf', '.odt'
+  ];
+
+  const SUPPORTED_MIME_TYPES = [
+    'application/pdf',
+    'text/plain',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/javascript',
+    'text/html',
+    'text/css',
+    'application/json',
+    'application/rtf',
+    'application/vnd.oasis.opendocument.text',
+    'text/x-python'
+  ];
+
+  // Validate file type
+  const validateFile = (file) => {
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+    const isValidExtension = SUPPORTED_FILE_TYPES.includes(fileExtension);
+    const isValidMimeType = SUPPORTED_MIME_TYPES.includes(file.type);
+    
+    return {
+      isValid: isValidExtension && isValidMimeType,
+      error: !isValidExtension ? `File type ${fileExtension} is not supported` : 
+             !isValidMimeType ? `File MIME type ${file.type} is not supported` : null
+    };
+  };
 
   // Close menu on outside click
   useEffect(() => {
@@ -37,8 +85,20 @@ export default function KnowledgeBase({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpenId]);
 
-  const toggleMenu = (id) => {
-    setMenuOpenId(menuOpenId === id ? null : id);
+  const toggleMenu = (id, event) => {
+    if (menuOpenId === id) {
+      setMenuOpenId(null);
+    } else {
+      const button = buttonRefs.current[id];
+      if (button) {
+        const rect = button.getBoundingClientRect();
+        setButtonPosition({
+          top: rect.bottom + window.scrollY,
+          left: rect.right - 120 + window.scrollX // 120 is dropdown width
+        });
+      }
+      setMenuOpenId(id);
+    }
   };
 
   const handleCheckboxToggle = (id) => {
@@ -59,11 +119,40 @@ export default function KnowledgeBase({
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
+    // Validate files before upload
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach(file => {
+      const validation = validateFile(file);
+      if (validation.isValid) {
+        validFiles.push(file);
+      } else {
+        errors.push({
+          fileName: file.name,
+          error: validation.error
+        });
+      }
+    });
+
+    // Show errors if any
+    if (errors.length > 0) {
+      setUploadErrors(errors);
+      // Clear errors after 5 seconds
+      setTimeout(() => setUploadErrors([]), 5000);
+    }
+
+    // Only upload valid files
+    if (validFiles.length === 0) {
+      event.target.value = '';
+      return;
+    }
+
     try {
       const courseId = localStorage.getItem('currentCourseId');
 
-      // Call the upload API
-      await uploadCourseResources(courseId, files);
+      // Call the upload API with only valid files
+      await uploadCourseResources(courseId, validFiles);
       
       // Clear the file input
       event.target.value = '';
@@ -94,7 +183,9 @@ export default function KnowledgeBase({
         padding: 18,
         minHeight: '60vh',
         maxHeight: '65vh',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        overflowX: 'visible',
+        position: 'relative'
       }}>
       <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
       <div style={{ color: "#888", fontSize: 13, marginBottom: 10 }}>
@@ -107,6 +198,7 @@ export default function KnowledgeBase({
         style={{ display: "none" }}
         multiple
         onChange={handleFileUpload}
+        accept={SUPPORTED_FILE_TYPES.join(',')}
       />
 
       <button
@@ -151,6 +243,42 @@ export default function KnowledgeBase({
             animation: "spin 1s linear infinite"
           }} />
           Uploading resources...
+        </div>
+      )}
+
+      {/* Upload Errors */}
+      {uploadErrors.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            padding: "8px 12px",
+            background: "#ffebee",
+            border: "1px solid #ffcdd2",
+            borderRadius: 6,
+            fontSize: 14,
+            color: "#c62828",
+            marginBottom: 8
+          }}>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>
+              <FiAlertCircle style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              Unsupported files ({uploadErrors.length})
+            </div>
+            <div style={{ fontSize: 12 }}>
+              These file types are not supported by OpenAI Assistants API
+            </div>
+          </div>
+          {uploadErrors.map((error, idx) => (
+            <div key={idx} style={{
+              padding: "6px 12px",
+              background: "#fff5f5",
+              border: "1px solid #fecaca",
+              borderRadius: 4,
+              fontSize: 12,
+              color: "#dc2626",
+              marginBottom: 4
+            }}>
+              <strong>{error.fileName}:</strong> {error.error}
+            </div>
+          ))}
         </div>
       )}
 
@@ -216,53 +344,12 @@ export default function KnowledgeBase({
                 </label>
 
                 {/* Three-dot menu */}
-                <div style={{ position: "relative" }} ref={menuOpenId === id ? menuRef : null}>
+                <div style={{ position: "relative" }}>
                   <FiMoreVertical
+                    ref={el => buttonRefs.current[id] = el}
                     style={{ cursor: "pointer", fontSize: 18 }}
-                    onClick={() => toggleMenu(id)}
+                    onClick={(e) => toggleMenu(id, e)}
                   />
-                  {menuOpenId === id && (
-                    <ul style={{
-                      position: "absolute",
-                      top: 24,
-                      right: 0,
-                      background: "#fff",
-                      border: "1px solid #ddd",
-                      boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-                      borderRadius: 6,
-                      padding: "6px 0",
-                      width: 120,
-                      zIndex: 10,
-                      fontSize: 14,
-                      listStyleType: "none"
-                    }}>
-                      <li
-                        style={{ ...menuItemStyle, color: "#2563eb", cursor: "pointer" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewResource(res.resourceName || res.fileName || res.name);
-                        }}
-                      >
-                        View
-                      </li>
-                      <li
-                        style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === id ? "wait" : "pointer", opacity: deletingId === id ? 0.6 : 1 }}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (deletingId === id) return;
-                          setDeletingId(id);
-                          try {
-                            await onDelete(id);
-                            setMenuOpenId(null);
-                          } finally {
-                            setDeletingId(null);
-                          }
-                        }}
-                      >
-                        Delete
-                      </li>
-                    </ul>
-                  )}
                 </div>
               </li>
             );
@@ -270,6 +357,58 @@ export default function KnowledgeBase({
         )}
       </ul>
       </div>
+
+      {/* Portal-based dropdown */}
+      {menuOpenId && ReactDOM.createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: buttonPosition.top,
+            left: buttonPosition.left,
+            background: "#fff",
+            border: "1px solid #ddd",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            borderRadius: 6,
+            padding: "6px 0",
+            width: 120,
+            zIndex: 99999,
+            fontSize: 14,
+            listStyleType: "none"
+          }}
+        >
+          <div
+            style={{ ...menuItemStyle, color: "#2563eb", cursor: "pointer" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const selectedRes = resources.find(res => (res.id || res.resourceName || res.fileName) === menuOpenId);
+              if (selectedRes) {
+                handleViewResource(selectedRes.resourceName || selectedRes.fileName || selectedRes.name);
+              }
+              setMenuOpenId(null);
+            }}
+          >
+            View
+          </div>
+          <div
+            style={{ ...menuItemStyle, color: "#d32f2f", cursor: deletingId === menuOpenId ? "wait" : "pointer", opacity: deletingId === menuOpenId ? 0.6 : 1 }}
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (deletingId === menuOpenId) return;
+              setDeletingId(menuOpenId);
+              try {
+                await onDelete(menuOpenId);
+                setMenuOpenId(null);
+              } finally {
+                setDeletingId(null);
+              }
+            }}
+          >
+            Delete
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Resource View Modal */}
       <ResourceViewModal

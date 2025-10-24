@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
+import Modal from "../components/Modal";
 import { evaluationService } from "../services/evaluation";
 import { FiEye } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
@@ -42,6 +43,7 @@ export default function Evaluation() {
   const [currentReport, setCurrentReport] = useState(''); // Current report content
   const [reportTitle, setReportTitle] = useState(''); // Report title
   const [isLoadingReport, setIsLoadingReport] = useState(false); // Loading report
+  const [showDownloadSuccessModal, setShowDownloadSuccessModal] = useState(false); // Show download success popup
   const pendingSavePromiseRef = React.useRef(null);
 
   const evaluationInProgressRef = React.useRef(false);
@@ -841,6 +843,28 @@ export default function Evaluation() {
     }
   };
 
+  const handleDownloadCSV = async () => {
+    if (!evaluationId) {
+      alert('No evaluation available to download');
+      return;
+    }
+
+    try {
+      setIsLoadingReport(true);
+      await evaluationService.downloadReportCSV(evaluationId);
+      setShowDownloadSuccessModal(true);
+      // Auto-hide popup after 3 seconds
+      setTimeout(() => {
+        setShowDownloadSuccessModal(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Error downloading CSV:', error);
+      alert(error.message || 'Failed to download CSV report. Please try again.');
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
   // If showing review page, display the review interface
   if (showReview && selectedStudentIndex !== null && evaluationResult) {
     // Add safety checks for evaluation data
@@ -984,26 +1008,50 @@ export default function Evaluation() {
                 Question {selectedQuestionIndex + 1}
               </h3>
               
-                             <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
-                 <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
+                <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', lineHeight: '1.6' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline ? 
+                          <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                    }}
+                  >
+                    {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
+                  </ReactMarkdown>
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
-                 <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
-                 </div>
-               </div>
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
+                <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe', lineHeight: '1.6' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline ? 
+                          <code style={{ background: '#dbeafe', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                    }}
+                  >
+                    {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
+                  </ReactMarkdown>
+                </div>
+              </div>
 
-               <div style={{ marginBottom: '24px' }}>
-                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>AI Evaluation</h4>
-                 <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
-                   {student?.answers?.[selectedQuestionIndex]?.feedback || 'AI feedback not available'}
-                 </div>
-               </div>
             </div>
           </div>
 
@@ -1154,8 +1202,23 @@ export default function Evaluation() {
                     }}
                   />
                 ) : (
-                  <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', fontSize: '14px', lineHeight: '1.5' }}>
-                    {student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available'}
+                  <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', fontSize: '14px', lineHeight: '1.6' }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                      components={{
+                        p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                        strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
+                        code: ({node, inline, ...props}) => 
+                          inline ? 
+                            <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+                            <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+                      }}
+                    >
+                      {student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available'}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>
@@ -1213,37 +1276,76 @@ export default function Evaluation() {
             </div>
           </div>
           
-          {/* View Combined Report Button */}
+          {/* Action Buttons */}
           {evaluationResult && (
-            <button
-              onClick={handleViewCombinedReport}
-              style={{
-                padding: '14px 28px',
-                borderRadius: '10px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '16px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>📊</span>
-              View Combined Report
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Download CSV Button */}
+              <button
+                onClick={handleDownloadCSV}
+                disabled={isLoadingReport}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: isLoadingReport ? '#ccc' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: '16px',
+                  cursor: isLoadingReport ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoadingReport) {
+                    e.target.style.transform = 'translateY(-2px)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.4)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoadingReport) {
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                  }
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>📥</span>
+                {isLoadingReport ? 'Downloading...' : 'Download CSV'}
+              </button>
+              
+              {/* View Combined Report Button */}
+              <button
+                onClick={handleViewCombinedReport}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>📊</span>
+                View Combined Report
+              </button>
+            </div>
           )}
         </div>
 
@@ -1586,9 +1688,13 @@ export default function Evaluation() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkBreaks]}
                       components={{
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h1: ({node, ...props}) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h2: ({node, ...props}) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h3: ({node, ...props}) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/heading-has-content
                         h4: ({node, ...props}) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
                         p: ({node, ...props}) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
                         strong: ({node, ...props}) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
@@ -1606,6 +1712,7 @@ export default function Evaluation() {
                         thead: ({node, ...props}) => <thead style={{ background: '#f8f9fa' }} {...props} />,
                         th: ({node, ...props}) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
                         td: ({node, ...props}) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
+                        // eslint-disable-next-line jsx-a11y/anchor-has-content
                         a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
                       }}
                     >
@@ -2123,6 +2230,42 @@ export default function Evaluation() {
           </div>
         </div>
       )}
+
+      {/* Download Success Modal */}
+      <Modal 
+        open={showDownloadSuccessModal} 
+        onClose={() => setShowDownloadSuccessModal(false)}
+        modalStyle={{
+          minWidth: 400,
+          maxWidth: 500,
+          padding: '32px',
+          textAlign: 'center'
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+          <div style={{ 
+            width: '60px', 
+            height: '60px', 
+            borderRadius: '50%', 
+            background: '#10b981', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            fontSize: '24px',
+            color: 'white'
+          }}>
+            ✓
+          </div>
+          <div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '600', color: '#374151' }}>
+              CSV Report Downloaded Successfully!
+            </h3>
+            <p style={{ margin: '0', fontSize: '14px', color: '#6b7280' }}>
+              Your evaluation report has been saved to your downloads folder.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 } 

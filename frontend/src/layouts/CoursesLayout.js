@@ -74,7 +74,7 @@ export default function CoursesLayout({ onAddCourse, onLogout, children }) {
       </div>
 
       {/* Dynamic Page Content */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0, width: '100%' }}>
         {children}
       </div>
     </>

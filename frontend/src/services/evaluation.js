@@ -282,5 +282,46 @@ export const evaluationService = {
       }
       throw new Error(error.response?.data?.detail || 'Failed to get student report');
     }
+  },
+
+  async downloadReportCSV(evaluationId) {
+    try {
+      const res = await axiosInstance.get(`/evaluation/report/${evaluationId}/csv`, {
+        responseType: 'blob',
+        timeout: 30000
+      });
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract filename from response headers or use default
+      const contentDisposition = res.headers['content-disposition'];
+      let filename = `evaluation_report_${evaluationId}.csv`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, filename };
+    } catch (error) {
+      console.error('Download CSV report error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      if (error.response?.status === 400) {
+        throw new Error('Evaluation not yet completed');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to download CSV report');
+    }
   }
 }; 

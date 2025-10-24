@@ -5,6 +5,51 @@ import json
 import re
 from collections import defaultdict
 
+def _is_footer_text(text, page_height):
+    """Detect if text is likely footer content based on patterns and position."""
+    if not text or not text.strip():
+        return True  # Empty or whitespace-only text should be filtered out
+    
+    text = text.strip()
+    
+    # Common footer patterns
+    footer_patterns = [
+        r'Page\s+\d+\s+of\s+\d+',  # "Page X of Y"
+        r'Page\s+\d+',              # "Page X"
+        r'Page\s+\d+\s*/\s*\d+',    # "Page X/Y"
+    ]
+    
+    # Check if text matches footer patterns
+    for pattern in footer_patterns:
+        if re.match(pattern, text, re.IGNORECASE):
+            return True
+    
+    return False
+
+def _filter_footer_lines(lines, page_height):
+    """Filter out footer lines from the lines array."""
+    filtered_lines = []
+    for line in lines:
+        # Check if this line is likely footer content
+        if not _is_footer_text(line.get("text", ""), page_height):
+            filtered_lines.append(line)
+    return filtered_lines
+
+def _filter_footer_text(text):
+    """Filter out footer content from extracted text."""
+    if not text:
+        return text
+    
+    lines = text.split('\n')
+    filtered_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not _is_footer_text(line, None):  # We don't have page height here, so just check patterns
+            filtered_lines.append(line)
+    
+    return '\n'.join(filtered_lines)
+
 def _group_words_by_row(page):
     rows = defaultdict(list)
     for w in page.extract_words():
@@ -57,9 +102,15 @@ def _build_page_entry(page, lines, tables):
                 continue
         text = filtered_page.extract_text() or ""
     
+    # Filter out footer content from text
+    text = _filter_footer_text(text)
+    
+    # Filter out footer lines from lines array
+    filtered_lines = _filter_footer_lines(lines, page.height)
+    
     return {
         "text": text,
-        "lines": lines,
+        "lines": filtered_lines,
         "height": page.height,
         "tables": tables
     }
