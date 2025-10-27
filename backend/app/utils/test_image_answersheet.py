@@ -6,11 +6,7 @@ import re
 import io
 import base64
 import logging
-import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
 from collections import defaultdict
-from ..utils.openai_client import client
-from ..config.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -268,53 +264,17 @@ def extract_images_from_pdf(pdf_path):
         return []
 
 
-def describe_image_with_openai(image_bytes, timeout=30):
-    """Get description of an image using OpenAI Vision with timeout."""
-    try:
-        # Encode image in base64 for sending to OpenAI
-        b64_image = base64.b64encode(image_bytes).decode("utf-8")
-        
-        def make_api_call():
-            return client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that describes images for answer sheets."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Describe this image briefly and clearly."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_image}"}}
-                        ]
-                    }
-                ],
-                max_tokens=150
-            )
-        
-        # Use ThreadPoolExecutor with timeout
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(make_api_call)
-            try:
-                response = future.result(timeout=timeout)
-                return response.choices[0].message.content.strip()
-            except FutureTimeoutError:
-                logger.warning(f"Image description timed out after {timeout} seconds")
-                return None
-                
-    except Exception as e:
-        logger.error(f"Error describing image: {e}")
-        return None
 
 
 def _assign_images_to_questions(images, q_anchors, results, pages_content):
-    """Attach images to the correct question based on position with parallel processing."""
+    """Attach images to the correct question based on position."""
     if not images or not q_anchors:
         logger.debug("No images or question anchors available for assignment")
         return results
 
     logger.info(f"Assigning {len(images)} images to {len(q_anchors)} questions")
     
-    # First, determine which question each image belongs to (fast operation)
-    image_assignments = []
+    assigned_count = 0
     for img_index, img in enumerate(images):
         try:
             page, (x0, top, x1, bottom) = img["page"], img["bbox"]
@@ -345,7 +305,16 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
             if target is not None:
                 question_text = results[target].get("question", "Unknown question")[:100]
                 logger.info(f"Image {img_index + 1} assigned to question {target + 1}: {question_text}...")
-                image_assignments.append((img_index, img, target))
+                
+                # Encode image as base64 for evaluation prompt
+                b64_image = base64.b64encode(img["data"]).decode("utf-8")
+                
+                results[target]["answer"].append({
+                    "type": "image",
+                    "image_data": b64_image,
+                })
+                assigned_count += 1
+                logger.info(f"✅ Assigned image {img_index + 1} to question {target + 1}")
             else:
                 logger.warning(f"❌ Could not assign image {img_index + 1} to any question - no suitable position found")
                 
@@ -353,43 +322,7 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
             logger.error(f"Error processing image {img_index + 1}: {e}")
             continue
 
-    # Now process image descriptions in parallel
-    if not image_assignments:
-        logger.info("No images to process for descriptions")
-        return results
-
-    logger.info(f"Processing {len(image_assignments)} image descriptions in parallel...")
-    start_time = time.time()
-    assigned_count = 0
-
-    def process_single_image(img_data):
-        img_index, img, target = img_data
-        try:
-            description = describe_image_with_openai(img["data"], timeout=60)
-            return img_index, target, description
-        except Exception as e:
-            logger.error(f"Error describing image {img_index + 1}: {e}")
-            return img_index, target, None
-
-    # Process images in parallel (max 3 concurrent to avoid rate limits)
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_img = {executor.submit(process_single_image, img_data): img_data for img_data in image_assignments}
-        
-        for future in as_completed(future_to_img):
-            img_index, target, description = future.result()
-            
-            if description:
-                results[target]["answer"].append({
-                    "type": "image",
-                    "description": description,
-                })
-                assigned_count += 1
-                logger.info(f"✅ Processed image {img_index + 1} for question {target + 1}: {description[:50]}...")
-            else:
-                logger.warning(f"❌ Failed to get description for image {img_index + 1}")
-
-    elapsed_time = time.time() - start_time
-    logger.info(f"Successfully assigned {assigned_count}/{len(image_assignments)} images to questions in {elapsed_time:.1f} seconds")
+    logger.info(f"Successfully assigned {assigned_count}/{len(images)} images to questions")
     return results
 
 

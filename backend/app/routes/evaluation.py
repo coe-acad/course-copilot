@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 import csv
 import io
+import traceback
+from ..config.settings import settings
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
@@ -21,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
 from app.utils.extraction_markscheme import extract_text_from_mark_scheme
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -182,7 +185,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             pages = extract_text_tables(answer_sheet_path)
-            qas_list = split_into_qas(pages)  # Returns list of {"question": "...", "answer": [...]}
+            qas_list = split_into_qas(pages, pdf_path=answer_sheet_path)  # Pass pdf_path for image extraction
             
             # Transform the extracted data to match the expected schema
             transformed_answers = []
@@ -204,6 +207,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                                         row_text = " | ".join(str(cell) if cell else "" for cell in row)
                                         answer_content += row_text + "\n"
                                 answer_content += "[End Table]\n"
+                        elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
+                            # Add image description to answer content
+                            image_description = ans_item.get("description", "")
+                            if image_description:
+                                answer_content += f"\n[Image]: {image_description}\n"
                 
                 # Create properly structured answer
                 transformed_answer = {
@@ -448,7 +456,6 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         return evaluation_result
     except Exception as e:
         logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Send error email to user
