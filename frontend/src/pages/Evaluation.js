@@ -1049,6 +1049,23 @@ export default function Evaluation() {
                   >
                     {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
                   </ReactMarkdown>
+                  {/* Render attached images if backend indicated presence */}
+                  {Array.isArray(student?.answers?.[selectedQuestionIndex]?.original_answer_parts) && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {student.answers[selectedQuestionIndex].original_answer_parts
+                        .filter(part => part && part.type === 'image' && part.file_id)
+                        .map((part, i) => (
+                          <div key={i} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            background: '#eef6ff', border: '1px dashed #93c5fd',
+                            padding: '10px 12px', borderRadius: 8
+                          }}>
+                            <span style={{ fontSize: 14, color: '#1e40af', fontWeight: 600 }}>Image </span>
+                            <span style={{ fontSize: 12, color: '#475569' }}>(file_id: {part.file_id})</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -188,471 +188,77 @@ def upload_answer_sheet_files(answer_sheets: List[UploadFile]) -> tuple[List[str
     
     return answer_sheet_ids, answer_sheet_filenames
 
-def extract_mark_scheme(evaluation_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    if not evaluation:
-        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
-    if not mark_scheme_file_id:
-        raise HTTPException(status_code=400, detail="mark_scheme_file_id is required for extraction")
-    assistant_id = evaluation["evaluation_assistant_id"]
-    vector_store_id = evaluation["vector_store_id"]
-    logger.info(f"Using assistant {assistant_id} for mark scheme extraction")
-    prompt = PromptParser().render_prompt("app/prompts/evaluation/mark-scheme-extraction.json", {})
-    # Quick check that vector store is ready
-    vector_store = client.vector_stores.retrieve(vector_store_id)
-    if vector_store.status != "completed":
-        logger.warning(f"Vector store not ready: {vector_store.status}")
-        time.sleep(5)  # Brief wait
+def validate_file_ids(file_ids: list) -> list:
+    """Validate file_ids by checking if they exist in OpenAI."""
+    valid_file_ids = []
     
-    # Create thread with file
-    thread = client.beta.threads.create(
-        messages=[{
-            "role": "user",
-            "content": prompt,
-            "attachments": [{"file_id": mark_scheme_file_id, "tools": [{"type": "file_search"}]}]
-        }]
-    )
-
-    # Run with structured output
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant_id,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "mark_scheme",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "mark_scheme": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_number": {"type": "string"},
-                                    "question_text": {"type": "string"},
-                                    "answer_template": {"type": "string"},
-                                    "mark_scheme": {"type": "string"},
-                                    "deductions": {"type": "string"},
-                                    "notes": {"type": "string"}
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    )
-
-    # Wait and get result
-    while run.status in ["queued", "in_progress"]:
-        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+    for file_id in file_ids:
+        try:
+            # Try to retrieve the file to check if it exists
+            file_info = client.files.retrieve(file_id)
+            if file_info.purpose == "vision" and file_info.status == "processed":
+                valid_file_ids.append(file_id)
+                logger.debug(f"✅ File {file_id} is valid and processed")
+            else:
+                logger.warning(f"⚠️ File {file_id} exists but status={file_info.status}, purpose={file_info.purpose}")
+        except Exception as e:
+            logger.error(f"❌ File {file_id} is invalid or inaccessible: {str(e)}")
     
-    logger.info(f"Run completed with status: {run.status}")
-    if run.status == "failed":
-        logger.error(f"Run failed: {run.last_error}")
-        raise HTTPException(status_code=500, detail=f"Run failed: {run.last_error}")
+    logger.info(f"📋 Validated {len(valid_file_ids)}/{len(file_ids)} file_ids")
+    return valid_file_ids
 
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    for msg in messages.data:
-        if msg.role == "assistant":
-            content = msg.content[0].text.value
-            return json.loads(content)
-    
-    raise HTTPException(status_code=500, detail="No assistant response found")
 
-def extract_answer_sheets_batched(evaluation_id: str, user_id: str, answer_sheet_file_ids: list[str]) -> dict:
-    """
-    Multi-file extraction with batching (up to 10 attachments per run) to respect API limits.
-    Returns: { "answer_sheets": [ { file_id, student_name, answers: [...] }, ... ] }
-    """
-    evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-    if not evaluation:
-        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+def extract_file_ids_from_answer_sheets(answer_sheets: list) -> list:
+    """Extract all file_ids from answer sheets for image attachments."""
+    file_ids = []
     
-    assistant_id = evaluation.get("evaluation_assistant_id")
-    vector_store_id = evaluation.get("vector_store_id")
+    logger.info(f"Extracting file_ids from {len(answer_sheets)} answer sheets")
     
-    if not assistant_id:
-        raise HTTPException(status_code=400, detail="Evaluation assistant not found")
-    if not vector_store_id:
-        raise HTTPException(status_code=400, detail="Vector store not found")
-
-    if not answer_sheet_file_ids:
-        raise HTTPException(status_code=400, detail="answer_sheet_file_ids must be a non-empty list")
-
-    # Coerce to list and deduplicate while preserving order
-    if isinstance(answer_sheet_file_ids, str):
-        answer_sheet_file_ids = [answer_sheet_file_ids]
-    
-    # Validate file IDs
-    seen = set()
-    unique_ids: list[str] = []
-    for fid in answer_sheet_file_ids:
-        if not fid or not isinstance(fid, str) or len(fid.strip()) == 0:
-            logger.warning(f"Invalid file_id encountered: {repr(fid)}; skipping")
-            continue
-        if fid not in seen:
-            seen.add(fid)
-            unique_ids.append(fid)
-
-    if not unique_ids:
-        raise HTTPException(status_code=400, detail="No valid answer sheet file_ids provided")
-
-    logger.info(f"Processing {len(unique_ids)} unique answer sheet files")
-
-        # Ensure vector store is ready with retry
-    max_vector_store_retries = 3
-    for vs_attempt in range(max_vector_store_retries):
-        vector_store = client.vector_stores.retrieve(vector_store_id)
-        if vector_store.status == "completed":
-            break
-        elif vector_store.status == "failed":
-            raise HTTPException(status_code=500, detail=f"Vector store failed: {vector_store.status}")
-        else:
-            logger.warning(f"Vector store not ready (attempt {vs_attempt + 1}/{max_vector_store_retries}): {vector_store.status}")
-            if vs_attempt < max_vector_store_retries - 1:
-                time.sleep(5 * (vs_attempt + 1))  # Progressive wait: 5s, 10s, 15s
-    else:
-        raise HTTPException(status_code=500, detail=f"Vector store not ready after {max_vector_store_retries} attempts")
-    
-    # Extract each file individually using ThreadPoolExecutor with retry
-    results = []
-    failed_files = []
-    
-    try:
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            # Submit all extraction tasks
-            future_to_file_id = {
-                executor.submit(extract_single_answer_sheet, evaluation_id, user_id, assistant_id, vector_store_id, file_id): file_id
-                for file_id in unique_ids
-            }
-            
-            # Collect results as they complete
-            for future in future_to_file_id:
-                try:
-                    result = future.result(timeout=900)  # 5 minute timeout per file
-                    results.append(result)
-                    logger.info(f"Successfully extracted file {future_to_file_id[future]}")
-                except Exception as e:
-                    file_id = future_to_file_id[future]
-                    failed_files.append(file_id)
-                    logger.error(f"Failed to extract file {file_id}: {str(e)}")
-                    # Continue with other files instead of failing completely
-                    continue
-    except Exception as e:
-        logger.error(f"ThreadPoolExecutor failed: {str(e)}")
-        # Fallback to sequential processing
-        logger.info("Falling back to sequential processing...")
-        for file_id in unique_ids:
-            try:
-                result = extract_single_answer_sheet(evaluation_id, user_id, assistant_id, vector_store_id, file_id)
-                results.append(result)
-                logger.info(f"Sequential extraction successful for file {file_id}")
-            except Exception as seq_e:
-                failed_files.append(file_id)
-                logger.error(f"Sequential extraction failed for file {file_id}: {str(seq_e)}")
-                continue
-    
-    # Retry failed files once more
-    if failed_files:
-        logger.info(f"Retrying {len(failed_files)} failed files: {failed_files}")
-        retry_success = 0
-        for file_id in failed_files:
-            try:
-                result = extract_single_answer_sheet(evaluation_id, user_id, assistant_id, vector_store_id, file_id)
-                results.append(result)
-                retry_success += 1
-                logger.info(f"Retry successful for file {file_id}")
-            except Exception as e:
-                logger.error(f"Retry failed for file {file_id}: {str(e)}")
-                continue
-        logger.info(f"Retry summary: {retry_success}/{len(failed_files)} files recovered")
+    for sheet_idx, sheet in enumerate(answer_sheets):
+        sheet_file_id = sheet.get("file_id", f"sheet_{sheet_idx}")
+        answers = sheet.get("answers", [])
+        logger.debug(f"Sheet {sheet_file_id}: Processing {len(answers)} answers")
         
-        # Final check - if we still have no results, provide detailed error
-        if not results:
-            error_details = f"All {len(unique_ids)} files failed extraction. Failed files: {failed_files}"
-            logger.error(error_details)
-            raise HTTPException(status_code=500, detail=error_details)
-    
-    if not results:
-        raise HTTPException(status_code=500, detail="No answer sheets were successfully extracted")
-    
-    success_rate = (len(results) / len(unique_ids)) * 100
-    logger.info(f"Extraction completed: {len(results)}/{len(unique_ids)} files successful ({success_rate:.1f}%)")
-    return {"answer_sheets": results}
-
-def extract_single_answer_sheet(evaluation_id: str, user_id: str, assistant_id: str, vector_store_id: str, file_id: str) -> dict:
-    """Extract a single answer sheet file with retry logic"""
-    print(f"Processing file: {file_id}")
-    prompt = PromptParser().render_prompt("app/prompts/evaluation/answer-sheet-extraction.json", {"file_id": file_id})
-    max_retries = 3
-    
-    # Create a separate vector store for this file
-    temp_vector_store = None
-    try:
-        # Step 1: Create a temporary vector store for this file only
-        temp_vector_store = client.vector_stores.create(name=f"temp_extraction_{file_id}")
-        logger.info(f"Created temporary vector store {temp_vector_store.id} for file {file_id}")
-        
-        # Step 2: Add only this file to the temporary vector store
-        client.vector_stores.files.create(
-            vector_store_id=temp_vector_store.id,
-            file_id=file_id
-        )
-        
-        # Step 3: Wait for vector store to be ready
-        while True:
-            vs_status = client.vector_stores.retrieve(temp_vector_store.id)
-            if vs_status.status == "completed":
-                break
-            elif vs_status.status == "failed":
-                raise HTTPException(status_code=500, detail=f"Temporary vector store failed for file {file_id}")
-            time.sleep(1)
-        
-        for attempt in range(max_retries):
-            try:
-                # Step 4: Create thread with the temporary vector store
-                thread = client.beta.threads.create(
-                    messages=[{
-                        "role": "user",
-                        "content": prompt,
-                        "attachments": [{"file_id": file_id, "tools": [{"type": "file_search"}]}]
-                    }],
-                    tool_resources={
-                        "file_search": {
-                            "vector_store_ids": [temp_vector_store.id]
-                        }
-                    }
-                )
-                logger.info(f"Created thread {thread.id} with temporary vector store {temp_vector_store.id} for file {file_id}")
+        for answer_idx, answer in enumerate(answers):
+            if isinstance(answer, dict) and answer.get("answer"):
+                answer_content = answer["answer"]
+                question = answer.get("question", "Unknown question")[:50]
+                logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}: {question}... - Content type: {type(answer_content)}")
                 
-                # Debug: Check vector store contents
-                vs_files = client.vector_stores.files.list(vector_store_id=temp_vector_store.id)
-                logger.info(f"Vector store {temp_vector_store.id} contains {len(vs_files.data)} files: {[f.id for f in vs_files.data]}")
-
-                run = client.beta.threads.runs.create(
-                    thread_id=thread.id,
-                    assistant_id=assistant_id,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "single_answer_sheet_schema",
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "student_name": {"type": "string"},
-                                    "answers": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "question_number": {"type": "string"},
-                                                "question_text": {"type": "string"},
-                                                "student_answer": {"type": ["string", "null"]}
-                                            },
-                                            "required": ["question_number", "question_text", "student_answer"]
-                                        }
-                                    }
-                                },
-                                "required": ["student_name", "answers"]
-                            }
-                        }
-                    }
-                )
-
-                # Wait for completion with timeout
-                max_wait_time = 300  # 5 minutes
-                start_time = time.time()
-                
-                while run.status in ["queued", "in_progress"]:
-                    if time.time() - start_time > max_wait_time:
-                        raise HTTPException(status_code=408, detail=f"Extraction timeout for file {file_id}")
-                    time.sleep(1)
-                    run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
-                if run.status == "failed":
-                    error_detail = run.last_error or "Unknown error"
-                    raise HTTPException(status_code=500, detail=f"Extraction failed for file {file_id}: {error_detail}")
-
-                # Get response
-                messages = client.beta.threads.messages.list(thread_id=thread.id)
-                for msg in messages.data:
-                    if msg.role == "assistant":
-                        try:
-                            # Check if content exists and has items
-                            if not msg.content or len(msg.content) == 0:
-                                logger.error(f"File {file_id}: Assistant message has no content")
-                                raise HTTPException(status_code=500, detail=f"Assistant response has no content for file {file_id}")
+                if isinstance(answer_content, list):
+                    logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}: Found {len(answer_content)} content items")
+                    for content_idx, content_item in enumerate(answer_content):
+                        if isinstance(content_item, dict):
+                            content_type = content_item.get("type")
+                            logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}, Item {content_idx + 1}: Type = {content_type}")
                             
-                            if not hasattr(msg.content[0], 'text') or not msg.content[0].text:
-                                logger.error(f"File {file_id}: Assistant message content has no text")
-                                raise HTTPException(status_code=500, detail=f"Assistant response has no text for file {file_id}")
-                            
-                            result = json.loads(msg.content[0].text.value)
-                            # Add the actual file_id to the result
-                            result["file_id"] = file_id
-                            
-                            # Debug: Log the extracted content for comparison
-                            logger.info(f"File {file_id} extracted student_name: {result.get('student_name', 'N/A')}")
-                            logger.info(f"File {file_id} extracted {len(result.get('answers', []))} answers")
-                            if result.get('answers'):
-                                first_answer = result['answers'][0] if result['answers'] else {}
-                                student_answer = first_answer.get('student_answer', 'N/A')
-                                # Handle None values safely
-                                if student_answer is None:
-                                    student_answer = 'None'
-                                else:
-                                    student_answer = str(student_answer)
-                                logger.info(f"File {file_id} first answer: {student_answer[:100]}...")
-                            
-                            # Validate the extraction
-                            if not result.get("answers"):
-                                raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: missing required fields")
-                            if not isinstance(result.get("answers"), list):
-                                raise HTTPException(status_code=500, detail=f"Invalid extraction result for file {file_id}: answers must be a list")
-                            
-                            return result
-                        except json.JSONDecodeError as json_e:
-                            raise HTTPException(status_code=500, detail=f"Invalid JSON response for file {file_id}: {str(json_e)}")
-
-                raise HTTPException(status_code=500, detail=f"No assistant response found for file {file_id}")
-
-            except Exception as e:
-                error_type = type(e).__name__
-                error_msg = str(e)
-                
-                # Handle specific OpenAI errors
-                if "rate_limit" in error_msg.lower() or "quota" in error_msg.lower():
-                    wait_time = 10 * (attempt + 1)  # Longer wait for rate limits
-                    logger.warning(f"Rate limit hit for file {file_id}, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
-                    time.sleep(wait_time)
-                elif "timeout" in error_msg.lower():
-                    logger.warning(f"Timeout for file {file_id}, attempt {attempt + 1}/{max_retries}")
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                            if (content_type == "image" and content_item.get("file_id")):
+                                file_id = content_item["file_id"]
+                                file_ids.append(file_id)
+                                logger.info(f"✅ Found image file_id: {file_id} in Sheet {sheet_file_id}, Answer {answer_idx + 1}")
+                            elif content_type == "image" and content_item.get("image_data"):
+                                logger.warning(f"⚠️ Found image with base64 data (fallback) in Sheet {sheet_file_id}, Answer {answer_idx + 1}")
+                        else:
+                            logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}, Item {content_idx + 1}: Not a dict - {type(content_item)}")
                 else:
-                    logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for file {file_id}: {error_type}: {error_msg}")
-                    if attempt < max_retries - 1:  # Not the last attempt
-                        time.sleep(2 ** attempt)  # Exponential backoff
-                
-                if attempt == max_retries - 1:  # Last attempt
-                    logger.error(f"All {max_retries} attempts failed for file {file_id}. Final error: {error_type}: {error_msg}")
-                    raise e
-
-    except Exception as main_e:
-        logger.error(f"Main error processing file {file_id}: {str(main_e)}")
-        raise main_e
+                    logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}: Answer content is not a list - {type(answer_content)}")
+            else:
+                logger.debug(f"Sheet {sheet_file_id}, Answer {answer_idx + 1}: No answer content found")
     
-    finally:
-        # Always cleanup temporary vector store
-        if temp_vector_store:
-            try:
-                client.vector_stores.delete(temp_vector_store.id)
-                logger.info(f"Final cleanup: Deleted temporary vector store {temp_vector_store.id} for file {file_id}")
-            except Exception as cleanup_e:
-                logger.warning(f"Failed to cleanup temporary vector store in finally block for file {file_id}: {str(cleanup_e)}")
+    # Remove duplicates while preserving order
+    unique_file_ids = list(dict.fromkeys(file_ids))
+    logger.info(f"📊 SUMMARY: Found {len(file_ids)} total file_ids, {len(unique_file_ids)} unique file_ids")
+    
+    if unique_file_ids:
+        logger.info(f"🖼️ Raw image file_ids: {unique_file_ids}")
+        # Validate file_ids before returning
+        validated_file_ids = validate_file_ids(unique_file_ids)
+        logger.info(f"🔍 Validated image file_ids for evaluation: {validated_file_ids}")
+        return validated_file_ids
+    else:
+        logger.warning("❌ No image file_ids found in any answer sheets!")
+        return []
 
-    # This should never be reached, but just in case
-    raise HTTPException(status_code=500, detail=f"Unexpected error in extraction for file {file_id}")
-
-
-def evaluate_batch(batch: list, batch_num: int, evaluation_id: str, evaluation_assistant_id: str, extracted_mark_scheme: dict) -> list:
-    """Helper function to evaluate a single batch of answer sheets"""
-    try:
-        logger.info(f"Started processing batch {batch_num} with {len(batch)} answer sheets")
-        
-        # Build prompt payload for this batch
-        batch_payload = {
-            "mark_scheme": json.dumps(extracted_mark_scheme, indent=2),
-            "answer_sheets": json.dumps({"answer_sheets": batch}, indent=2),
-            "evaluation_id": evaluation_id
-        }
-
-        # Get evaluation prompt for this batch
-        evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
-
-        # Create thread and run for batch evaluation
-        thread = client.beta.threads.create(
-            messages=[{"role": "user", "content": evaluation_prompt}]
-        )
-
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=evaluation_assistant_id,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "evaluation_schema",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "evaluation_id": {"type": "string"},
-                            "students": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "file_id": {"type": "string"},
-                                        "answers": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "question_number": {"type": "string"},
-                                                    "question_text": {"type": "string"},
-                                                    "student_answer": {"type": ["string", "null"]},
-                                                    "correct_answer": {"type": ["string", "null"]},
-                                                    "score": {"type": "number"},
-                                                    "max_score": {"type": "number"},
-                                                    "feedback": {"type": "string"}
-                                                },
-                                                "required": ["question_number", "question_text", "student_answer", 
-                                                           "correct_answer", "score", "max_score", "feedback"]
-                                            }
-                                        },
-                                        "total_score": {"type": "number"},
-                                        "max_total_score": {"type": "number"}
-                                    },
-                                    "required": ["file_id", "answers", "total_score", "max_total_score"]
-                                }
-                            }
-                        },
-                        "required": ["evaluation_id", "students"]
-                    }
-                }
-            }
-        )
-
-        # Wait for batch evaluation completion with timeout
-        start_time = time.time()
-        timeout = 900  # 5 minutes timeout per batch
-        
-        while run.status in ["queued", "in_progress"]:
-            if time.time() - start_time > timeout:
-                raise TimeoutError(f"Batch {batch_num} evaluation timed out after {timeout} seconds")
-            time.sleep(1)
-            run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
-        if run.status == "failed":
-            raise Exception(f"Batch {batch_num} evaluation failed: {run.last_error}")
-
-        # Get batch results
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
-        for msg in messages.data:
-            if msg.role == "assistant" and msg.content and len(msg.content) > 0:
-                content = msg.content[0]
-                if hasattr(content, "text") and content.text.value:
-                    try:
-                        batch_result = json.loads(content.text.value)
-                        logger.info(f"Successfully evaluated batch {batch_num}")
-                        return batch_result.get("students", [])
-                    except json.JSONDecodeError as e:
-                        raise Exception(f"Failed to parse batch {batch_num} result: {str(e)}")
-
-        raise Exception(f"No valid response found for batch {batch_num}")
-    except Exception as e:
-        logger.error(f"Error processing batch {batch_num}: {str(e)}")
-        raise
 
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """
@@ -689,16 +295,78 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             "answer_sheets": json.dumps({"answer_sheets": batch}),
             "evaluation_id": evaluation_id
         }
-        print(batch_payload)
+        logger.info(f"📋 Batch payload created for {len(batch)} answer sheets")
+        
+        # Log answer sheet structure for debugging
+        for idx, sheet in enumerate(batch):
+            sheet_id = sheet.get("file_id", f"sheet_{idx}")
+            answers = sheet.get("answers", [])
+            image_count = 0
+            text_count = 0
+            
+            for answer in answers:
+                if isinstance(answer, dict) and answer.get("answer"):
+                    answer_content = answer["answer"]
+                    if isinstance(answer_content, list):
+                        for item in answer_content:
+                            if isinstance(item, dict):
+                                if item.get("type") == "image":
+                                    image_count += 1
+                                elif item.get("type") == "text":
+                                    text_count += 1
+            
+            logger.info(f"📊 Sheet {sheet_id}: {len(answers)} answers ({image_count} images, {text_count} text)")
+        
         evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
+        logger.info(f"📝 Generated evaluation prompt ({len(evaluation_prompt)} characters)")
 
-        # Create thread and run evaluation
-        thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            temperature=0.3,
-            assistant_id=evaluation_assistant_id,
-            response_format={
+        # Extract file_ids from answer sheets for image attachments
+        file_ids = extract_file_ids_from_answer_sheets(batch)
+        
+        # Create message with or without image files
+        if file_ids:
+            logger.info(f"🖼️ Creating evaluation message with {len(file_ids)} image files: {file_ids}")
+            message_content = [
+                {"type": "text", "text": evaluation_prompt}
+            ]
+            # Add each image file to the message content
+            for idx, file_id in enumerate(file_ids):
+                logger.debug(f"Adding image {idx + 1}/{len(file_ids)}: {file_id}")
+                message_content.append({
+                    "type": "image_file", 
+                    "image_file": {"file_id": file_id}
+                })
+            
+            logger.info(f"📝 Message content has {len(message_content)} items (1 text + {len(file_ids)} images)")
+            
+            # Log the exact message structure being sent
+            logger.debug(f"📋 Message structure preview:")
+            logger.debug(f"  - Text content: {message_content[0]['text'][:200]}...")
+            for i, img_content in enumerate(message_content[1:], 1):
+                logger.debug(f"  - Image {i}: file_id = {img_content['image_file']['file_id']}")
+            
+            try:
+                thread = client.beta.threads.create(messages=[{
+                    "role": "user", 
+                    "content": message_content
+                }])
+                logger.info("✅ Thread created successfully with images")
+            except Exception as thread_error:
+                logger.error(f"❌ Failed to create thread with images: {thread_error}")
+                logger.warning("🔄 Falling back to text-only evaluation")
+                # Fallback to text-only evaluation
+                thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
+                logger.info("✅ Fallback thread created successfully (text-only)")
+        else:
+            logger.info("📝 Creating evaluation message without image files")
+            thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
+            logger.info("✅ Thread created successfully without images")
+        # Configure run with vision capabilities if images are present
+        run_config = {
+            "thread_id": thread.id,
+            "temperature": 0.3,
+            "assistant_id": evaluation_assistant_id,
+            "response_format": {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "evaluation_schema",
@@ -747,7 +415,15 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                     }
                 }
             }
-        )
+        }
+        
+        # Log run configuration
+        if file_ids:
+            logger.info(f"🚀 Creating run with VISION SUPPORT for {len(file_ids)} images")
+        else:
+            logger.info("🚀 Creating run for TEXT-ONLY evaluation")
+        
+        run = client.beta.threads.runs.create(**run_config)
 
         # Poll until run finishes
         while run.status in ("queued", "in_progress"):
@@ -770,17 +446,28 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         # Fallback to message parsing if run.output missing
         if not structured_output:
             messages = client.beta.threads.messages.list(thread_id=thread.id)
+            logger.info(f"📨 Retrieved {len(messages.data)} messages from thread for batch {batch_num}")
+            
             for msg in messages.data:
                 if msg.role == "assistant" and msg.content:
                     for content in msg.content:
                         if hasattr(content, "text") and content.text.value:
                             structured_output = content.text.value
+                            logger.info(f"📄 AI Response length: {len(structured_output)} characters")
                             break
                 if structured_output:
                     break
 
         if not structured_output:
+            logger.error(f"❌ No structured content returned for batch {batch_num}")
             raise HTTPException(status_code=500, detail=f"No structured content returned for batch {batch_num}")
+        
+        # Check for problematic responses
+        if "No text answer provided, image not evaluated" in structured_output:
+            logger.error(f"❌ Batch {batch_num}: AI returned 'No text answer provided, image not evaluated' - IMAGE PROCESSING FAILED!")
+            logger.error(f"🔍 Response preview: {structured_output[:500]}...")
+        elif file_ids and len(file_ids) > 0:
+            logger.info(f"✅ Batch {batch_num}: AI processed evaluation with {len(file_ids)} images successfully")
 
         # Parse and enforce minimal invariants
         try:
@@ -796,6 +483,37 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
 
         logger.info(f"Successfully evaluated batch {batch_num} with {len(evaluation_result['students'])} students")
+
+        # Enrich results with original answer parts (to surface images in UI)
+        try:
+            file_id_to_parts = {}
+            for sheet in batch:
+                fid = sheet.get("file_id")
+                parts_per_answer = []
+                for ans in sheet.get("answers", []) or []:
+                    parts_per_answer.append(ans.get("answer", []))
+                if fid:
+                    file_id_to_parts[fid] = parts_per_answer
+
+            for student in evaluation_result.get("students", []):
+                fid = student.get("file_id")
+                source_parts = file_id_to_parts.get(fid, [])
+                for idx, ans in enumerate(student.get("answers", []) or []):
+                    if idx < len(source_parts):
+                        ans["original_answer_parts"] = source_parts[idx]
+                        # Convenience flag for UI to show an image badge
+                        try:
+                            has_image = any(
+                                isinstance(p, dict) and p.get("type") == "image"
+                                for p in (source_parts[idx] or [])
+                            )
+                            if has_image:
+                                ans["has_image"] = True
+                        except Exception:
+                            pass
+        except Exception as enrich_err:
+            logger.warning(f"Could not enrich results with original answer parts: {enrich_err}")
+
         return evaluation_result["students"]
 
     # Evaluate all batches sequentially

@@ -21,8 +21,8 @@ from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_i
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
-from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
 from app.utils.extraction_markscheme import extract_text_from_mark_scheme
+from app.utils.extraction_answersheet import split_into_qas, extract_images_from_pdf, extract_text_tables
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -185,48 +185,13 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             pages = extract_text_tables(answer_sheet_path)
-            qas_list = split_into_qas(pages, pdf_path=answer_sheet_path)  # Pass pdf_path for image extraction
-            
-            # Transform the extracted data to match the expected schema
-            transformed_answers = []
-            for idx, qa in enumerate(qas_list):
-                # Extract answer content from the answer array
-                answer_content = ""
-                if qa.get("answer") and isinstance(qa["answer"], list):
-                    for ans_item in qa["answer"]:
-                        if isinstance(ans_item, dict) and ans_item.get("type") == "text":
-                            answer_content += ans_item.get("content", "")
-                        elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
-                            # Format table data as readable text
-                            table_data = ans_item.get("content", [])
-                            if table_data and isinstance(table_data, list):
-                                answer_content += "\n[Table]:\n"
-                                for row in table_data:
-                                    if row:  # Skip empty rows
-                                        # Join cells with | separator
-                                        row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                                        answer_content += row_text + "\n"
-                                answer_content += "[End Table]\n"
-                        elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
-                            # Add image description to answer content
-                            image_description = ans_item.get("description", "")
-                            if image_description:
-                                answer_content += f"\n[Image]: {image_description}\n"
-                
-                # Create properly structured answer
-                transformed_answer = {
-                    "question_number": str(idx + 1),
-                    "question_text": qa.get("question", ""),
-                    "student_answer": answer_content if answer_content else None
-                }
-                transformed_answers.append(transformed_answer)
-            
+            qas_list = split_into_qas(pages, answer_sheet_path)  # Pass pdf_path for image extraction
             # Wrap in proper structure
             answer_sheet_data = {
                 "file_id": f"answer_sheet_{i+1}",
                 "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
                 "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                "answers": transformed_answers
+                "answers": qas_list
             }
             extracted_answer_sheets.append(answer_sheet_data)
         
@@ -234,11 +199,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
         logger.info(f"Mark scheme has {question_count} questions")
-
+        logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
         # Dynamic batching logic based on number of questions
         total_sheets = len(extracted_answer_sheets)
         logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
-        
+
         # Determine batch size based on question count
         if question_count < 15:
             BATCH_SIZE = 10
