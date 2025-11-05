@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { viewResource } from "../services/resources";
+import { jsPDF } from "jspdf";
 
 export default function ResourceViewModal({ open, onClose, resourceName, courseId }) {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
@@ -59,20 +60,84 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
     if (!resourceData?.content) return;
     
     try {
-      const blob = new Blob([resourceData.content], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${resourceName}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      // Create PDF document
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      const maxWidth = pageWidth - 2 * margin;
+      let yPosition = margin;
+
+      // Helper function to strip markdown formatting and convert to plain text
+      const stripMarkdown = (text) => {
+        // Remove markdown headers
+        text = text.replace(/^#+\s+/gm, '');
+        // Remove bold/italic markers
+        text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+        text = text.replace(/\*([^*]+)\*/g, '$1');
+        // Remove links but keep text
+        text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+        // Remove code blocks
+        text = text.replace(/```[\s\S]*?```/g, '');
+        text = text.replace(/`([^`]+)`/g, '$1');
+        // Remove list markers
+        text = text.replace(/^[\s]*[-*+]\s+/gm, '');
+        text = text.replace(/^[\s]*\d+\.\s+/gm, '');
+        return text;
+      };
+
+      // Convert markdown content to plain text
+      const plainText = stripMarkdown(resourceData.content);
+      
+      // Split text into lines
+      const lines = plainText.split('\n');
+      
+      // Add title
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      const titleLines = doc.splitTextToSize(resourceName, maxWidth);
+      doc.text(titleLines, margin, yPosition);
+      yPosition += titleLines.length * 10 + 10;
+      
+      // Add a line separator
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+      
+      // Add content
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 51, 51);
+      
+      lines.forEach((line) => {
+        // Check if we need a new page
+        if (yPosition > pageHeight - margin - 20) {
+          doc.addPage();
+          yPosition = margin;
+        }
+        
+        if (line.trim() === '') {
+          // Empty line - add spacing
+          yPosition += 4;
+        } else {
+          // Split long lines to fit page width
+          const textLines = doc.splitTextToSize(line.trim(), maxWidth);
+          doc.text(textLines, margin, yPosition);
+          yPosition += textLines.length * 5 + 3;
+        }
+      });
+      
+      // Save the PDF
+      const filename = `${resourceName.replace(/\.(txt|pdf)$/i, '')}.pdf`;
+      doc.save(filename);
       
       setShowDownloadMessage(true);
       setTimeout(() => setShowDownloadMessage(false), 2000);
     } catch (error) {
       console.error('Failed to download file:', error);
+      alert('Failed to generate PDF. Please try again.');
     }
   };
 
