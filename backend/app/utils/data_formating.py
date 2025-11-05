@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from ..utils.openai_client import client
 from ..config.settings import settings
+import uuid
 from app.services.mongo import (
     get_course, 
     get_assets_by_course_id,
@@ -306,15 +307,28 @@ def format_activity_content(course_id: str, asset_name: str):
     assistant_id = course.get("assistant_id", "")
     
     # Prepare the prompt    
-    system_prompt = """You are an activity formatting assistant. Your task is to take activity content (which may be in various formats) and convert it into a well-structured JSON format.
+    system_prompt = """You are an activity formatting assistant. Your task is to take activity content (which may be in various formats) and convert it into a well-structured JSON format compatible with the LMS assignment payload.
 
-Extract or infer the following:
-- A clear title for the activity
-- A brief description of what the activity covers
-- The main content or text of the activity
-- The type should always be "assignment"
+Extraction & Inference Rules:
+payload.title → A clear, concise title for the activity.
+payload.description → A brief summary of what the activity covers.
+payload.content → The main instructional or task content.
+payload.submissionOptions → Suggested submission methods (e.g., ["file", "link"]).
+Use ["file"] as a default if unspecified.
+payload.deadline → Include only if clearly stated or inferable, in ISO 8601 format.
+payload.contentHours → Estimated time to complete the activity.
+If not specified or inferable, set to 60 (representing 60 minutes).
+This field must always be present.
+payload.rubrics → Include structured rubrics if explicitly mentioned or inferable; otherwise, omit this key entirely or use an empty array ([]).
+type → Always "assignment".
+isLocked → Always false.
+isGraded → Always true.
 
-The activity will be formatted as an assignment activity by default."""
+Guidelines:
+Do not invent deadlines or rubrics unless clearly implied.
+Be strictly JSON-compliant — no explanations or extra text.
+Ensure all keys and structure match the schema above exactly.
+"""
 
     user_prompt = f"Please format the following activity content into the required JSON structure:\n\n{asset_content}"
     if asset_name:
@@ -353,9 +367,73 @@ The activity will be formatted as an assignment activity by default."""
                                 "content": {
                                     "type": "string",
                                     "description": "The main content or text of the activity"
+                                },
+                                "submissionOptions": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Submission methods supported (e.g., file, link)"
+                                },
+                                "deadline": {
+                                    "type": ["string", "null"],
+                                    "description": "ISO 8601 deadline if available"
+                                },
+                                "rubrics": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": { "type": "string" },
+                                            "name": { "type": "string" },
+                                            "description": { "type": "string" },
+                                            "maxScore": { "type": "number" },
+                                            "criteria": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": { "type": "string" },
+                                                        "name": { "type": "string" },
+                                                        "description": { "type": "string" },
+                                                        "maxPoints": { "type": "number" },
+                                                        "levels": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "id": { "type": "string" },
+                                                                    "name": { "type": "string" },
+                                                                    "description": { "type": "string" },
+                                                                    "points": { "type": "number" }
+                                                                },
+                                                                "required": ["id", "name", "description", "points"],
+                                                                "additionalProperties": False
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": ["id", "name", "description", "maxPoints", "levels"],
+                                                    "additionalProperties": False
+                                                }
+                                            }
+                                        },
+                                        "required": ["id", "name", "description", "maxScore", "criteria"],
+                                        "additionalProperties": False
+                                    },
+                                    "description": "Rubric definition for grading"
+                                },
+                                "contentHours": {
+                                    "type": ["number", "null"],
+                                    "description": "Estimated time to complete in hours"
                                 }
                             },
-                            "required": ["title", "description", "content"],
+                            "required": [
+                                "title",
+                                "description",
+                                "content",
+                                "submissionOptions",
+                                "deadline",
+                                "rubrics",
+                                "contentHours"
+                            ],
                             "additionalProperties": False
                         },
                         "isLocked": {
@@ -405,10 +483,145 @@ The activity will be formatted as an assignment activity by default."""
     if activity_data.get('type') in ['object', 'activity', '']:
         activity_data['type'] = 'assignment'  # Default to assignment activity
     
-    # For assignment type activities, ensure isGraded is true
+    # For assignment type activities, ensure isGraded is true by default
     if activity_data.get('type') == 'assignment':
-        activity_data['isGraded'] = False
+        if 'isGraded' not in activity_data or activity_data['isGraded'] is None:
+            activity_data['isGraded'] = True
+        if 'isLocked' not in activity_data or activity_data['isLocked'] is None:
+            activity_data['isLocked'] = False
     
+    # Fill sensible defaults and attempt to extract rubric from any markdown table present in the original content
+    try:
+        # Defaults for submission options and content hours
+        if isinstance(activity_data.get('payload'), dict):
+            payload = activity_data['payload']
+            if 'submissionOptions' not in payload or not isinstance(payload.get('submissionOptions'), list):
+                payload['submissionOptions'] = ["file"]
+            # Do not invent deadline; leave as-is if not present
+            if 'contentHours' in payload and payload['contentHours'] is None:
+                del payload['contentHours']
+
+        def _extract_rubric_from_markdown(md_text: str) -> Optional[List[Dict[str, Any]]]:
+            """
+            Parse a markdown table under a section likely named 'Assessment Rubric' and convert
+            it into the expected rubrics structure.
+
+            Expected table headers example:
+            | Criterion | Exemplary | Proficient | Developing | Beginning | Points |
+            """
+            if not isinstance(md_text, str) or '|' not in md_text:
+                return None
+
+            # Find rubric section start heuristically
+            lower = md_text.lower()
+            section_start = max(lower.find("assessment rubric"), lower.find("rubric"))
+            scan_text = md_text[section_start:] if section_start != -1 else md_text
+
+            # Extract the first markdown table from the scan_text
+            lines = [l.strip() for l in scan_text.splitlines() if l.strip()]
+            table_lines: List[str] = []
+            in_table = False
+            for line in lines:
+                if line.startswith('|') and line.endswith('|'):
+                    table_lines.append(line)
+                    in_table = True
+                else:
+                    if in_table:
+                        break
+            if len(table_lines) < 2:
+                return None
+
+            # Parse headers (first line) and separator (second line)
+            def _split_row(row: str) -> List[str]:
+                # Remove leading/trailing pipe and split
+                cells = [c.strip() for c in row.strip('|').split('|')]
+                return cells
+
+            headers = _split_row(table_lines[0])
+            # Basic validation: need at least Criterion and Points columns
+            try:
+                criterion_idx = headers.index('Criterion') if 'Criterion' in headers else headers.index('Criteria')
+            except ValueError:
+                # Look for case-insensitive match
+                criterion_idx = next((i for i, h in enumerate(headers) if h.lower() in ['criterion', 'criteria']), -1)
+            points_idx = next((i for i, h in enumerate(headers) if h.lower() in ['points', 'score', 'max points', 'weight', 'weightage']), -1)
+            if criterion_idx == -1 or points_idx == -1:
+                return None
+
+            # Level columns are the rest between criterion and points
+            level_indices = [i for i in range(len(headers)) if i not in [criterion_idx, points_idx]]
+            level_headers = [headers[i] for i in level_indices]
+            if not level_headers:
+                return None
+
+            # Parse data rows (skip header and separator)
+            data_rows = [r for r in table_lines[2:]] if len(table_lines) >= 3 else []
+            if not data_rows:
+                return None
+
+            criteria_list: List[Dict[str, Any]] = []
+
+            def _parse_points(value: str) -> float:
+                v = value.strip()
+                if v.endswith('%'):
+                    try:
+                        return float(v[:-1])
+                    except:
+                        return 0.0
+                try:
+                    return float(v)
+                except:
+                    return 0.0
+
+            for row in data_rows:
+                cells = _split_row(row)
+                # Align mismatched cell counts
+                if len(cells) < len(headers):
+                    cells += [''] * (len(headers) - len(cells))
+                name = cells[criterion_idx]
+                max_points = _parse_points(cells[points_idx])
+                # Distribute level points descending as a simple heuristic
+                if len(level_headers) >= 4:
+                    scale = [1.0, 0.75, 0.5, 0.25] + [0.0] * (len(level_headers) - 4)
+                else:
+                    # If fewer levels, split equally descending
+                    step = 1.0 / max(1, len(level_headers))
+                    scale = [1.0 - i * step for i in range(len(level_headers))]
+                levels = []
+                for idx, li in enumerate(level_indices):
+                    level_name = headers[li]
+                    level_desc = cells[li]
+                    level_points = round(max_points * max(0.0, scale[idx]), 2)
+                    levels.append({
+                        "id": f"level-{uuid.uuid4().hex[:8]}",
+                        "name": level_name,
+                        "description": level_desc,
+                        "points": level_points
+                    })
+                criteria_list.append({
+                    "id": f"criteria-{uuid.uuid4().hex[:8]}",
+                    "name": name,
+                    "description": name,
+                    "maxPoints": max_points,
+                    "levels": levels
+                })
+
+            rubric = [{
+                "id": f"rubric-{uuid.uuid4().hex[:8]}",
+                "name": "Assessment Rubric",
+                "description": "Generated from activity rubric table",
+                "maxScore": 100,
+                "criteria": criteria_list
+            }]
+            return rubric
+
+        extracted_rubrics = _extract_rubric_from_markdown(asset_content)
+        if extracted_rubrics:
+            if isinstance(activity_data.get('payload'), dict):
+                activity_data['payload']['rubrics'] = extracted_rubrics
+    except Exception as e:
+        logger.warning(f"Failed to extract rubric table: {e}")
+
     # Convert markdown content to HTML for proper rendering in LMS
     if isinstance(activity_data.get('payload'), dict):
         payload = activity_data['payload']
