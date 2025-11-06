@@ -179,27 +179,38 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         # Extract mark scheme - returns {"mark_scheme": [...]}
         logger.info(f"Extracting mark scheme from {mark_scheme_path}")
         extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        mark_scheme_questions = extracted_mark_scheme.get('mark_scheme', [])
         
-        # Extract answer sheets - split_into_qas returns a list of Q&A pairs
-        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
+        # Extract answer sheets - EXTRACTING ONLY ANSWERS (NO QUESTIONS)
+        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets (answers only, no questions)")
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             pages = extract_text_tables(answer_sheet_path)
-            qas_list = split_into_qas(pages, answer_sheet_path)  # Pass pdf_path for image extraction
-            # Wrap in proper structure
+            # Extract answers only using the answers_only parameter
+            answers_only = split_into_qas(pages, pdf_path=answer_sheet_path, answers_only=True)
+            
+            logger.info(f"Extracted {len(answers_only)} answers from answer sheet {i+1}")
+            
+            # Wrap in proper structure - only answers, no questions
             answer_sheet_data = {
                 "file_id": f"answer_sheet_{i+1}",
                 "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
                 "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                "answers": qas_list
+                "answers": answers_only  # Only student answers, no question text
             }
+            logger.info(f"Answers only: {answers_only}")
             extracted_answer_sheets.append(answer_sheet_data)
+            logger.info(f"Completed extraction for answer sheet {i+1}: Only student answers extracted")
         
         # Log for debugging
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
         logger.info(f"Mark scheme has {question_count} questions")
+        
+        # Log extracted data before evaluation starts
+        logger.info(f"Extracted mark scheme: {extracted_mark_scheme}")
         logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
+        
         # Dynamic batching logic based on number of questions
         total_sheets = len(extracted_answer_sheets)
         logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
