@@ -192,6 +192,10 @@ async def create_asset_chat(
     Returns task_id immediately - use /tasks/{task_id} to check status
     """
     try:
+        # Backwards compatibility: Convert old "lesson-plans" to "lecture"
+        if asset_type_name == "lesson-plans":
+            asset_type_name = "lecture"
+        
         # Validate course exists
         course = get_course(course_id)
         if not course or "assistant_id" not in course:
@@ -331,7 +335,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
         "modules": "curriculum",
-        "lesson-plans": "curriculum",
+        "lecture": "curriculum",
         "concept-map": "curriculum",
         "course-notes": "curriculum",
         "project": "assessments",
