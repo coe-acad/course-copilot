@@ -12,6 +12,9 @@ class Settings:
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
     OPENAI_API_VERSION: str = "assistants=v2"
     
+    # Mistral AI Configuration
+    MISTRAL_API_KEY: str = os.getenv("MISTRAL_API_KEY", "")
+    
     # Firebase Configuration
     FIREBASE_PROJECT_ID: Optional[str] = os.getenv("FIREBASE_PROJECT_ID")
     FIREBASE_PRIVATE_KEY_ID: Optional[str] = os.getenv("FIREBASE_PRIVATE_KEY_ID")

@@ -6,6 +6,7 @@ pyrebase4==4.7.1
 firebase-admin==6.2.0
 python-multipart==0.0.6
 openai==1.97.0
+mistralai>=1.9.11
 pytest==7.4.4
 httpx==0.24.1
 coverage==7.4.4
