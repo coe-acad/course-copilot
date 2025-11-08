@@ -76,7 +76,7 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
         text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
         text = text.replace(/\*([^*]+)\*/g, '$1');
         // Remove links but keep text
-        text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+        text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
         // Remove code blocks
         text = text.replace(/```[\s\S]*?```/g, '');
         text = text.replace(/`([^`]+)`/g, '$1');
