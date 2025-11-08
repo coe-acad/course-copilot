@@ -374,6 +374,67 @@ def post_activity_data_to_lms(lms_cookies: str, activity_data: Dict[str, Any]) -
             "status_code": 500
         }
 
+def post_lecture_data_to_lms(lms_cookies: str, lecture_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Post lecture data to the LMS platform using authentication cookies
+    """
+    lms_base_url = settings.LMS_BASE_URL
+    
+    # Ensure URL has protocol
+    if not lms_base_url.startswith('http://') and not lms_base_url.startswith('https://'):
+        lms_base_url = f"https://{lms_base_url}"
+    
+    url = f"{lms_base_url}/api/v1/activity"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Cookie': lms_cookies
+    }
+    
+    try:
+        logger.info(f"Posting lecture data to LMS at {url}")
+        logger.info(f"Using cookies: {lms_cookies[:50]}...")
+        logger.info(f"Lecture title: {lecture_data.get('payload', {}).get('title', 'Unknown')}")
+        logger.info(f"Lecture data being sent to LMS: {json.dumps(lecture_data, indent=2)}")
+        
+        response = requests.post(url, json=lecture_data, headers=headers, timeout=30)
+        
+        # Attempt to parse JSON but be defensive about non-JSON bodies
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"message": response.text}
+        
+        if response.status_code in [200, 201]:
+            logger.info(f"Lecture posted successfully!")
+            logger.info(f"LMS Response structure - Type: {type(response_data)}, Keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'Not a dict'}")
+            logger.info(f"LMS Response data: {response_data}")
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "data": response_data
+            }
+        else:
+            error_msg = None
+            if isinstance(response_data, dict):
+                error_msg = response_data.get('message') or response_data.get('error') or response_data.get('detail')
+            if not error_msg:
+                error_msg = 'Failed to post lecture'
+            logger.error(f"Failed to post lecture: {error_msg}")
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": error_msg
+            }
+            
+    except Exception as e:
+        logger.error(f"Error posting lecture: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "status_code": 500
+        }
+
 def link_activity_to_course(lms_cookies: str, lms_course_id: str, lms_module_id: str, lms_activity_id: str, order: int = 0) -> Dict[str, Any]:
     """
     Link an activity to a course and topic/module in the LMS platform

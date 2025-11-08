@@ -14,7 +14,7 @@ import AddResourceModal from '../components/AddReferencesModal';
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
   "modules-and-topics": "Modules",
-  "lesson-plans": "Lesson Plans",
+  "lecture": "Lecture",
   "concept-map": "Concept Map",
   "course-notes": "Course Notes",
   "brainstorm": "Brainstorm",

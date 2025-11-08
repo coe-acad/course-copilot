@@ -18,8 +18,8 @@ export default function ActivitiesSelectionModal({
 
   // Define asset type categories
   const ASSESSMENT_TYPES = ['project', 'activity', 'quiz', 'question-paper', 'mark-scheme', 'mock-interview'];
-  const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lesson-plans', 'concept-map', 'course-notes'];
-  const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity']; // Only these can be exported to LMS
+  const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lecture', 'concept-map', 'course-notes'];
+  const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity', 'lecture']; // Only these can be exported to LMS
 
   useEffect(() => {
     if (!open) return;
