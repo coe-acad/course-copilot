@@ -68,14 +68,27 @@ def get_email_by_user_id(user_id: str):
 # Courses
 def create_course(data: dict):
     course_id = str(uuid4())
-    add_to_collection("courses", {"_id": course_id, **data})
+    add_to_collection(
+        "courses",
+        {
+            "_id": course_id,
+            "created_at": datetime.utcnow(),
+            **data,
+        },
+    )
     return course_id
 
 def get_course(course_id: str):
     return get_one_from_collection("courses", {"_id": course_id})
 
 def get_courses_by_user_id(user_id: str):
-    return get_many_from_collection("courses", {"user_id": user_id})
+    courses = []
+    collection = db["courses"]
+    for doc in collection.find({"user_id": user_id}).sort("created_at", -1):
+        if "_id" in doc:
+            doc["_id"] = str(doc["_id"])
+        courses.append(doc)
+    return courses
 
 def update_course(course_id: str, data: dict):
     update_in_collection("courses", {"_id": course_id}, data)
