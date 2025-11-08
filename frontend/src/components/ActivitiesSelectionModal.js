@@ -2,6 +2,11 @@ import React, { useState, useEffect, useMemo } from "react";
 import Modal from "./Modal";
 import { assetService } from "../services/asset";
 
+// Define asset type categories outside component to prevent recreation on every render
+const ASSESSMENT_TYPES = ['project', 'activity', 'quiz', 'question-paper', 'mark-scheme', 'mock-interview'];
+const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lecture', 'concept-map', 'course-notes'];
+const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity', 'lecture']; // Only these can be exported to LMS
+
 export default function ActivitiesSelectionModal({
   open,
   onClose,
@@ -15,11 +20,6 @@ export default function ActivitiesSelectionModal({
   const [assets, setAssets] = useState([]);
   const [selected, setSelected] = useState({});
   const [search, setSearch] = useState("");
-
-  // Define asset type categories
-  const ASSESSMENT_TYPES = ['project', 'activity', 'quiz', 'question-paper', 'mark-scheme', 'mock-interview'];
-  const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lecture', 'concept-map', 'course-notes'];
-  const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity', 'lecture']; // Only these can be exported to LMS
 
   useEffect(() => {
     if (!open) return;
@@ -84,7 +84,7 @@ export default function ActivitiesSelectionModal({
     if (curriculum.length > 0) groups['Curriculum'] = curriculum;
     
     return groups;
-  }, [filteredAssets, ASSESSMENT_TYPES, CURRICULUM_TYPES]);
+  }, [filteredAssets]);
 
   const totalCount = filteredAssets.length;
   const exportableCount = filteredAssets.filter(a => a.isExportable).length;
