@@ -85,7 +85,6 @@ export default function ActivitiesSelectionModal({
     
     return groups;
   }, [filteredAssets]);
-  }, [filteredAssets]);
 
   const totalCount = filteredAssets.length;
   const exportableCount = filteredAssets.filter(a => a.isExportable).length;
