@@ -84,7 +84,7 @@ export default function ActivitiesSelectionModal({
     if (curriculum.length > 0) groups['Curriculum'] = curriculum;
     
     return groups;
-  }, [filteredAssets, ASSESSMENT_TYPES, CURRICULUM_TYPES]);
+  }, [filteredAssets]);
 
   const totalCount = filteredAssets.length;
   const exportableCount = filteredAssets.filter(a => a.isExportable).length;

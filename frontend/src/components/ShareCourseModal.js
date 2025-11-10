@@ -319,4 +319,3 @@ export default function ShareCourseModal({ open, onClose, courseId, courseName, 
     </Modal>
   );
 }
-
