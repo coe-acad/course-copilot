@@ -482,7 +482,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         }
 
 @router.get("/evaluation/evaluate-files")
-async def evaluate_files(evaluation_id: str, user_id: str):
+async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
