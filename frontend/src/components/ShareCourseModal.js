@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Modal from './Modal';
 import { shareCourse, getCourseShares, revokeCourseShare } from '../services/course';
 import LoadingSpinner from './LoadingSpinner';
@@ -11,19 +11,7 @@ export default function ShareCourseModal({ open, onClose, courseId, courseName, 
   const [sharedUsers, setSharedUsers] = useState([]);
   const [loadingShares, setLoadingShares] = useState(false);
 
-  useEffect(() => {
-    if (open && courseId && isOwner) {
-      loadSharedUsers();
-    }
-    // Reset state when modal closes
-    if (!open) {
-      setEmail('');
-      setError('');
-      setSuccess('');
-    }
-  }, [open, courseId, isOwner]);
-
-  const loadSharedUsers = async () => {
+  const loadSharedUsers = useCallback(async () => {
     if (!courseId) return;
     try {
       setLoadingShares(true);
@@ -34,7 +22,19 @@ export default function ShareCourseModal({ open, onClose, courseId, courseName, 
     } finally {
       setLoadingShares(false);
     }
-  };
+  }, [courseId]);
+
+  useEffect(() => {
+    if (open && courseId && isOwner) {
+      loadSharedUsers();
+    }
+    // Reset state when modal closes
+    if (!open) {
+      setEmail('');
+      setError('');
+      setSuccess('');
+    }
+  }, [open, courseId, isOwner, loadSharedUsers]);
 
   const handleShare = async (e) => {
     e.preventDefault();

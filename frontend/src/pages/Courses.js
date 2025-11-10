@@ -1,5 +1,5 @@
 // src/pages/Courses.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import CoursesLayout from "../layouts/CoursesLayout";
 import CourseModal from "../components/CourseModal";
@@ -24,7 +24,7 @@ export default function Courses() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedCourseForShare, setSelectedCourseForShare] = useState(null);
 
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     try {
       const coursesFromAPI = await fetchCourses();
       setSavedCourses(coursesFromAPI);
@@ -35,11 +35,11 @@ export default function Courses() {
         navigate("/login");
       }
     }
-  };
+  }, [navigate]);
 
   useEffect(() => {
     loadCourses();
-  }, [showModal, navigate]);
+  }, [showModal, loadCourses]);
 
   // Close menu on outside click
   useEffect(() => {
