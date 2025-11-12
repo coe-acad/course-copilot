@@ -177,48 +177,31 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Extracting mark scheme from {mark_scheme_path}")
         extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
         
-        # Extract answer sheets - split_into_qas returns a list of Q&A pairs
+        # Extract answer sheets - split_into_qas returns a dict with email and answers
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             pages = extract_text_tables(answer_sheet_path)
-            qas_list = split_into_qas(pages)  # Returns list of {"question": "...", "answer": [...]}
+            # Pass pdf_path to extract email along with answers
+            extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
             
-            # Transform the extracted data to match the expected schema
-            transformed_answers = []
-            for idx, qa in enumerate(qas_list):
-                # Extract answer content from the answer array
-                answer_content = ""
-                if qa.get("answer") and isinstance(qa["answer"], list):
-                    for ans_item in qa["answer"]:
-                        if isinstance(ans_item, dict) and ans_item.get("type") == "text":
-                            answer_content += ans_item.get("content", "")
-                        elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
-                            # Format table data as readable text
-                            table_data = ans_item.get("content", [])
-                            if table_data and isinstance(table_data, list):
-                                answer_content += "\n[Table]:\n"
-                                for row in table_data:
-                                    if row:  # Skip empty rows
-                                        # Join cells with | separator
-                                        row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                                        answer_content += row_text + "\n"
-                                answer_content += "[End Table]\n"
-                
-                # Create properly structured answer
-                transformed_answer = {
-                    "question_number": str(idx + 1),
-                    "question_text": qa.get("question", ""),
-                    "student_answer": answer_content if answer_content else None
-                }
-                transformed_answers.append(transformed_answer)
+            # Extract email and answers from result
+            extracted_email = extraction_result.get("email", None)
+            qas_list = extraction_result.get("answers", [])
             
-            # Wrap in proper structure
+            # Log extracted email for debugging
+            if extracted_email:
+                logger.info(f"Extracted email from answer sheet {i+1}: {extracted_email}")
+            else:
+                logger.warning(f"No email found in answer sheet {i+1}")
+            
+            # Wrap in proper structure with email
             answer_sheet_data = {
                 "file_id": f"answer_sheet_{i+1}",
                 "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
                 "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                "answers": transformed_answers
+                "email": extracted_email,  # Add extracted email to the data
+                "answers": qas_list  # Use answers directly from extraction_result
             }
             extracted_answer_sheets.append(answer_sheet_data)
         
@@ -316,38 +299,45 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                     
                     logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
                     
-                    # Equal split between 2 workers
-                    mid_point = len(round_sheets) // 2
-                    worker1_sheets = round_sheets[:mid_point]
-                    worker2_sheets = round_sheets[mid_point:]
-                    
-                    logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
-                    
-                    def evaluate_worker_batch(sheets, worker_num):
-                        """Helper function to evaluate sheets in a worker"""
-                        logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
-                        if not sheets:
-                            logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
-                            return {"students": []}
-                        worker_data = {"answer_sheets": sheets}
-                        logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
-                        result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
-                        logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
-                        return result
-                    
-                    # Use ThreadPoolExecutor with 2 workers for this round
-                    with ThreadPoolExecutor(max_workers=2) as executor:
-                        future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
-                        future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
+                    # If 3 or fewer sheets, use single worker
+                    if len(round_sheets) <= 3:
+                        logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
+                        round_data = {"answer_sheets": round_sheets}
+                        round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
+                        all_students.extend(round_result.get("students", []))
+                    else:
+                        # Split between 2 workers for more than 3 sheets
+                        mid_point = len(round_sheets) // 2
+                        worker1_sheets = round_sheets[:mid_point]
+                        worker2_sheets = round_sheets[mid_point:]
                         
-                        # Get results from both workers
-                        result1 = future1.result()
-                        result2 = future2.result()
-                    
-                    # Merge results from both workers in this round
-                    round_students = result1.get("students", []) + result2.get("students", [])
-                    all_students.extend(round_students)
-                    logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
+                        logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
+                        
+                        def evaluate_worker_batch(sheets, worker_num):
+                            """Helper function to evaluate sheets in a worker"""
+                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
+                            if not sheets:
+                                logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
+                                return {"students": []}
+                            worker_data = {"answer_sheets": sheets}
+                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
+                            result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
+                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
+                            return result
+                        
+                        # Use ThreadPoolExecutor with 2 workers for this round
+                        with ThreadPoolExecutor(max_workers=2) as executor:
+                            future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
+                            future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
+                            
+                            # Get results from both workers
+                            result1 = future1.result()
+                            result2 = future2.result()
+                        
+                        # Merge results from both workers in this round
+                        round_students = result1.get("students", []) + result2.get("students", [])
+                        all_students.extend(round_students)
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
                     round_num += 1
         
         # Create final evaluation result with all students
@@ -482,7 +472,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         }
 
 @router.get("/evaluation/evaluate-files")
-async def evaluate_files(evaluation_id: str, user_id: str):
+async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
     try:
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
         if not evaluation:
@@ -493,6 +483,13 @@ async def evaluate_files(evaluation_id: str, user_id: str):
             return {
                 "evaluation_id": evaluation_id,
                 "evaluation_result": evaluation["evaluation_result"]
+            }
+        
+        # If already processing, return processing status (prevent duplicate runs)
+        if evaluation.get("status") == "processing":
+            return {
+                "evaluation_id": evaluation_id,
+                "message": "Evaluation already in progress"
             }
         
         # Verify files are uploaded
@@ -721,16 +718,17 @@ def format_evaluation_csv(evaluation):
     # Build CSV rows
     rows = []
     for idx, student in enumerate(students):
-        # Extract email from filename if possible, otherwise use stored filename
-        email = ""
-        if idx < len(stored_filenames):
-            filename = stored_filenames[idx]
-            # Remove .pdf extension from filename
-            email = filename.replace('.pdf', '') if filename.endswith('.pdf') else filename
-        elif student.get('student_name'):
-            email = student.get('student_name')
-        else:
-            email = f"student_{idx + 1}"
+        # Use email from student object if available, otherwise fallback to filename
+        email = student.get('email', '')
+        if not email:
+            if idx < len(stored_filenames):
+                filename = stored_filenames[idx]
+                # Remove .pdf extension from filename
+                email = filename.replace('.pdf', '') if filename.endswith('.pdf') else filename
+            elif student.get('student_name'):
+                email = student.get('student_name')
+            else:
+                email = f"student_{idx + 1}"
         
         row = [email]
         

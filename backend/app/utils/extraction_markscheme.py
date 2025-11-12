@@ -190,16 +190,14 @@ def _extract_structured_text_format(text: str) -> List[Dict[str, Any]]:
     Extract mark scheme from structured text format.
     Expected format:
     questionnumber: 1
-    question-text: "..."
+    question: "..."
     answertemplate: "..."
-    markingscheme: [
-        "(X marks) bullet point 1",
-        "(Y marks) bullet point 2"
-    ]
-    deductions: [
-        "(X mark) deduction 1"
-    ]
-    notes: "..."
+    markingscheme:
+        A (X): description
+        B (Y): description
+        C (Z): description
+    
+    Also supports legacy format with question-text and markingscheme with brackets.
     """
     questions = []
     
@@ -231,9 +229,9 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
     
-    # Extract question-text
+    # Extract question text (support both "question:" and "question-text:")
     qtext_match = re.search(
-        r'(?:question-text|"question-text")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|$))',
+        r'(?:question-text|"question-text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
@@ -249,7 +247,8 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     if answer_match:
         question_data["answertemplate"] = _clean_text(answer_match.group(1))
     
-    # Extract markingscheme array
+    # Extract markingscheme - try both array format and indented format
+    # First try array format with brackets
     marking_match = re.search(
         r'(?:markingscheme|"markingscheme")\s*:\s*\[(.*?)\]',
         block,
@@ -257,6 +256,18 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     )
     if marking_match:
         question_data["markingscheme"] = _extract_array_items(marking_match.group(1))
+    else:
+        # Try indented format without brackets (new format)
+        # Capture all text after markingscheme: until end of block
+        marking_match = re.search(
+            r'(?:markingscheme|"markingscheme")\s*:\s*(.*?)$',
+            block,
+            re.DOTALL | re.IGNORECASE
+        )
+        if marking_match:
+            marking_text = marking_match.group(1).strip()
+            if marking_text:
+                question_data["markingscheme"] = _extract_indented_items(marking_text)
     
     return question_data
 
@@ -339,6 +350,31 @@ def _extract_array_items(array_text: str) -> List[str]:
         # Fallback: split by commas if not quoted
         parts = array_text.split(',')
         items = [_clean_text(p) for p in parts if p.strip()]
+    
+    return items
+
+
+def _extract_indented_items(indented_text: str) -> List[str]:
+    """
+    Extract items from indented text format (without brackets).
+    Expected format:
+        A (2): description
+        B (3): description
+        C (1): description
+    """
+    items = []
+    
+    # Split by lines and extract each item
+    lines = indented_text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Match pattern like "A (2): description" or "A(2): description"
+        if re.match(r'^[A-Z]\s*\(', line, re.IGNORECASE):
+            items.append(_clean_text(line))
     
     return items
 

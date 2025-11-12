@@ -1,8 +1,9 @@
 // src/pages/Courses.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import CoursesLayout from "../layouts/CoursesLayout";
 import CourseModal from "../components/CourseModal";
+import ShareCourseModal from "../components/ShareCourseModal";
 import { useCourses } from "../hooks/useCourses";
 import { fetchCourses, createCourse,  deleteCourse } from "../services/course";
 import { useRef } from "react";
@@ -20,23 +21,25 @@ export default function Courses() {
   const navigate = useNavigate();
   const [menuOpenIndex, setMenuOpenIndex] = useState(null);
   const menuRef = useRef();
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedCourseForShare, setSelectedCourseForShare] = useState(null);
 
-  useEffect(() => {
-    async function loadCourses() {
-      try {
-        const coursesFromAPI = await fetchCourses();
-        setSavedCourses(coursesFromAPI);
-      } catch (err) {
-        console.error("Failed to fetch courses:", err);
-        if (err.message === 'User not authenticated') {
-          // Redirect to login if user is not authenticated
-          navigate("/login");
-        }
+  const loadCourses = useCallback(async () => {
+    try {
+      const coursesFromAPI = await fetchCourses();
+      setSavedCourses(coursesFromAPI);
+    } catch (err) {
+      console.error("Failed to fetch courses:", err);
+      if (err.message === 'User not authenticated') {
+        // Redirect to login if user is not authenticated
+        navigate("/login");
       }
     }
-  
+  }, [navigate]);
+
+  useEffect(() => {
     loadCourses();
-  }, [showModal, navigate]);
+  }, [showModal, loadCourses]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -52,6 +55,12 @@ export default function Courses() {
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpenIndex]);
+
+  const handleShare = (course) => {
+    setSelectedCourseForShare(course);
+    setShowShareModal(true);
+    setMenuOpenIndex(null);
+  };
 
   const handleDelete = async (courseId) => {
     const confirmed = window.confirm("Are you sure you want to delete this course? This action cannot be undone.");
@@ -109,6 +118,60 @@ export default function Courses() {
       }}
     >
       <span style={{ fontWeight: 700, fontSize: 18, marginBottom: 6, textAlign: 'center', width: '100%', textTransform: 'capitalize', letterSpacing: 0.2 }}>{course.name}</span>
+      
+      {/* Badge for Courses Shared WITH You */}
+      {course.is_shared && (
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: 14,
+          background: '#dbeafe',
+          color: '#1e40af',
+          padding: '4px 10px',
+          borderRadius: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }}>
+          <span>👥</span>
+          <span>Shared</span>
+        </div>
+      )}
+      
+      {/* Badge for Owner's Courses That Are Shared */}
+      {course.is_owner && course.shared_count > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: 14,
+          background: '#d1fae5',
+          color: '#059669',
+          padding: '4px 10px',
+          borderRadius: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }}>
+          <span>📤</span>
+          <span>Shared with {course.shared_count}</span>
+        </div>
+      )}
+      
+      {course.is_shared && course.owner_email && (
+        <div style={{
+          fontSize: 12,
+          color: '#64748b',
+          marginTop: 4,
+          textAlign: 'center'
+        }}>
+          By: {course.owner_email}
+        </div>
+      )}
+      
       {/* Three-dot menu */}
       <button
         data-menu
@@ -149,25 +212,83 @@ export default function Courses() {
             padding: '6px 0',
           }}
         >
-          <div
-            style={{
-              padding: '8px 18px',
-              color: '#e11d48',
-              fontWeight: 500,
-              fontSize: 15,
-              cursor: 'pointer',
-              border: 'none',
-              background: 'none',
-              textAlign: 'left',
-              width: '100%'
-            }}
-            onClick={e => {
-              e.stopPropagation();
-              handleDelete(course.id);
-            }}
-          >
-            Delete
-          </div>
+          {/* Share option - only for owners */}
+          {course.is_owner && (
+            <div
+              style={{
+                padding: '8px 18px',
+                color: '#2563eb',
+                fontWeight: 500,
+                fontSize: 15,
+                cursor: 'pointer',
+                border: 'none',
+                background: 'none',
+                textAlign: 'left',
+                width: '100%',
+                transition: 'background 0.2s'
+              }}
+              onClick={e => {
+                e.stopPropagation();
+                handleShare(course);
+              }}
+              onMouseEnter={e => e.target.style.background = '#f1f5f9'}
+              onMouseLeave={e => e.target.style.background = 'none'}
+            >
+              Share
+            </div>
+          )}
+          
+          {/* Delete option - only for owners */}
+          {course.is_owner && (
+            <div
+              style={{
+                padding: '8px 18px',
+                color: '#e11d48',
+                fontWeight: 500,
+                fontSize: 15,
+                cursor: 'pointer',
+                border: 'none',
+                background: 'none',
+                textAlign: 'left',
+                width: '100%',
+                transition: 'background 0.2s'
+              }}
+              onClick={e => {
+                e.stopPropagation();
+                handleDelete(course.id);
+              }}
+              onMouseEnter={e => e.target.style.background = '#fee2e2'}
+              onMouseLeave={e => e.target.style.background = 'none'}
+            >
+              Delete
+            </div>
+          )}
+          
+          {/* View Sharing Info - for shared users */}
+          {!course.is_owner && (
+            <div
+              style={{
+                padding: '8px 18px',
+                color: '#64748b',
+                fontWeight: 500,
+                fontSize: 15,
+                cursor: 'pointer',
+                border: 'none',
+                background: 'none',
+                textAlign: 'left',
+                width: '100%',
+                transition: 'background 0.2s'
+              }}
+              onClick={e => {
+                e.stopPropagation();
+                handleShare(course);
+              }}
+              onMouseEnter={e => e.target.style.background = '#f1f5f9'}
+              onMouseLeave={e => e.target.style.background = 'none'}
+            >
+              Sharing Info
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -226,6 +347,19 @@ export default function Courses() {
         }}
         loading={loading}
         error={error}
+      />
+
+      {/* Share Course Modal */}
+      <ShareCourseModal
+        open={showShareModal && selectedCourseForShare !== null}
+        onClose={() => {
+          setShowShareModal(false);
+          setSelectedCourseForShare(null);
+        }}
+        courseId={selectedCourseForShare?.id}
+        courseName={selectedCourseForShare?.name}
+        isOwner={selectedCourseForShare?.is_owner}
+        onShareUpdate={loadCourses}
       />
     </div>
   );

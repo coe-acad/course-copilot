@@ -37,4 +37,19 @@ export async function generateCourseDescription(description, courseName) {
     course_name: courseName
   });
   return res.data;
+}
+
+export async function shareCourse(courseId, email) {
+  const res = await axiosInstance.post(`/courses/${courseId}/share`, { email });
+  return res.data;
+}
+
+export async function getCourseShares(courseId) {
+  const res = await axiosInstance.get(`/courses/${courseId}/shares`);
+  return res.data;
+}
+
+export async function revokeCourseShare(courseId, userId) {
+  const res = await axiosInstance.delete(`/courses/${courseId}/shares/${userId}`);
+  return res.data;
 } 

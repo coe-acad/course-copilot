@@ -3,7 +3,15 @@ import warnings
 import pdfplumber
 import json
 import re
+import io
+import base64
+import logging
 from collections import defaultdict
+from ..utils.openai_client import client
+from ..config.settings import settings
+
+
+logger = logging.getLogger(__name__)
 
 def _is_footer_text(text, page_height):
     """Detect if text is likely footer content based on patterns and position."""
@@ -216,10 +224,201 @@ def _attach_tables_to_spans(results, pages_content, spans):
             if target is not None:
                 results[target]["answer"].append({"type": "table", "content": t["data"]})
 
-def split_into_qas(pages_content):
-    """Global Q&A parse (handles page spill) + attach tables to the correct answer via (page,y) spans."""
+#extract email from the answer sheet
+def extract_email_from_answer_sheet(answer_sheet):
+    """Extract email from the answer sheet.
+
+    """
+    try:
+        with pdfplumber.open(answer_sheet) as pdf:
+            # Check first page only (email is typically at the top)
+            for page in pdf.pages[:1]:
+                text = page.extract_text()
+                if not text:
+                    continue
+                
+                # Search for "Email:" followed by the email address
+                # Match pattern: Email: something@atriauniversity.edu.in
+                match = re.search(r'Email:\s*([a-zA-Z0-9._%+-]+@atriauniversity\.edu\.in)', text, re.IGNORECASE)
+                if match:
+                    email = match.group(1).strip()
+                    logger.info(f"Extracted email from answer sheet: {email}")
+                    return email
+                
+                # Alternative: try to find any @atriauniversity.edu.in email
+                match = re.search(r'([a-zA-Z0-9._%+-]+@atriauniversity\.edu\.in)', text, re.IGNORECASE)
+                if match:
+                    email = match.group(1).strip()
+                    logger.info(f"Extracted email from answer sheet (fallback): {email}")
+                    return email
+        
+        logger.warning(f"No email found in answer sheet: {answer_sheet}")
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting email from answer sheet: {str(e)}")
+        return None
+
+# ---------- NEW IMAGE + OPENAI INTEGRATION HELPERS ----------
+
+def extract_images_from_pdf(pdf_path):
+    """Extract images with their bounding boxes from each page."""
+    images = []
+    
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            logger.info(f"Extracting images from PDF: {pdf_path}")
+            for page_index, page in enumerate(pdf.pages):
+                page_images = page.images
+                logger.debug(f"Page {page_index + 1}: Found {len(page_images)} images")
+                
+                for img_index, img_obj in enumerate(page_images):
+                    try:
+                        x0, top, x1, bottom = img_obj["x0"], img_obj["top"], img_obj["x1"], img_obj["bottom"]
+                        logger.debug(f"Processing image {img_index + 1} on page {page_index + 1}: bbox=({x0}, {top}, {x1}, {bottom})")
+                        
+                        image = page.within_bbox((x0, top, x1, bottom)).to_image(resolution=150)
+                        img_bytes = io.BytesIO()
+                        image.original.save(img_bytes, format="PNG")
+                        img_bytes.seek(0)
+                        
+                        images.append({
+                            "page": page_index,
+                            "bbox": (x0, top, x1, bottom),
+                            "data": img_bytes.getvalue()
+                        })
+                        logger.debug(f"Successfully extracted image {img_index + 1} on page {page_index + 1}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Error extracting image {img_index + 1} on page {page_index + 1}: {e}")
+                        continue
+                        
+        logger.info(f"Successfully extracted {len(images)} images from PDF")
+        return images
+        
+    except Exception as e:
+        logger.error(f"Error opening PDF {pdf_path}: {e}")
+        return []
+
+
+def upload_image_to_openai(image_data, filename_prefix="image"):
+    """Upload image to OpenAI files API and return file_id."""
+    try:
+        # Create a BytesIO object from image data
+        image_file = io.BytesIO(image_data)
+        image_file.name = f"{filename_prefix}.png"
+        
+        # Upload to OpenAI files API
+        response = client.files.create(
+            file=image_file,
+            purpose="vision"
+        )
+        
+        logger.info(f"Successfully uploaded image to OpenAI: {response.id}")
+        return response.id
+        
+    except Exception as e:
+        logger.error(f"Error uploading image to OpenAI: {e}")
+        return None
+
+
+def _assign_images_to_questions(images, q_anchors, results, pages_content):
+    """Attach images to the correct question based on position."""
+    if not images or not q_anchors:
+        logger.debug("No images or question anchors available for assignment")
+        return results
+
+    logger.info(f"Assigning {len(images)} images to {len(q_anchors)} questions")
+    
+    assigned_count = 0
+    for img_index, img in enumerate(images):
+        try:
+            page, (x0, top, x1, bottom) = img["page"], img["bbox"]
+            yc = 0.5 * (top + bottom)
+            target = None
+            
+            logger.debug(f"Processing image {img_index + 1}: page={page}, bbox=({x0:.1f}, {top:.1f}, {x1:.1f}, {bottom:.1f}), center_y={yc:.1f}")
+
+            for idx, (qp, qy) in enumerate(q_anchors):
+                # Check if this is the last question
+                is_last_question = (idx == len(q_anchors) - 1)
+                
+                if is_last_question:
+                    # For the last question, just check if image is below it (on same page or later page)
+                    if page > qp or (page == qp and yc >= qy):
+                        target = idx
+                        logger.debug(f"Image {img_index + 1} matches LAST question {idx + 1}: page {qp} y={qy:.1f} (last question)")
+                        break
+                else:
+                    # For non-last questions, check if image is between current and next question
+                    next_q = q_anchors[idx + 1]
+                    next_p, next_y = next_q
+                    if (page > qp or (page == qp and yc >= qy)) and (page < next_p or (page == next_p and yc < next_y)):
+                        target = idx
+                        logger.debug(f"Image {img_index + 1} matches question {idx + 1}: page {qp} y={qy:.1f} -> next page {next_p} y={next_y:.1f}")
+                        break
+
+            if target is not None:
+                question_text = results[target].get("question", "Unknown question")[:100]
+                logger.info(f"Image {img_index + 1} assigned to question {target + 1}: {question_text}...")
+                
+                # Upload image to OpenAI files API
+                filename_prefix = f"answer_sheet_q{target + 1}_img{img_index + 1}"
+                file_id = upload_image_to_openai(img["data"], filename_prefix)
+                
+                if file_id:
+                    results[target]["answer"].append({
+                        "type": "image",
+                        "file_id": file_id,
+                    })
+                else:
+                    # Fallback to base64 if upload fails
+                    logger.warning(f"Failed to upload image {img_index + 1}, falling back to base64")
+                    b64_image = base64.b64encode(img["data"]).decode("utf-8")
+                    results[target]["answer"].append({
+                        "type": "image",
+                        "image_data": b64_image,
+                    })
+                assigned_count += 1
+                if file_id:
+                    logger.info(f"✅ Uploaded and assigned image {img_index + 1} to question {target + 1} (file_id: {file_id})")
+                else:
+                    logger.info(f"✅ Assigned image {img_index + 1} to question {target + 1} (fallback to base64)")
+            else:
+                logger.warning(f"❌ Could not assign image {img_index + 1} to any question - no suitable position found")
+                
+        except Exception as e:
+            logger.error(f"Error processing image {img_index + 1}: {e}")
+            continue
+
+    logger.info(f"Successfully assigned {assigned_count}/{len(images)} images to questions")
+    return results
+
+
+def split_into_qas(pages_content, pdf_path=None, answers_only=True):
+    """
+    Global Q&A parse (handles page spill) + attach tables and images
+    to the correct answer via (page,y) spans.
+    
+    Args:
+        pages_content: List of page dictionaries with text, lines, and tables
+        pdf_path: Optional path to PDF for image extraction and email extraction
+        answers_only: If True, returns only question numbers and answers (no question text)
+    
+    Returns:
+        If answers_only=True: Dict with {"email": str or None, "answers": List of {"question_number": str, "student_answer": str}}
+        If answers_only=False: List of {"question": str, "answer": [{"type": ..., "content": ...}]}
+    """
+    # 0) Extract email from PDF if path is provided
+    extracted_email = None
+    if pdf_path:
+        try:
+            extracted_email = extract_email_from_answer_sheet(pdf_path)
+            logger.info(f"Extracted email: {extracted_email}")
+        except Exception as e:
+            logger.warning(f"Failed to extract email: {e}")
+    
     # 1) Global Q&A from stitched text
-    full_text, page_offsets = _stitch_full_text(pages_content)  # offsets kept to preserve original logic footprint
+    full_text, page_offsets = _stitch_full_text(pages_content)
     qa_pat = _qa_pattern()
     qa_matches = list(qa_pat.finditer(full_text))
     results = _qa_matches_to_results(qa_matches)
@@ -232,5 +431,61 @@ def split_into_qas(pages_content):
 
     # 4) Attach tables by locating table center inside spans
     _attach_tables_to_spans(results, pages_content, spans)
+
+    # 5) (NEW) Attach images and descriptions if pdf_path is provided
+    if pdf_path:
+        try:
+            logger.info(f"Starting image extraction from PDF: {pdf_path}")
+            images = extract_images_from_pdf(pdf_path)
+            if images:
+                results = _assign_images_to_questions(images, q_anchors, results, pages_content)
+                logger.info(f"Image extraction completed successfully")
+            else:
+                logger.info("No images found in PDF")
+        except Exception as e:
+            logger.error(f"Image extraction failed: {e}")
+            # Continue without images rather than failing the entire extraction
+            logger.warning("Continuing without image extraction due to error")
+
+    # 6) If answers_only mode, convert to simplified format
+    if answers_only:
+        logger.info(f"Converting {len(results)} Q&A pairs to answers-only format")
+        answers_only_results = []
+        for idx, qa in enumerate(results):
+            # Extract answer content from the answer array
+            answer_content = ""
+            if qa.get("answer") and isinstance(qa["answer"], list):
+                for ans_item in qa["answer"]:
+                    if isinstance(ans_item, dict) and ans_item.get("type") == "text":
+                        answer_content += ans_item.get("content", "")
+                    elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
+                        # Format table data as readable text
+                        table_data = ans_item.get("content", [])
+                        if table_data and isinstance(table_data, list):
+                            answer_content += "\n[Table]:\n"
+                            for row in table_data:
+                                if row:  # Skip empty rows
+                                    # Join cells with | separator
+                                    row_text = " | ".join(str(cell) if cell else "" for cell in row)
+                                    answer_content += row_text + "\n"
+                            answer_content += "[End Table]\n"
+                    elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
+                        # Include image reference in answer content
+                        file_id = ans_item.get("file_id", "")
+                        if file_id:
+                            answer_content += f"\n[Image: {file_id}]\n"
+            
+            # Store only answer with question number (NO question text)
+            answer_only = {
+                "question_number": str(idx + 1),
+                "student_answer": answer_content if answer_content else None
+            }
+            answers_only_results.append(answer_only)
+        
+        logger.info(f"Converted to {len(answers_only_results)} answers-only entries")
+        return {
+            "email": extracted_email,
+            "answers": answers_only_results
+        }
 
     return results
