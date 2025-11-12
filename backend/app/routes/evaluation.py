@@ -15,7 +15,7 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
@@ -602,6 +602,11 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         if not evaluation:
             raise HTTPException(status_code=404, detail="Evaluation not found")
 
+        # Get user's display name for the asset
+        user_display_name = get_user_display_name(user_id)
+        if not user_display_name:
+            user_display_name = "Unknown User"
+
         # Save a lightweight evaluation asset that references the evaluation_id
         # This enables listing a card and opening the live Evaluation UI by ID
         logger.info(f"Saving evaluation reference {evaluation_id}")
@@ -611,8 +616,9 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
             asset_category="evaluation",
             asset_type="evaluation",
             asset_content=evaluation_id,
-            asset_last_updated_by="You",
-            asset_last_updated_at=datetime.now().strftime("%d %B %Y %H:%M:%S")
+            asset_last_updated_by=user_display_name,
+            asset_last_updated_at=datetime.now().strftime("%d %B %Y %H:%M:%S"),
+            created_by_user_id=user_id
         )
         
         return {"message": "Evaluation saved successfully", "asset_name": asset_name}

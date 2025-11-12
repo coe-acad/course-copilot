@@ -21,6 +21,7 @@ import LMSLoginModal from "../components/LMSLoginModal";
 import LMSCoursesModal from "../components/LMSCoursesModal";
 import LMSModulesModal from "../components/LMSModulesModal";
 import ActivitiesSelectionModal from "../components/ActivitiesSelectionModal";
+import { getCurrentUser } from "../services/auth";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -51,6 +52,9 @@ export default function Dashboard() {
   const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
   const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const navigate = useNavigate();
+  
+  // Get current user for display name logic
+  const currentUser = getCurrentUser();
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
     const courseId = localStorage.getItem('currentCourseId');
@@ -135,7 +139,8 @@ export default function Dashboard() {
               name: asset.asset_name,
               type: asset.asset_type,
               timestamp: asset.asset_last_updated_at,
-              updatedBy: asset.asset_last_updated_by
+              updatedBy: asset.asset_last_updated_by,
+              createdByUserId: asset.created_by_user_id
             });
           }
         });
@@ -212,7 +217,8 @@ export default function Dashboard() {
               name: asset.asset_name,
               type: asset.asset_type,
               timestamp: asset.asset_last_updated_at,
-              updatedBy: asset.asset_last_updated_by
+              updatedBy: asset.asset_last_updated_by,
+              createdByUserId: asset.created_by_user_id
             });
           }
         });
@@ -535,7 +541,11 @@ export default function Dashboard() {
                           <td>{asset.type}</td>
                           <td style={{ textTransform: 'capitalize' }}>{category}</td>
                           <td>{asset.timestamp}</td>
-                          <td>{asset.updatedBy}</td>
+                          <td>
+                            {asset.createdByUserId && currentUser && asset.createdByUserId === currentUser.id
+                              ? "You"
+                              : asset.updatedBy}
+                          </td>
                           <td>
                             <Tooltip text="View asset" position="top">
                               <button

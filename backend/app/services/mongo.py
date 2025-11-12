@@ -65,6 +65,14 @@ def get_email_by_user_id(user_id: str):
         return None
     return user_doc.get("email")
 
+def get_user_display_name(user_id: str):
+    """Get user's display name, falls back to email if display_name not available"""
+    user_doc = get_one_from_collection("users", {"_id": user_id})
+    if not user_doc:
+        return None
+    # Prefer display_name, fallback to email
+    return user_doc.get("display_name") or user_doc.get("email")
+
 def get_user_by_email(email: str):
     """Get user by email address"""
     return get_one_from_collection("users", {"email": email})
@@ -197,8 +205,19 @@ def delete_resource(course_id: str, resource_name: str):
     delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
 # Assets
-def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str):
-    add_to_collection("assets", {"course_id": course_id, "asset_name": asset_name, "asset_category": asset_category, "asset_type": asset_type, "asset_content": asset_content, "asset_last_updated_by": asset_last_updated_by, "asset_last_updated_at": asset_last_updated_at})
+def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str, created_by_user_id: str = None):
+    asset_data = {
+        "course_id": course_id, 
+        "asset_name": asset_name, 
+        "asset_category": asset_category, 
+        "asset_type": asset_type, 
+        "asset_content": asset_content, 
+        "asset_last_updated_by": asset_last_updated_by, 
+        "asset_last_updated_at": asset_last_updated_at
+    }
+    if created_by_user_id:
+        asset_data["created_by_user_id"] = created_by_user_id
+    add_to_collection("assets", asset_data)
 
 def get_assets_by_course_id(course_id: str):
     return get_many_from_collection("assets", {"course_id": course_id})

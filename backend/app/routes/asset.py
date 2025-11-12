@@ -9,7 +9,7 @@ from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_user_display_name
 from ..services.openai_service import clean_text
 from ..services.task_manager import task_manager, TaskStatus
 
@@ -23,6 +23,7 @@ class AssetViewResponse(BaseModel):
     asset_content: str
     asset_last_updated_by: str
     asset_last_updated_at: str
+    created_by_user_id: Optional[str] = None
 
 class AssetPromptRequest(BaseModel):
     user_prompt: str
@@ -59,6 +60,7 @@ class Asset(BaseModel):
     asset_content: str
     asset_last_updated_by: str
     asset_last_updated_at: str
+    created_by_user_id: Optional[str] = None
 
 class AssetListResponse(BaseModel):
     assets: list[Asset]
@@ -349,8 +351,14 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     asset_category = category_map.get(asset_type, "content")
     #this text should go to openai and get cleaned up and than use the text to create the asset
     cleaned_text = clean_text(request.content)
+    
+    # Get user's display name for the asset
+    user_display_name = get_user_display_name(user_id)
+    if not user_display_name:
+        user_display_name = "Unknown User"
+    
     try:
-        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, "You", datetime.now().strftime("%d %B %Y %H:%M:%S"))
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
     except ValueError as e:
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))
@@ -372,7 +380,8 @@ def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_to
         asset_category=asset["asset_category"], 
         asset_content=asset["asset_content"], 
         asset_last_updated_by=asset["asset_last_updated_by"], 
-        asset_last_updated_at=asset["asset_last_updated_at"]
+        asset_last_updated_at=asset["asset_last_updated_at"],
+        created_by_user_id=asset.get("created_by_user_id")
     )
 
 @router.post("/courses/{course_id}/assets/image", response_model=ImageResponse)
