@@ -114,6 +114,7 @@ export default function SectionCard({ title, description, buttonLabel, style, on
                   name={asset.name}
                   timestamp={asset.timestamp}
                   updatedBy={asset.updatedBy}
+                  createdByUserId={asset.createdByUserId}
                   courseId={courseId}
                   onDelete={onDeleteAsset}
                   onResourceAdded={onResourceAdded}

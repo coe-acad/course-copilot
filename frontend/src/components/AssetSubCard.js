@@ -6,11 +6,13 @@ import AssetViewModal from "./AssetViewModal";
 import Toast from "./Toast";
 import Tooltip from "./Tooltip";
 import { resolveNameConflict } from "../utils/nameConflictHandler";
+import { getCurrentUser } from "../services/auth";
 
 export default function AssetSubCard({ 
   label, 
   name, 
   updatedBy = "", 
+  createdByUserId = null,
   timestamp,
   courseId,
   onView,
@@ -19,6 +21,25 @@ export default function AssetSubCard({
   onResourceAdded,
   existingResources = []
 }) {
+  // Get the current logged-in user
+  const currentUser = getCurrentUser();
+  
+  // Determine display name for "Last updated by"
+  const getDisplayName = () => {
+    if (!createdByUserId || !currentUser) {
+      return updatedBy || "Unknown";
+    }
+    
+    // If the creator is the current user, show "You"
+    if (createdByUserId === currentUser.id) {
+      return "You";
+    }
+    
+    // Otherwise, show the creator's name
+    return updatedBy;
+  };
+  
+  const displayName = getDisplayName();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -290,7 +311,7 @@ export default function AssetSubCard({
             color: "#666",
             marginBottom: 2
           }}>
-            Last updated by {updatedBy}
+            {displayName === "You" ? "Created by You" : `Created by ${displayName}`}
           </div>
           <div style={{ 
             textAlign: "right",
