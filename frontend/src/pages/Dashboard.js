@@ -21,6 +21,7 @@ import LMSLoginModal from "../components/LMSLoginModal";
 import LMSCoursesModal from "../components/LMSCoursesModal";
 import LMSModulesModal from "../components/LMSModulesModal";
 import ActivitiesSelectionModal from "../components/ActivitiesSelectionModal";
+import EvaluationTypeModal from "../components/EvaluationTypeModal";
 import { getCurrentUser } from "../services/auth";
 
 export default function Dashboard() {
@@ -51,6 +52,7 @@ export default function Dashboard() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
   const [selectedLMSModule, setSelectedLMSModule] = useState(null);
+  const [showEvaluationTypeModal, setShowEvaluationTypeModal] = useState(false);
   const navigate = useNavigate();
   
   // Get current user for display name logic
@@ -138,6 +140,7 @@ export default function Dashboard() {
             groupedAssets[category].push({
               name: asset.asset_name,
               type: asset.asset_type,
+              evaluationType: asset.evaluation_type, // For evaluation assets only
               timestamp: asset.asset_last_updated_at,
               updatedBy: asset.asset_last_updated_by,
               createdByUserId: asset.created_by_user_id
@@ -216,6 +219,7 @@ export default function Dashboard() {
             groupedAssets[category].push({
               name: asset.asset_name,
               type: asset.asset_type,
+              evaluationType: asset.evaluation_type, // For evaluation assets only
               timestamp: asset.asset_last_updated_at,
               updatedBy: asset.asset_last_updated_by,
               createdByUserId: asset.created_by_user_id
@@ -261,9 +265,12 @@ export default function Dashboard() {
   };
 
   const handleEvaluationCreate = () => {
-    handleContentCreation('evaluation', () => {
-      navigate('/evaluation');
-    });
+    // Skip settings check for evaluation - go directly to type selection
+    setShowEvaluationTypeModal(true);
+  };
+
+  const handleEvaluationTypeSelect = (type) => {
+    navigate(`/evaluation?type=${type}`);
   };
 
   const handleCurriculumSubmit = (selected) => {
@@ -323,9 +330,8 @@ export default function Dashboard() {
     } else if (pendingContentType === 'assessments') {
       setSelectedAssessmentOption(0);
       setShowAssessmentModal(true);
-    } else if (pendingContentType === 'evaluation') {
-      navigate('/evaluation');
     }
+    // Note: evaluation no longer uses settings prompt
   };
 
   // Add this handler to refresh resources after adding
@@ -538,7 +544,7 @@ export default function Dashboard() {
                           <td style={{ color: '#222', fontWeight: 600, fontSize: 16 }}>
                             {asset.name}
                           </td>
-                          <td>{asset.type}</td>
+                          <td>{asset.evaluationType || asset.type}</td>
                           <td style={{ textTransform: 'capitalize' }}>{category}</td>
                           <td>{asset.timestamp}</td>
                           <td>
@@ -672,6 +678,13 @@ export default function Dashboard() {
           contentType={pendingContentType}
         />
 
+        {/* Evaluation Type Selection Modal */}
+        <EvaluationTypeModal
+          open={showEvaluationTypeModal}
+          onClose={() => setShowEvaluationTypeModal(false)}
+          onSelectType={handleEvaluationTypeSelect}
+        />
+
         {/* ========================================
             LMS Login Modal - Shows first when Export to LMS is clicked
             BACKEND INTEGRATION: This modal calls /api/login-lms endpoint
@@ -777,7 +790,7 @@ export default function Dashboard() {
           assets={[
             ...assets.curriculum.map(a => ({ id: `curriculum|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'curriculum', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
             ...assets.assessments.map(a => ({ id: `assessments|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'assessments', updatedAt: a.timestamp, updatedBy: a.updatedBy })),
-            ...assets.evaluation.map(a => ({ id: `evaluation|${a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
+            ...assets.evaluation.map(a => ({ id: `evaluation|${a.evaluationType || a.type}|${a.name}|${a.timestamp}`, name: a.name, type: a.evaluationType || a.type, category: 'evaluation', updatedAt: a.timestamp, updatedBy: a.updatedBy }))
           ]}
           selectedLMSCourse={selectedLMSCourse}
           onExportSelected={(selected) => {

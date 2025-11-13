@@ -1,25 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { fetchCourses } from "../services/course";
 
 export function useCourses() {
   const [showModal, setShowModal] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [courseDesc, setCourseDesc] = useState("");
-  const [, setSavedCourses] = useState([]);
-  
-  useEffect(() => {
-    async function loadCourses() {
-      try {
-        const coursesFromAPI = await fetchCourses();
-        setSavedCourses(coursesFromAPI);
-      } catch (err) {
-        console.error("Failed to fetch courses:", err);
-      }
-    }
-    loadCourses();
-  }, [showModal]);
 
   const [courses] = useState([]);
   const [loading, setLoading] = useState(false);

@@ -1,0 +1,120 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 5
+
+================================================================================
+
+Question 1:
+----------------------------------------
+Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.
+
+A computer program which learns from experience is called a machine learning program or simply a learning program.
+
+Machine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments.
+
+================================================================================
+
+Question 2:
+----------------------------------------
+when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear
+
+================================================================================
+
+Question 3:
+----------------------------------------
+Time series: - it is data which is index by time.
+- the most important part of time series is sequence.
+what we do with time series:- we capture the past data
+I based on that we predict for future this entire
+procedure is called forecasting.
+
+A) Plotting time series
+B) Component of time series
+C) forecasting in time series
+   (1) Dola based prediction
+   (2) model based prediction
+
+A) Time plot:-
+
+[IMAGE DESCRIPTION: A hand-drawn line graph with two subplots. The left subplot shows an upward trend from 1990 to 2023, labeled "gold price" on the y-axis and "year" on the x-axis. The right subplot shows a downward trend, labeled "oil price" on the y-axis and "quarter two year" on the x-axis.
+TEXT IN IMAGE: gold price, oil price, year, quarter two year
+IMAGE TYPE: Line graph
+IMAGE CONTEXT: Illustrates time series data for Question 3]
+
+- Time plot gives halibhe view or overall view.
+- Time plot gives having understanding about long term
+  the far long term what happened to my data.
+- Often time line plot are difficult to understand.
+
+A) What is over time this we have technique
+called smoothing.
+
+================================================================================
+
+Question 4:
+----------------------------------------
+| Model | When we can apply | What should be future prediction | Hyperparameter |
+|--------|----------------|--------------------------------|-------------|
+| Simple | No trend | Last possible local Avg = all future prediction | 1 |
+| Reproduc-ing | No seasonality | | |
+| Double | only trend | Last possible local Avg & changed trend | 2 |
+| Reproduc-ing | No seasonality | | |
+| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |
+| Double | both trend and seasonality |  |  |
+
+================================================================================
+
+Question 5:
+----------------------------------------
+|  | Forecasting |  |  |
+|--------|----------------|--------|--------|
+|  | Solo Based | Model Based |  |
+|  | There is no previous condition | 1 | PR MA APMA APMMA |
+| Simple | Double Holt | (Stationary data) |  |
+| Reproduc-ing | Reproduc-ing |  |  |
+| Reproduc-ing | Trend √ both | (When we are not sure) |  |
+| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |
+|  | Seasonality |  |  |
+|  | (When ever we don't know which to use) |  |  |
+|  | used we can used directly Holt winter |  |  |
+
+---
+
+CONFIDENCE SCORE: 88 / 100
+(TEXT: 92 | IMAGES: 85 | TABLES: 88 | HANDWRITING: 80)
+
+================================================================================
+
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.\n\nA computer program which learns from experience is called a machine learning program or simply a learning program.\n\nMachine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments."
+    },
+    {
+      "question_number": "2",
+      "student_answer": "when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear"
+    },
+    {
+      "question_number": "3",
+      "student_answer": "Time series: - it is data which is index by time.\n- the most important part of time series is sequence.\nwhat we do with time series:- we capture the past data\nI based on that we predict for future this entire\nprocedure is called forecasting.\n\nA) Plotting time series\nB) Component of time series\nC) forecasting in time series\n   (1) Dola based prediction\n   (2) model based prediction\n\nA) Time plot:-\n\n[IMAGE DESCRIPTION: A hand-drawn line graph with two subplots. The left subplot shows an upward trend from 1990 to 2023, labeled \"gold price\" on the y-axis and \"year\" on the x-axis. The right subplot shows a downward trend, labeled \"oil price\" on the y-axis and \"quarter two year\" on the x-axis.\nTEXT IN IMAGE: gold price, oil price, year, quarter two year\nIMAGE TYPE: Line graph\nIMAGE CONTEXT: Illustrates time series data for Question 3]\n\n- Time plot gives halibhe view or overall view.\n- Time plot gives having understanding about long term\n  the far long term what happened to my data.\n- Often time line plot are difficult to understand.\n\nA) What is over time this we have technique\ncalled smoothing."
+    },
+    {
+      "question_number": "4",
+      "student_answer": "| Model | When we can apply | What should be future prediction | Hyperparameter |\n|--------|----------------|--------------------------------|-------------|\n| Simple | No trend | Last possible local Avg = all future prediction | 1 |\n| Reproduc-ing | No seasonality | | |\n| Double | only trend | Last possible local Avg & changed trend | 2 |\n| Reproduc-ing | No seasonality | | |\n| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |\n| Double | both trend and seasonality |  |  |"
+    },
+    {
+      "question_number": "5",
+      "student_answer": "|  | Forecasting |  |  |\n|--------|----------------|--------|--------|\n|  | Solo Based | Model Based |  |\n|  | There is no previous condition | 1 | PR MA APMA APMMA |\n| Simple | Double Holt | (Stationary data) |  |\n| Reproduc-ing | Reproduc-ing |  |  |\n| Reproduc-ing | Trend √ both | (When we are not sure) |  |\n| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |\n|  | Seasonality |  |  |\n|  | (When ever we don't know which to use) |  |  |\n|  | used we can used directly Holt winter |  |  |\n\n---\n\nCONFIDENCE SCORE: 88 / 100\n(TEXT: 92 | IMAGES: 85 | TABLES: 88 | HANDWRITING: 80)"
+    }
+  ]
+}

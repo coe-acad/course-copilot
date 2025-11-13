@@ -16,13 +16,18 @@ export const evaluationService = {
     ongoingEvaluations.clear();
   },
 
-  async uploadMarkScheme({ courseId, markSchemeFile }) {
+  async uploadMarkScheme({ courseId, markSchemeFile, evaluationType = 'digital' }) {
     const formData = new FormData();
     formData.append('course_id', courseId);
     formData.append('mark_scheme', markSchemeFile);
     
+    // Determine endpoint based on evaluation type
+    const endpoint = evaluationType === 'handwritten' 
+      ? '/evaluation/upload-mark-scheme-handwritten'
+      : '/evaluation/upload-mark-scheme';
+    
     try {
-      const res = await axiosInstance.post('/evaluation/upload-mark-scheme', formData, {
+      const res = await axiosInstance.post(endpoint, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data'
         }
@@ -37,7 +42,7 @@ export const evaluationService = {
     }
   },
 
-  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
+  async uploadAnswerSheets({ evaluationId, answerSheetFiles, evaluationType = 'digital' }) {
     const formData = new FormData();
     formData.append('evaluation_id', evaluationId);
     if (Array.isArray(answerSheetFiles)) {
@@ -46,8 +51,13 @@ export const evaluationService = {
       formData.append('answer_sheets', answerSheetFiles);
     }
     
+    // Determine endpoint based on evaluation type
+    const endpoint = evaluationType === 'handwritten'
+      ? '/evaluation/upload-answer-sheets-handwritten'
+      : '/evaluation/upload-answer-sheets';
+    
     try {
-      const res = await axiosInstance.post('/evaluation/upload-answer-sheets', formData, {
+      const res = await axiosInstance.post(endpoint, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data'
         }

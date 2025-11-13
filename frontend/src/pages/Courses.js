@@ -18,6 +18,7 @@ export default function Courses() {
   } = useCourses();
 
   const [savedCourses, setSavedCourses] = useState([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
   const navigate = useNavigate();
   const [menuOpenIndex, setMenuOpenIndex] = useState(null);
   const menuRef = useRef();
@@ -26,6 +27,7 @@ export default function Courses() {
 
   const loadCourses = useCallback(async () => {
     try {
+      setLoadingCourses(true);
       const coursesFromAPI = await fetchCourses();
       setSavedCourses(coursesFromAPI);
     } catch (err) {
@@ -34,12 +36,14 @@ export default function Courses() {
         // Redirect to login if user is not authenticated
         navigate("/login");
       }
+    } finally {
+      setLoadingCourses(false);
     }
   }, [navigate]);
 
   useEffect(() => {
     loadCourses();
-  }, [showModal, loadCourses]);
+  }, [loadCourses]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -295,11 +299,49 @@ export default function Courses() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-      <CoursesLayout
-        onAddCourse={() => setShowModal(true)}
-        onLogout={handleLogout}
-      >
+    <>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { 
+            opacity: 0.4;
+            transform: scale(0.8);
+          }
+          50% { 
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        
+        .loader-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #2563eb;
+          animation: pulse 1.4s ease-in-out infinite;
+        }
+        
+        .loader-dot:nth-child(1) {
+          animation-delay: 0s;
+        }
+        
+        .loader-dot:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        
+        .loader-dot:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+      `}</style>
+      <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        <CoursesLayout
+          onAddCourse={() => setShowModal(true)}
+          onLogout={handleLogout}
+        >
         {/* ✅ Course Cards go here */}
         <div
           className="courses-grid"
@@ -315,7 +357,48 @@ export default function Courses() {
             overflow: "hidden"
           }}
         >
-          {savedCourses.length > 0 ? (
+          {loadingCourses ? (
+            <div style={{ 
+              gridColumn: "1 / -1", 
+              display: "flex", 
+              flexDirection: "column",
+              justifyContent: "center", 
+              alignItems: "center",
+              minHeight: "400px",
+              gap: "24px"
+            }}>
+              {/* Modern 3-dot loader */}
+              <div style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "center"
+              }}>
+                <div className="loader-dot" />
+                <div className="loader-dot" />
+                <div className="loader-dot" />
+              </div>
+              
+              {/* Loading text */}
+              <div style={{ 
+                color: "#374151", 
+                fontSize: 17, 
+                fontWeight: 600,
+                letterSpacing: "0.3px"
+              }}>
+                Loading your courses
+              </div>
+              
+              {/* Subtle description */}
+              <div style={{ 
+                color: "#9ca3af", 
+                fontSize: 14, 
+                fontWeight: 400,
+                marginTop: "-12px"
+              }}>
+                Please wait a moment...
+              </div>
+            </div>
+          ) : savedCourses.length > 0 ? (
             savedCourses.map(renderCourseCard)
           ) : (
             <div style={{ color: "#888", fontSize: 16, gridColumn: "1 / -1" }}>No courses created yet.</div>
@@ -361,6 +444,7 @@ export default function Courses() {
         isOwner={selectedCourseForShare?.is_owner}
         onShareUpdate={loadCourses}
       />
-    </div>
+      </div>
+    </>
   );
 }

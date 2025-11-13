@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_markscheme import extract_text_from_mark_scheme
 from app.utils.extraction_answersheet import split_into_qas, extract_images_from_pdf, extract_text_tables
+from app.utils.extraction_handwritten import split_into_qas_mistral
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -67,7 +68,7 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         evaluation_assistant_id = eval_info[0]
         vector_store_id = eval_info[1]
         
-        # Create evaluation record
+        # Create evaluation record with type "digital" (default)
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
@@ -75,7 +76,8 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
             vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
-            answer_sheet_filenames=[]
+            answer_sheet_filenames=[],
+            evaluation_type="digital"
         )
         
         # Verify creation
@@ -93,6 +95,63 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         
     except Exception as e:
         logger.error(f"Error uploading mark scheme: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
+
+@router.post("/evaluation/upload-mark-scheme-handwritten")
+def upload_mark_scheme_handwritten(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
+    """
+    Upload mark scheme for handwritten evaluation workflow.
+    Uses the same digital mark scheme extraction, but marks evaluation as handwritten type.
+    """
+    try:
+        evaluation_id = str(uuid4())
+        
+        # Create directory for this evaluation
+        eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save mark scheme file locally
+        mark_scheme_filename = f"mark_scheme_{mark_scheme.filename}"
+        mark_scheme_path = eval_dir / mark_scheme_filename
+        
+        with open(mark_scheme_path, "wb") as f:
+            content = mark_scheme.file.read()
+            f.write(content)
+        
+        logger.info(f"Saved mark scheme (handwritten evaluation) to {mark_scheme_path}")
+        
+        # Create evaluation assistant for LLM evaluation later
+        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
+        evaluation_assistant_id = eval_info[0]
+        vector_store_id = eval_info[1]
+        
+        # Create evaluation record with type "handwritten"
+        create_evaluation(
+            evaluation_id=evaluation_id,
+            course_id=course_id,
+            evaluation_assistant_id=evaluation_assistant_id,
+            vector_store_id=vector_store_id,
+            mark_scheme_path=str(mark_scheme_path),
+            answer_sheet_paths=[],
+            answer_sheet_filenames=[],
+            evaluation_type="handwritten"
+        )
+        
+        # Verify creation
+        created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not created_evaluation:
+            logger.error(f"Failed to create evaluation {evaluation_id}")
+            raise HTTPException(status_code=500, detail="Failed to create evaluation record")
+        
+        logger.info(f"Successfully created handwritten evaluation {evaluation_id}")
+        
+        return {
+            "evaluation_id": evaluation_id,
+            "message": "Mark scheme uploaded successfully for handwritten evaluation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading mark scheme for handwritten evaluation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
 
 @router.post("/evaluation/upload-answer-sheets")
@@ -152,6 +211,71 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
+@router.post("/evaluation/upload-answer-sheets-handwritten")
+def upload_answer_sheets_handwritten(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
+    """
+    Upload answer sheets for handwritten evaluation workflow.
+    Currently saves files the same way as digital, but future implementation will use handwritten extraction.
+    """
+    try:
+        # Validate inputs
+        if not answer_sheets:
+            raise HTTPException(status_code=400, detail="No answer sheet files provided")
+        
+        logger.info(f"Uploading {len(answer_sheets)} handwritten answer sheets for evaluation {evaluation_id}")
+        
+        # Get evaluation record
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        
+        # Verify this is a handwritten evaluation
+        if evaluation.get("evaluation_type") != "handwritten":
+            logger.warning(f"Evaluation {evaluation_id} is not marked as handwritten, but using handwritten endpoint")
+        
+        # Check if mark scheme exists
+        if not evaluation.get("mark_scheme_path"):
+            raise HTTPException(status_code=400, detail="Mark scheme must be uploaded first")
+        
+        # Save answer sheets locally
+        eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        
+        answer_sheet_paths = []
+        answer_sheet_filenames = []
+        
+        for i, answer_sheet in enumerate(answer_sheets):
+            filename = f"answer_sheet_{i+1}_{answer_sheet.filename}"
+            file_path = eval_dir / filename
+            
+            with open(file_path, "wb") as f:
+                content = answer_sheet.file.read()
+                f.write(content)
+            
+            answer_sheet_paths.append(str(file_path))
+            answer_sheet_filenames.append(answer_sheet.filename)
+            logger.info(f"Saved handwritten answer sheet to {file_path}")
+        
+        # Update evaluation record
+        update_evaluation(evaluation_id, {
+            "answer_sheet_paths": answer_sheet_paths,
+            "answer_sheet_filenames": answer_sheet_filenames
+        })
+        
+        logger.info(f"Successfully uploaded {len(answer_sheet_paths)} handwritten answer sheets for evaluation {evaluation_id}")
+
+        return {
+            "evaluation_id": evaluation_id,
+            "answer_sheet_count": len(answer_sheet_paths),
+            "answer_sheet_filenames": answer_sheet_filenames
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading handwritten answer sheets for evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
+
 def _process_evaluation(evaluation_id: str, user_id: str):
     """Process evaluation in background using local file extraction with parallel workers"""
     try:
@@ -171,6 +295,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         mark_scheme_path = evaluation.get("mark_scheme_path")
         answer_sheet_paths = evaluation.get("answer_sheet_paths", [])
         answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
+        evaluation_type = evaluation.get("evaluation_type", "digital")  # Get evaluation type, default to digital
         
         if not mark_scheme_path or not answer_sheet_paths:
             logger.error(f"Missing file paths for evaluation {evaluation_id}")
@@ -181,13 +306,18 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
         mark_scheme_questions = extracted_mark_scheme.get('mark_scheme', [])
         
-        # Extract answer sheets - split_into_qas returns a dict with email and answers
-        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
+        # Extract answer sheets based on evaluation type
+        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets using {evaluation_type} extraction")
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
-            pages = extract_text_tables(answer_sheet_path)
-            # Pass pdf_path to extract email along with answers
-            extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
+            # Use appropriate extraction method based on evaluation type
+            if evaluation_type == "handwritten":
+                # For handwritten: use Mistral OCR extraction
+                extraction_result = split_into_qas_mistral(answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
+            else:
+                # For digital (default): use pdfplumber extraction
+                pages = extract_text_tables(answer_sheet_path)
+                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
             
             # Extract email and answers from result
             extracted_email = extraction_result.get("email", None)
@@ -207,9 +337,8 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                 "email": extracted_email,  # Add extracted email to the data
                 "answers": qas_list  # Use answers directly from extraction_result
             }
-            logger.info(f"Answers only: {answers_only}")
             extracted_answer_sheets.append(answer_sheet_data)
-            logger.info(f"Completed extraction for answer sheet {i+1}: Only student answers extracted")
+            logger.info(f"Completed {evaluation_type} extraction for answer sheet {i+1}")
         
         # Log for debugging
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")

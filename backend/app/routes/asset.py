@@ -61,6 +61,7 @@ class Asset(BaseModel):
     asset_last_updated_by: str
     asset_last_updated_at: str
     created_by_user_id: Optional[str] = None
+    evaluation_type: Optional[str] = None
 
 class AssetListResponse(BaseModel):
     assets: list[Asset]
@@ -367,6 +368,28 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
 def get_assets(course_id: str, user_id: str = Depends(verify_token)):
     assets = get_assets_by_course_id(course_id)
+    
+    # For evaluation assets, fetch the evaluation_type from the evaluation record
+    for asset in assets:
+        if asset.get("asset_category") == "evaluation" and asset.get("asset_content"):
+            # asset_content contains the evaluation_id for evaluation assets
+            evaluation_id = asset.get("asset_content")
+            try:
+                from app.services.mongo import get_evaluation_by_evaluation_id
+                evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+                if evaluation:
+                    # Get evaluation_type (default to "digital" for backward compatibility)
+                    evaluation_type = evaluation.get("evaluation_type", "digital")
+                    asset["evaluation_type"] = evaluation_type
+                else:
+                    # If evaluation not found, default to digital
+                    asset["evaluation_type"] = "digital"
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not fetch evaluation type for {evaluation_id}: {str(e)}")
+                # Default to digital if there's an error
+                asset["evaluation_type"] = "digital"
+    
     return AssetListResponse(assets=assets)
 
 @router.get("/courses/{course_id}/assets/{asset_name}/view", response_model=AssetViewResponse)

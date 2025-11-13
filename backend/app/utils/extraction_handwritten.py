@@ -1,396 +1,275 @@
 """
 Handwritten answer sheet extraction using Mistral OCR.
 Extracts question numbers and student answers from handwritten PDFs/images.
-Supports various question numbering formats automatically.
+Based on the working Mistral API approach.
 """
 
 import os
-import base64
 import re
+import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from mistralai import Mistral
+from dotenv import load_dotenv
 
-from ..config.settings import settings
+from prompt_parser import PromptParser
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
-class MistralOCRExtractor:
-    """Handles OCR extraction using Mistral AI."""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize Mistral OCR client."""
-        self.api_key = api_key or settings.MISTRAL_API_KEY
-        if not self.api_key:
-            raise ValueError(
-                "MISTRAL_API_KEY is not configured. "
-                "Please set it in your environment variables."
-            )
-        
-        self.client = Mistral(api_key=self.api_key)
-        logger.info("Mistral OCR client initialized")
-    
-    def extract_text(self, file_path: str) -> str:
-        """
-        Extract text from PDF or image using Mistral OCR.
-        
-        Args:
-            file_path: Path to PDF or image file
-            
-        Returns:
-            Extracted text as string
-        """
-        file_path = Path(file_path)
-        if not file_path.is_file():
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
-        logger.info(f"Extracting text from: {file_path}")
-        print(f"\n🔍 Processing: {file_path.name}")
-        
-        try:
-            # Read and encode file
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-            
-            b64_data = base64.b64encode(file_bytes).decode("utf-8")
-            
-            # Determine document type
-            ext = file_path.suffix.lower()
-            if ext == '.pdf':
-                doc_type = "document_url"
-                mime = "application/pdf"
-            elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']:
-                doc_type = "image_url"
-                mime_map = {
-                    '.png': 'image/png', '.jpg': 'image/jpeg', 
-                    '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-                    '.bmp': 'image/bmp', '.webp': 'image/webp'
-                }
-                mime = mime_map.get(ext, 'image/png')
-            else:
-                raise ValueError(f"Unsupported file type: {ext}")
-            
-            data_uri = f"data:{mime};base64,{b64_data}"
-            
-            # Call Mistral OCR
-            response = self.client.ocr.process(
-                model="mistral-ocr-latest",
-                document={
-                    "type": doc_type,
-                    doc_type: data_uri
-                },
-                include_image_base64=False
-            )
-            
-            # Extract text from response
-            text = self._extract_text_from_response(response)
-            logger.info(f"Extracted {len(text)} characters")
-            print(f"✅ Extracted {len(text)} characters\n")
-            
-            return text
-            
-        except Exception as e:
-            logger.error(f"OCR extraction failed: {e}")
-            raise
-    
-    def _extract_text_from_response(self, response) -> str:
-        """Extract text from Mistral OCR response."""
-        text_parts = []
-        
-        if hasattr(response, 'pages'):
-            for page in response.pages:
-                if hasattr(page, 'markdown') and page.markdown:
-                    text_parts.append(page.markdown)
-                elif hasattr(page, 'text') and page.text:
-                    text_parts.append(page.text)
-        elif isinstance(response, dict):
-            if "pages" in response:
-                for page in response["pages"]:
-                    text = page.get("markdown") or page.get("text", "")
-                    if text:
-                        text_parts.append(text)
-            else:
-                text = response.get("markdown") or response.get("text", "")
-                if text:
-                    text_parts.append(text)
-        
-        return "\n\n".join(text_parts)
-
-
-class AnswerSheetParser:
+def parse_questions_and_answers(markdown_text: str) -> List[Dict[str, Optional[str]]]:
     """
-    Intelligent parser that automatically detects question numbering patterns.
-    Works with: Q1, Q1), Q1:, Q1., 1), 1., ✓1, ✓ 1, etc.
+    Parse questions and answers from markdown text.
+    
+    Questions are identified by numbers followed by a period (e.g., "1.", "2.", "3.")
+    The text between two questions is the answer for the question above.
+    
+    Handles duplicate question numbers by merging answers for the same question.
+    
+    Args:
+        markdown_text: The markdown text extracted from OCR response
+    
+    Returns:
+        List of dictionaries with question_number and student_answer
     """
+    # Pattern to match question numbers at start of line: "1.", "2.", "10.", etc.
+    question_pattern = r'^(\d+)\.\s'
     
-    def __init__(self):
-        """Initialize parser."""
-        self.debug_mode = True
-        logger.info("Answer sheet parser initialized")
+    # Find all question numbers and their positions
+    matches = list(re.finditer(question_pattern, markdown_text, re.MULTILINE))
     
-    def parse(self, text: str) -> List[Dict[str, Optional[str]]]:
-        """
-        Parse text to extract question-answer pairs.
-        
-        Args:
-            text: Extracted text from OCR
-            
-        Returns:
-            List of {"question_number": str, "student_answer": str}
-        """
-        logger.info("Starting Q&A parsing")
-        
-        # Save complete text for debugging
-        self._save_debug_text(text)
-        
-        # Clean text first
-        cleaned_text = self._preprocess_text(text)
-        
-        # Find all question markers
-        questions = self._find_all_questions(cleaned_text)
-        
-        if not questions:
-            logger.warning("No questions found")
-            print("⚠️  No question markers detected\n")
-            return []
-        
-        # Extract answers
-        results = self._extract_answers(cleaned_text, questions)
-        
-        logger.info(f"Parsed {len(results)} Q&A pairs")
-        return results
+    logger.info(f"Found {len(matches)} question markers")
+    print(f"\n📋 Found {len(matches)} question markers")
     
-    def _save_debug_text(self, text: str):
-        """Save complete extracted text for debugging."""
-        if self.debug_mode:
-            try:
-                with open("extracted_text_complete.txt", "w", encoding="utf-8") as f:
-                    f.write(text)
-                print("💾 Complete text saved to: extracted_text_complete.txt")
-            except Exception as e:
-                logger.warning(f"Could not save debug text: {e}")
-            
-            # Print preview
-            print("\n" + "="*80)
-            print("EXTRACTED TEXT PREVIEW (first 1500 characters):")
-            print("="*80)
-            print(text[:1500])
-            if len(text) > 1500:
-                print("\n... (see extracted_text_complete.txt for full text)")
-            print("="*80 + "\n")
+    for match in matches:
+        print(f"  - Question {match.group(1)} at position {match.start()}")
     
-    def _preprocess_text(self, text: str) -> str:
-        """
-        Clean and normalize text before parsing.
-        Removes common OCR artifacts but preserves structure.
-        """
-        # Remove scanner artifacts
-        text = re.sub(r'(?:PAGE|PDF)\s+(?:ACE\s+)?Scanner', '', text, flags=re.IGNORECASE)
-        
-        # Remove standalone image references
-        text = re.sub(r'!\[img-\d+\.\w+\]\(img-\d+\.\w+\)\s*', '', text)
-        
-        # Normalize whitespace (but preserve structure)
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
-        
-        return text.strip()
+    if not matches:
+        logger.warning("No questions found in the text")
+        print("⚠️  No questions found in the text")
+        return []
     
-    def _find_all_questions(self, text: str) -> List[Tuple[int, int, str]]:
-        """
-        Find ALL question markers using multiple detection strategies.
-        Returns list of (position, question_number, marker_text).
-        """
-        questions = []
+    # Extract questions and answers with positions
+    raw_results = []
+    for i, match in enumerate(matches):
+        question_num = match.group(1)
         
-        # Strategy 1: Common patterns with numbers
-        patterns = [
-            # Checkmark/tick patterns
-            (r'[✓✔√]\s*(\d+)', 'checkmark'),
-            # Q patterns
-            (r'\b[Qq]\.?\s*(\d+)\s*[:\)\.]', 'q_with_punct'),
-            (r'\b[Qq]\s*(\d+)\b', 'q_simple'),
-            # Number patterns at start of line
-            (r'^\s*(\d+)\s*[:\)\.]', 'num_with_punct'),
-            # Question word
-            (r'\bQuestion\s+(\d+)', 'question_word'),
-        ]
+        # The answer starts right after the match (which includes "N. ")
+        answer_start = match.end()
         
-        for pattern, pattern_type in patterns:
-            regex = re.compile(pattern, re.MULTILINE | re.IGNORECASE)
-            for match in regex.finditer(text):
-                try:
-                    num = match.group(1)
-                    pos = match.start()
-                    marker = match.group(0).strip()
-                    questions.append((pos, num, marker, pattern_type))
-                except (IndexError, AttributeError):
-                    continue
+        # Find the end of this question's answer
+        # It's either the start of the next question or the end of the text
+        if i + 1 < len(matches):
+            answer_end = matches[i + 1].start()
+        else:
+            # Last question - answer goes to the end of the text
+            answer_end = len(markdown_text)
         
-        # Sort by position and remove duplicates
-        questions.sort(key=lambda x: x[0])
+        # Extract the answer text (everything between this question number and the next)
+        answer_text = markdown_text[answer_start:answer_end].strip()
         
-        # Remove duplicates (same position within 10 chars)
-        unique_questions = []
-        for q in questions:
-            if not unique_questions or q[0] > unique_questions[-1][0] + 10:
-                unique_questions.append(q)
-        
-        # Display found questions
-        if unique_questions:
-            nums = [q[1] for q in unique_questions]
-            print(f"✅ Found {len(unique_questions)} questions: {nums}\n")
-            
-            # Show where each was found (with context)
-            for pos, num, marker, ptype in unique_questions:
-                start = max(0, pos - 15)
-                end = min(len(text), pos + 60)
-                context = text[start:end].replace('\n', ' ')
-                context = ' '.join(context.split())  # Normalize spaces
-                print(f"   Q{num}: ...{context}...")
-            print()
-        
-        return [(pos, num, marker) for pos, num, marker, _ in unique_questions]
+        raw_results.append({
+            'question_number': question_num,
+            'student_answer': answer_text,
+            'position': match.start()
+        })
     
-    def _extract_answers(
-        self, 
-        text: str, 
-        questions: List[Tuple[int, str, str]]
-    ) -> List[Dict[str, Optional[str]]]:
-        """
-        Extract answer text between consecutive question markers.
+    # Handle duplicate question numbers by keeping only the first substantial occurrence
+    print(f"\n🔄 Processing question numbers and removing duplicates...")
+    seen_questions = {}
+    result = []
+    
+    for item in raw_results:
+        qnum = item['question_number']
+        answer = item['student_answer']
         
-        Args:
-            text: Cleaned text
-            questions: List of (position, number, marker)
-            
-        Returns:
-            List of Q&A pairs
-        """
-        results = []
-        
-        for i, (pos, num, marker) in enumerate(questions):
-            # Find marker end position
-            marker_end = pos + len(marker)
-            
-            # Determine answer region
-            if i + 1 < len(questions):
-                next_pos = questions[i + 1][0]
-                answer_text = text[marker_end:next_pos]
+        # Keep the first occurrence encountered
+        if qnum not in seen_questions:
+            # This is the first time we see this question number
+            if answer:
+                seen_questions[qnum] = True
+                result.append({
+                    'question_number': qnum,
+                    'student_answer': answer
+                })
+                
+                answer_length = len(answer)
+                answer_preview = answer[:100] if len(answer) > 100 else answer
+                
+                logger.info(f"Question {qnum}: {answer_length} characters")
+                print(f"  Q{qnum}: {answer_length} characters")
+                if answer_preview:
+                    print(f"    Preview: {answer_preview}...")
             else:
-                answer_text = text[marker_end:]
-            
-            # Clean the answer
-            answer_text = self._clean_answer(answer_text)
-            
-            results.append({
-                "question_number": num,
-                "student_answer": answer_text if answer_text else None
-            })
-            
-            char_count = len(answer_text) if answer_text else 0
-            logger.debug(f"Q{num}: {char_count} characters")
-            print(f"  Q{num}: {char_count} characters")
-        
-        print()
-        return results
+                # Mark as seen but don't add yet (might be a header/empty)
+                logger.debug(f"Skipping empty/short Q{qnum} at position {item['position']}")
+        else:
+            # We've seen this question before - skip duplicate
+            logger.debug(f"Skipping duplicate Q{qnum} at position {item['position']}")
+            print(f"  ⚠️  Skipping duplicate Q{qnum} (already processed)")
     
-    def _clean_answer(self, text: str) -> str:
-        """
-        Clean answer text by removing artifacts and normalizing.
-        """
-        if not text:
-            return text
-        
-        text = text.strip()
-        
-        # Remove "Answer:", "Ans:", "Solution:" at start
-        text = re.sub(
-            r'^(?:Answer|Ans?|Solution)\s*[:\-\s]+', 
-            '', 
-            text, 
-            flags=re.IGNORECASE
-        ).strip()
-        
-        # Remove any remaining image references
-        text = re.sub(r'!\[img-\d+\.\w+\]\(img-\d+\.\w+\)', '', text)
-        
-        # Remove extra blank lines (max 2 newlines)
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
-        
-        # Remove leading/trailing whitespace from each line
-        lines = [line.rstrip() for line in text.split('\n')]
-        text = '\n'.join(lines)
-        
-        return text.strip()
+    # Sort by question number
+    result.sort(key=lambda x: int(x['question_number']))
+    
+    print()
+    return result
 
 
 def extract_handwritten_answers(
     file_path: str,
     answers_only: bool = True
-) -> List[Dict[str, Optional[str]]]:
+) -> Dict[str, any]:
     """
-    Extract question-answer pairs from handwritten answer sheets.
-    
-    Uses Mistral OCR for text extraction and intelligent parsing
-    to automatically detect various question numbering formats.
+    Extract question-answer pairs from handwritten answer sheets using Mistral API.
     
     Args:
         file_path: Path to PDF or image file
         answers_only: If True, returns simplified format (default)
         
     Returns:
-        List of {"question_number": str, "student_answer": str}
+        Dict with format:
+        {
+            "email": None,
+            "answers": [{"question_number": str, "student_answer": str}, ...]
+        }
         
     Raises:
         FileNotFoundError: If file doesn't exist
-        ValueError: If API key not configured or unsupported format
+        ValueError: If API key not configured
         Exception: For OCR or parsing errors
-        
-    Example:
-        >>> results = extract_handwritten_answers("answers.pdf")
-        >>> print(results[0])
-        {'question_number': '1', 'student_answer': 'The answer is...'}
     """
     logger.info(f"Extracting from: {file_path}")
     
-    print("\n" + "="*80)
-    print("HANDWRITTEN ANSWER EXTRACTION")
-    print("="*80)
+    # Get API key from environment
+    api_key = os.getenv("MISTRAL_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "MISTRAL_API_KEY is not configured. "
+            "Please set it in your environment variables."
+        )
+    
+    # Initialize Mistral client
+    client = Mistral(api_key=api_key)
+    
+    file_path = Path(file_path)
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File not found: {file_path}")
     
     try:
-        # Extract text using Mistral OCR
-        extractor = MistralOCRExtractor()
-        text = extractor.extract_text(file_path)
         
-        # Parse Q&A pairs
-        parser = AnswerSheetParser()
-        results = parser.parse(text)
+        # Upload PDF
+        logger.info("Uploading PDF file...")
+        print("\n📤 Uploading PDF file...")
         
-        # Save results
-        if results:
-            import json
-            with open("extraction_results.json", "w", encoding="utf-8") as f:
-                json.dump(results, f, indent=2, ensure_ascii=False)
-            print(f"💾 Results saved to: extraction_results.json\n")
+        with open(file_path, "rb") as f:
+            uploaded_pdf = client.files.upload(
+                file={
+                    "file_name": file_path.name,
+                    "content": f,
+                },
+                purpose="ocr"
+            )
         
-        print("="*80)
-        print(f"✅ COMPLETE: Extracted {len(results)} questions")
-        print("="*80 + "\n")
+        logger.info(f"File uploaded with ID: {uploaded_pdf.id}")
+        print(f"✅ File uploaded with ID: {uploaded_pdf.id}")
         
-        return results
+        # Get signed URL
+        signed_url = client.files.get_signed_url(file_id=uploaded_pdf.id)
+        logger.info("Signed URL obtained")
+        print(f"✅ Signed URL obtained")
+        
+        # Use mistral-small-latest model
+        model = "mistral-small-latest"
+        
+        print(f"\n🤖 Using model: {model}")
+        logger.info(f"Using model: {model}")
+        
+        prompt_parser = PromptParser()
+        prompt_template_path = os.path.join(
+            prompt_parser.base_dir,
+            "prompts/evaluation/handwritten-answer-sheet-extraction.json"
+        )
+        print(f"📝 Using prompt template: {prompt_template_path}")
+        prompt_text = prompt_parser.render_prompt(
+            prompt_template_path,
+            {"file_id": uploaded_pdf.id}
+        )
+        logger.info(f"Prompt text: {prompt_text}")
+        # Prepare messages with structured prompt
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt_text
+                    },
+                    {
+                        "type": "document_url",
+                        "document_url": signed_url.url
+                    }
+                ]
+            }
+        ]
+        
+        print("\n📡 Sending request to Mistral API...")
+        logger.info("Sending request to Mistral API...")
+        
+        # Call the Mistral API
+        chat_response = client.chat.complete(
+            model=model,
+            messages=messages
+        )
+        
+        print("✅ Received response from Mistral API\n")
+        logger.info("Received response from Mistral API")
+        
+        # Extract the text from the response
+        extracted_text = ""
+        if hasattr(chat_response, 'choices') and chat_response.choices:
+            for choice in chat_response.choices:
+                if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                    extracted_text += choice.message.content + "\n"
+        
+        logger.info(f"Extracted {len(extracted_text)} characters")
+        print(f"✅ Extracted {len(extracted_text)} characters\n")
+        
+        # Parse questions and answers
+        print("=" * 80)
+        print("STEP 2: Parsing Questions and Answers")
+        print("=" * 80)
+        
+        questions_answers = parse_questions_and_answers(extracted_text)
+        
+        print("\n" + "=" * 80)
+        print("STEP 3: Final Results")
+        print("=" * 80)
+        print(f"\n✅ Total questions found: {len(questions_answers)}\n")
+        
+        # Return format matching extraction_answersheet.py
+        result = {
+            "email": None,  # Email extraction not yet implemented for handwritten
+            "answers": questions_answers
+        }
+        
+        return result
         
     except Exception as e:
         logger.error(f"Extraction failed: {e}")
         print(f"\n❌ Error: {e}\n")
+        import traceback
+        traceback.print_exc()
         raise
 
 
 def split_into_qas_mistral(
     pdf_path: str,
     answers_only: bool = True
-) -> List[Dict[str, Optional[str]]]:
+) -> Dict[str, any]:
     """
     Alternative interface matching extraction_answersheet.py.
     
@@ -399,6 +278,82 @@ def split_into_qas_mistral(
         answers_only: Returns simplified format
         
     Returns:
-        List of Q&A pairs
+        Dict with format: {"email": str or None, "answers": [{"question_number": str, "student_answer": str}, ...]}
     """
     return extract_handwritten_answers(pdf_path, answers_only=answers_only)
+
+
+# ==================== TESTING ====================
+
+if __name__ == "__main__":
+    import sys
+    
+    # Configure logging for testing
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
+    # PDF Processing Mode
+    if len(sys.argv) > 1:
+        pdf_path = sys.argv[1]
+        output_file = sys.argv[2] if len(sys.argv) > 2 else "output.txt"
+    else:
+        # Default: look for PDF in the same directory as this script
+        script_dir = Path(__file__).parent
+        pdf_path = str(script_dir / "handwritten answersheet.pdf")
+        output_file = str(script_dir / "output.txt")
+    
+    print("\n" + "=" * 80)
+    print("HANDWRITTEN ANSWER SHEET EXTRACTION")
+    print("=" * 80)
+    print(f"Input PDF: {pdf_path}")
+    print(f"Output File: {output_file}")
+    print("=" * 80 + "\n")
+    
+    try:
+        # Extract answers from the PDF
+        result = extract_handwritten_answers(pdf_path)
+        
+        # Write results to output file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("EXTRACTION RESULTS\n")
+            f.write("=" * 80 + "\n\n")
+            
+            f.write(f"Email: {result.get('email', 'None')}\n")
+            f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
+            f.write("=" * 80 + "\n\n")
+            
+            # Write each question-answer pair
+            for qa in result['answers']:
+                f.write(f"Question {qa['question_number']}:\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"{qa['student_answer']}\n")
+                f.write("\n" + "=" * 80 + "\n\n")
+            
+            # Also write JSON format at the end
+            f.write("\n\n" + "=" * 80 + "\n")
+            f.write("JSON FORMAT\n")
+            f.write("=" * 80 + "\n")
+            f.write(json.dumps(result, indent=2, ensure_ascii=False))
+        
+        print(f"\n✅ Results written to: {output_file}")
+        print(f"✅ Total questions extracted: {len(result['answers'])}")
+        
+        # Print summary to console
+        print("\n" + "=" * 80)
+        print("EXTRACTION SUMMARY")
+        print("=" * 80)
+        for qa in result['answers']:
+            answer_preview = qa['student_answer'][:100] if qa['student_answer'] else "No answer"
+            print(f"Q{qa['question_number']}: {answer_preview}...")
+        print("=" * 80 + "\n")
+        
+    except FileNotFoundError:
+        print(f"\n❌ Error: File '{pdf_path}' not found!")
+        print("Please make sure the PDF file exists in the current directory.\n")
+    except Exception as e:
+        print(f"\n❌ Error during extraction: {e}\n")
+        import traceback
+        traceback.print_exc()

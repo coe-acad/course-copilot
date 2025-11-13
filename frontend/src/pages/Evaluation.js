@@ -51,6 +51,12 @@ export default function Evaluation() {
   const courseId = localStorage.getItem('currentCourseId');
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
   const openedFromCardRef = React.useRef(false);
+  
+  // Get evaluation type from query params (defaults to 'digital' for backward compatibility)
+  const [evaluationType] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('type') || 'digital';
+  });
 
   
 
@@ -129,7 +135,8 @@ export default function Evaluation() {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
         courseId,
-        markSchemeFile: fileToUpload
+        markSchemeFile: fileToUpload,
+        evaluationType: evaluationType
       });
       
       // Backend now returns the format check result
@@ -185,7 +192,8 @@ export default function Evaluation() {
       
       await evaluationService.uploadAnswerSheets({
         evaluationId,
-        answerSheetFiles: filesToUpload
+        answerSheetFiles: filesToUpload,
+        evaluationType: evaluationType
       });
       
       setAnswerSheetsUploaded(true);

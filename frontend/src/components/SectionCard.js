@@ -110,7 +110,7 @@ export default function SectionCard({ title, description, buttonLabel, style, on
             {assets.map((asset, index) => (
               <div key={index} style={{ flexShrink: 0 }}>
                 <AssetSubCard
-                  label={asset.type || "Asset"}
+                  label={asset.evaluationType || asset.type || "Asset"}
                   name={asset.name}
                   timestamp={asset.timestamp}
                   updatedBy={asset.updatedBy}

@@ -239,8 +239,21 @@ def delete_asset_from_db(course_id: str, asset_name: str):
 def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_id: str, vector_store_id: str, 
                      mark_scheme_path: str = None, mark_scheme_file_id: str = None,
                      answer_sheet_paths: list[str] = None, answer_sheet_file_ids: list[str] = None, 
-                     answer_sheet_filenames: list[str] = None):
-    """Create evaluation record supporting both local paths and OpenAI file IDs"""
+                     answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital"):
+    """Create evaluation record supporting both local paths and OpenAI file IDs
+    
+    Args:
+        evaluation_id: Unique ID for the evaluation
+        course_id: Course ID this evaluation belongs to
+        evaluation_assistant_id: OpenAI assistant ID
+        vector_store_id: OpenAI vector store ID
+        mark_scheme_path: Local path to mark scheme file
+        mark_scheme_file_id: OpenAI file ID for mark scheme
+        answer_sheet_paths: List of local paths to answer sheets
+        answer_sheet_file_ids: List of OpenAI file IDs for answer sheets
+        answer_sheet_filenames: Original filenames of answer sheets
+        evaluation_type: Type of evaluation - "digital" or "handwritten" (default: "digital")
+    """
     evaluation = {
         "evaluation_id": evaluation_id, 
         "course_id": course_id,
@@ -250,7 +263,8 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
         "mark_scheme_file_id": mark_scheme_file_id,
         "answer_sheet_paths": answer_sheet_paths or [],
         "answer_sheet_file_ids": answer_sheet_file_ids or [],
-        "answer_sheet_filenames": answer_sheet_filenames or []
+        "answer_sheet_filenames": answer_sheet_filenames or [],
+        "evaluation_type": evaluation_type
     }
     add_to_collection("evaluations", evaluation)
     return evaluation
