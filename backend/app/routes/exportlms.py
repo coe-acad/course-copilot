@@ -1,9 +1,9 @@
 from fastapi import HTTPException, Depends, APIRouter
 from pydantic import BaseModel
 from ..services.mongo import get_course, get_asset_by_course_id_and_asset_name
-from ..utils.data_formating import format_quiz_content, format_activity_content
+from ..utils.data_formating import format_quiz_content, format_activity_content, format_lecture_content
 from ..utils.verify_token import verify_token
-from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules, post_quiz_data_to_lms, post_activity_data_to_lms, link_activity_to_course, create_lms_module
+from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules, post_quiz_data_to_lms, post_activity_data_to_lms, post_lecture_data_to_lms, link_activity_to_course, create_lms_module
 from ..config.settings import settings
 import logging
 
@@ -49,6 +49,14 @@ class PostActivityRequest(BaseModel):
     lms_course_id: str  # LMS course ID (destination)
     lms_module_id: str  # LMS module ID (destination)
     order: int = 0  # Order of the activity in the module (optional, defaults to 0)
+
+class PostLectureRequest(BaseModel):
+    lms_cookies: str  # LMS authentication cookies from Set-Cookie header
+    course_id: str  # Course ID in our system (to get lecture data)
+    asset_name: str  # Name of the lecture asset to export
+    lms_course_id: str  # LMS course ID (destination)
+    lms_module_id: str  # LMS module ID (destination)
+    order: int = 0  # Order of the lecture in the module (optional, defaults to 0)
 
 class PostAssetRequest(BaseModel):
     lms_cookies: str  # LMS authentication cookies from Set-Cookie header
@@ -277,6 +285,112 @@ def post_activity_to_lms(request: PostActivityRequest, user_id: str=Depends(veri
     except Exception as e:
         logger.error(f"Error posting activity to LMS: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+def post_lecture_to_lms(request: PostLectureRequest, user_id: str=Depends(verify_token)):
+    """
+    Post lecture data to the LMS platform and link it to course/module
+    
+    This endpoint:
+    1. Gets the lecture asset from MongoDB
+    2. Formats it using OpenAI into the LMS-compatible structure
+    3. Posts it to the LMS platform
+    4. Links the activity to the specified course and module
+    """
+    try:
+        # Validate input
+        if not request.lms_cookies:
+            raise HTTPException(status_code=400, detail="LMS authentication cookies are required")
+        if not request.course_id:
+            raise HTTPException(status_code=400, detail="Course ID is required")
+        if not request.asset_name:
+            raise HTTPException(status_code=400, detail="Asset name is required")
+        if not request.lms_course_id:
+            raise HTTPException(status_code=400, detail="LMS course ID is required")
+        if not request.lms_module_id:
+            raise HTTPException(status_code=400, detail="LMS module ID is required")
+        
+        logger.info(f"User {user_id} posting lecture '{request.asset_name}' to LMS course {request.lms_course_id}")
+        
+        # Step 1: Format the lecture content using OpenAI
+        formatted_lecture_data = format_lecture_content(
+            course_id=request.course_id,
+            asset_name=request.asset_name
+        )
+        
+        logger.info(f"Formatted lecture data: {formatted_lecture_data.get('payload', {}).get('title', 'Unknown')}")
+        
+        # Step 2: Post the formatted lecture to LMS
+        result = post_lecture_data_to_lms(
+            lms_cookies=request.lms_cookies,
+            lecture_data=formatted_lecture_data
+        )
+        
+        # Check if request was successful
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=result.get("status_code", 500),
+                detail=result.get("error", "Failed to post lecture to LMS")
+            )
+        
+        logger.info(f"Successfully posted lecture '{request.asset_name}' to LMS")
+        
+        # Step 3: Extract activity ID from response and link to course/module
+        activity_data = result.get("data", {})
+        
+        # Log the full response for debugging
+        logger.info(f"Full lecture response data: {activity_data}")
+        
+        # Extract activity ID - try multiple possible locations
+        activity_id = None
+        # First, check if response has nested "activity" object with "id"
+        if isinstance(activity_data, dict) and "activity" in activity_data:
+            activity_id = activity_data.get("activity", {}).get("id")
+        # Fall back to top-level ID fields
+        if not activity_id:
+            activity_id = activity_data.get("id") or activity_data.get("activityId") or activity_data.get("_id")
+        
+        if not activity_id:
+            logger.warning(f"No activity ID found in response. Available keys: {list(activity_data.keys()) if isinstance(activity_data, dict) else 'Not a dict'}")
+            return {
+                "message": "Successfully posted lecture to LMS (but could not link - no activity ID returned)",
+                "lecture_data": activity_data
+            }
+        
+        logger.info(f"Linking activity {activity_id} to course {request.lms_course_id}, module {request.lms_module_id}")
+        
+        # Link the activity to the course and module
+        link_result = link_activity_to_course(
+            lms_cookies=request.lms_cookies,
+            lms_course_id=request.lms_course_id,
+            lms_module_id=request.lms_module_id,
+            lms_activity_id=str(activity_id),
+            order=request.order
+        )
+        
+        # Check if linking was successful
+        if not link_result.get("success"):
+            logger.error(f"Failed to link activity: {link_result.get('error')}")
+            # Return success for posting but warn about linking failure
+            return {
+                "message": "Lecture posted successfully but failed to link to course/module",
+                "lecture_data": activity_data,
+                "link_error": link_result.get("error")
+            }
+        
+        logger.info(f"Successfully linked activity to course/module")
+        
+        # Return complete success response
+        return {
+            "message": "Successfully posted lecture to LMS and linked to course/module",
+            "lecture_data": activity_data,
+            "link_data": link_result.get("data", {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error posting lecture to LMS: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
         
 #route to login to the lms
 @router.post("/login-lms")
@@ -469,8 +583,8 @@ def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str=Depends(v
     
     This is a generic endpoint that routes to specific asset handlers:
     - quiz: posts quiz and links to course/module
-    - activity: (future implementation)
-    - project: (future implementation)
+    - activity: posts activity and links to course/module
+    - lecture: posts lecture and links to course/module
     """
     try:
         # Validate input
@@ -482,7 +596,7 @@ def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str=Depends(v
         logger.info(f"User {user_id} posting {request.asset_type} '{request.asset_name}' to LMS")
         
         # Define supported asset types
-        SUPPORTED_ASSET_TYPES = ['quiz', 'activity']
+        SUPPORTED_ASSET_TYPES = ['quiz', 'activity', 'lecture']
         
         # Check if asset type is supported
         if request.asset_type not in SUPPORTED_ASSET_TYPES:
@@ -518,6 +632,19 @@ def post_asset_to_lms_endpoint(request: PostAssetRequest, user_id: str=Depends(v
             # Call the activity posting function
             return post_activity_to_lms(activity_request, user_id)
         
+        elif request.asset_type == "lecture":
+            # Create PostLectureRequest from PostAssetRequest
+            lecture_request = PostLectureRequest(
+                lms_cookies=request.lms_cookies,
+                course_id=request.course_id,
+                asset_name=request.asset_name,
+                lms_course_id=request.lms_course_id,
+                lms_module_id=request.lms_module_id,
+                order=request.order
+            )
+            # Call the lecture posting function
+            return post_lecture_to_lms(lecture_request, user_id)
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -531,7 +658,7 @@ def export_multiple_assets_to_module(course_id: str, request: ExportToModuleRequ
     Export multiple assets to a specific LMS module
     
     This endpoint processes multiple assets at once and returns detailed status for each.
-    Supported asset types: quiz, activity
+    Supported asset types: quiz, activity, lecture
     """
     try:
         # Validate input
@@ -547,7 +674,7 @@ def export_multiple_assets_to_module(course_id: str, request: ExportToModuleRequ
         logger.info(f"User {user_id} exporting {len(request.asset_names)} assets to LMS module {request.lms_module_id}")
         
         # Define supported asset types
-        SUPPORTED_ASSET_TYPES = ['quiz', 'activity']
+        SUPPORTED_ASSET_TYPES = ['quiz', 'activity', 'lecture']
         
         results = []
         unsupported_assets = []

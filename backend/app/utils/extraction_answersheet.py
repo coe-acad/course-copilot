@@ -224,6 +224,40 @@ def _attach_tables_to_spans(results, pages_content, spans):
             if target is not None:
                 results[target]["answer"].append({"type": "table", "content": t["data"]})
 
+#extract email from the answer sheet
+def extract_email_from_answer_sheet(answer_sheet):
+    """Extract email from the answer sheet.
+
+    """
+    try:
+        with pdfplumber.open(answer_sheet) as pdf:
+            # Check first page only (email is typically at the top)
+            for page in pdf.pages[:1]:
+                text = page.extract_text()
+                if not text:
+                    continue
+                
+                # Search for "Email:" followed by the email address
+                # Match pattern: Email: something@atriauniversity.edu.in
+                match = re.search(r'Email:\s*([a-zA-Z0-9._%+-]+@atriauniversity\.edu\.in)', text, re.IGNORECASE)
+                if match:
+                    email = match.group(1).strip()
+                    logger.info(f"Extracted email from answer sheet: {email}")
+                    return email
+                
+                # Alternative: try to find any @atriauniversity.edu.in email
+                match = re.search(r'([a-zA-Z0-9._%+-]+@atriauniversity\.edu\.in)', text, re.IGNORECASE)
+                if match:
+                    email = match.group(1).strip()
+                    logger.info(f"Extracted email from answer sheet (fallback): {email}")
+                    return email
+        
+        logger.warning(f"No email found in answer sheet: {answer_sheet}")
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting email from answer sheet: {str(e)}")
+        return None
+
 # ---------- NEW IMAGE + OPENAI INTEGRATION HELPERS ----------
 
 def extract_images_from_pdf(pdf_path):
@@ -360,20 +394,29 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
     return results
 
 
-def split_into_qas(pages_content, pdf_path=None, answers_only=False):
+def split_into_qas(pages_content, pdf_path=None, answers_only=True):
     """
     Global Q&A parse (handles page spill) + attach tables and images
     to the correct answer via (page,y) spans.
     
     Args:
         pages_content: List of page dictionaries with text, lines, and tables
-        pdf_path: Optional path to PDF for image extraction
+        pdf_path: Optional path to PDF for image extraction and email extraction
         answers_only: If True, returns only question numbers and answers (no question text)
     
     Returns:
-        If answers_only=True: List of {"question_number": str, "student_answer": str}
+        If answers_only=True: Dict with {"email": str or None, "answers": List of {"question_number": str, "student_answer": str}}
         If answers_only=False: List of {"question": str, "answer": [{"type": ..., "content": ...}]}
     """
+    # 0) Extract email from PDF if path is provided
+    extracted_email = None
+    if pdf_path:
+        try:
+            extracted_email = extract_email_from_answer_sheet(pdf_path)
+            logger.info(f"Extracted email: {extracted_email}")
+        except Exception as e:
+            logger.warning(f"Failed to extract email: {e}")
+    
     # 1) Global Q&A from stitched text
     full_text, page_offsets = _stitch_full_text(pages_content)
     qa_pat = _qa_pattern()
@@ -440,6 +483,9 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=False):
             answers_only_results.append(answer_only)
         
         logger.info(f"Converted to {len(answers_only_results)} answers-only entries")
-        return answers_only_results
+        return {
+            "email": extracted_email,
+            "answers": answers_only_results
+        }
 
     return results

@@ -2059,7 +2059,7 @@ export default function Evaluation() {
               <div style={{ color: '#555', fontSize: 14 }}>
                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
                   <li>Mark scheme should contain questions, correct answers, and scoring criteria</li>
-                  <li>Supported formats: PDF, DOC, DOCX, TXT</li>
+                  <li>Supported formats: PDF</li>
                   <li>Mark scheme uploads automatically when file is selected</li>
                   <li>Answer sheets upload automatically when files are selected</li>
                   <li>AI evaluation may take several minutes depending on file size and number of students</li>

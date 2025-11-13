@@ -65,23 +65,128 @@ def get_email_by_user_id(user_id: str):
         return None
     return user_doc.get("email")
 
+def get_user_display_name(user_id: str):
+    """Get user's display name, falls back to email if display_name not available"""
+    user_doc = get_one_from_collection("users", {"_id": user_id})
+    if not user_doc:
+        return None
+    # Prefer display_name, fallback to email
+    return user_doc.get("display_name") or user_doc.get("email")
+
+def get_user_by_email(email: str):
+    """Get user by email address"""
+    return get_one_from_collection("users", {"email": email})
+
 # Courses
 def create_course(data: dict):
     course_id = str(uuid4())
-    add_to_collection("courses", {"_id": course_id, **data})
+    add_to_collection(
+        "courses",
+        {
+            "_id": course_id,
+            "created_at": datetime.utcnow(),
+            **data,
+        },
+    )
     return course_id
 
 def get_course(course_id: str):
     return get_one_from_collection("courses", {"_id": course_id})
 
 def get_courses_by_user_id(user_id: str):
-    return get_many_from_collection("courses", {"user_id": user_id})
+    """Get courses owned by user AND courses shared with user"""
+    # Get courses user owns
+    owned_courses = get_many_from_collection("courses", {"user_id": user_id})
+    
+    # Get courses shared with user
+    shared_courses = get_shared_courses(user_id)
+    
+    # Mark owned courses as owned and shared courses as shared
+    for course in owned_courses:
+        course["is_owner"] = True
+        course["is_shared"] = False
+        # Add count of users this course is shared with
+        shares = get_course_shares(course["_id"])
+        course["shared_count"] = len(shares)
+    
+    for course in shared_courses:
+        course["is_owner"] = False
+        course["is_shared"] = True
+        course["shared_count"] = 0
+        # Add owner email for display
+        owner_email = get_email_by_user_id(course.get("user_id"))
+        course["owner_email"] = owner_email
+    
+    return owned_courses + shared_courses
 
 def update_course(course_id: str, data: dict):
     update_in_collection("courses", {"_id": course_id}, data)
 
 def delete_course(course_id: str):
     delete_from_collection("courses", {"_id": course_id})
+
+# Course Sharing
+def share_course(course_id: str, owner_id: str, shared_with_user_id: str, shared_with_email: str):
+    """Share a course with another user"""
+    from datetime import datetime
+    share_data = {
+        "course_id": course_id,
+        "owner_id": owner_id,
+        "shared_with_user_id": shared_with_user_id,
+        "shared_with_email": shared_with_email,
+        "shared_at": datetime.utcnow().isoformat()
+    }
+    add_to_collection("course_shares", share_data)
+
+def get_course_shares(course_id: str):
+    """Get list of users a course is shared with"""
+    return get_many_from_collection("course_shares", {"course_id": course_id})
+
+def get_shared_courses(user_id: str):
+    """Get courses shared with a user"""
+    shares = get_many_from_collection("course_shares", {"shared_with_user_id": user_id})
+    course_ids = [share["course_id"] for share in shares]
+    if not course_ids:
+        return []
+    return get_many_from_collection("courses", {"_id": {"$in": course_ids}})
+
+def is_course_shared_with_user(course_id: str, user_id: str):
+    """Check if course is already shared with a specific user"""
+    share = get_one_from_collection("course_shares", {
+        "course_id": course_id,
+        "shared_with_user_id": user_id
+    })
+    return share is not None
+
+def revoke_course_share(course_id: str, user_id: str):
+    """Remove sharing access for a user"""
+    delete_from_collection("course_shares", {
+        "course_id": course_id,
+        "shared_with_user_id": user_id
+    })
+
+def is_course_accessible(course_id: str, user_id: str):
+    """Check if user owns or has access to a course"""
+    course = get_course(course_id)
+    if not course:
+        return False
+    
+    # Check if user owns the course
+    if course.get("user_id") == user_id:
+        return True
+    
+    # Check if course is shared with user
+    return is_course_shared_with_user(course_id, user_id)
+
+def get_course_owner_email(course_id: str):
+    """Get the email of the course owner"""
+    course = get_course(course_id)
+    if not course:
+        return None
+    owner_id = course.get("user_id")
+    if not owner_id:
+        return None
+    return get_email_by_user_id(owner_id)
 
 # Resources
 def create_resource(course_id: str, resource_name: str, content: str = None):
@@ -100,8 +205,19 @@ def delete_resource(course_id: str, resource_name: str):
     delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
 # Assets
-def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str):
-    add_to_collection("assets", {"course_id": course_id, "asset_name": asset_name, "asset_category": asset_category, "asset_type": asset_type, "asset_content": asset_content, "asset_last_updated_by": asset_last_updated_by, "asset_last_updated_at": asset_last_updated_at})
+def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str, created_by_user_id: str = None):
+    asset_data = {
+        "course_id": course_id, 
+        "asset_name": asset_name, 
+        "asset_category": asset_category, 
+        "asset_type": asset_type, 
+        "asset_content": asset_content, 
+        "asset_last_updated_by": asset_last_updated_by, 
+        "asset_last_updated_at": asset_last_updated_at
+    }
+    if created_by_user_id:
+        asset_data["created_by_user_id"] = created_by_user_id
+    add_to_collection("assets", asset_data)
 
 def get_assets_by_course_id(course_id: str):
     return get_many_from_collection("assets", {"course_id": course_id})

@@ -271,6 +271,15 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     if not answer_sheets_list:
         raise HTTPException(status_code=400, detail="No answer sheets found in extracted data")
 
+    # Store email mapping before evaluation (file_id -> email)
+    email_mapping = {}
+    for sheet in answer_sheets_list:
+        file_id = sheet.get('file_id')
+        email = sheet.get('email')
+        if file_id and email:
+            email_mapping[file_id] = email
+            logger.info(f"Stored email mapping: {file_id} -> {email}")
+
     # Ensure unique answer sheets
     unique_answer_sheets = {sheet.get('file_id'): sheet for sheet in answer_sheets_list}.values()
     answer_sheets_list = list(unique_answer_sheets)
@@ -374,6 +383,7 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                         "type": "object",
                         "properties": {
                             "evaluation_id": {"type": "string"},
+                            "email": {"type": "string"},
                             "students": {
                                 "type": "array",
                                 "items": {
@@ -526,13 +536,17 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             logger.error(f"Batch {batch_num} failed: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
 
-    # Deduplicate by file_id
+    # Deduplicate by file_id and add email back to each student
     seen_file_ids = set()
     unique_students = []
     for student in all_evaluated_students:
         file_id = student.get('file_id')
         if file_id and file_id not in seen_file_ids:
             seen_file_ids.add(file_id)
+            # Add email back to student from mapping
+            if file_id in email_mapping:
+                student['email'] = email_mapping[file_id]
+                logger.info(f"Added email to student {file_id}: {email_mapping[file_id]}")
             unique_students.append(student)
 
     final_result = {"evaluation_id": evaluation_id, "students": unique_students}
