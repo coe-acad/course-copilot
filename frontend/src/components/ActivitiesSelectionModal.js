@@ -4,7 +4,7 @@ import { assetService } from "../services/asset";
 
 // Define asset type categories outside component to prevent recreation on every render
 const ASSESSMENT_TYPES = ['project', 'activity', 'quiz', 'question-paper', 'mark-scheme', 'mock-interview'];
-const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lecture', 'concept-map', 'course-notes'];
+const CURRICULUM_TYPES = ['brainstorm', 'course-outcomes', 'modules', 'lecture', 'course-notes'];
 const SUPPORTED_EXPORT_TYPES = ['quiz', 'activity', 'lecture']; // Only these can be exported to LMS
 
 export default function ActivitiesSelectionModal({
@@ -44,7 +44,8 @@ export default function ActivitiesSelectionModal({
           updatedBy: a.asset_last_updated_by,
           isExportable: SUPPORTED_EXPORT_TYPES.includes(a.asset_type)
         })).filter(asset => 
-          ASSESSMENT_TYPES.includes(asset.type) || CURRICULUM_TYPES.includes(asset.type)
+          (ASSESSMENT_TYPES.includes(asset.type) || CURRICULUM_TYPES.includes(asset.type)) &&
+          asset.isExportable
         );
         
         setAssets(list);
@@ -87,7 +88,7 @@ export default function ActivitiesSelectionModal({
   }, [filteredAssets]);
 
   const totalCount = filteredAssets.length;
-  const exportableCount = filteredAssets.filter(a => a.isExportable).length;
+  const exportableCount = totalCount;
   const selectedIds = Object.keys(selected).filter(k => selected[k]);
   const selectedCount = selectedIds.length;
   const allChecked = exportableCount > 0 && selectedCount === exportableCount;
@@ -98,11 +99,8 @@ export default function ActivitiesSelectionModal({
       setSelected({});
     } else {
       const next = {};
-      // Only select exportable assets
       filteredAssets.forEach(a => { 
-        if (a.isExportable) {
-          next[a.id] = true; 
-        }
+        next[a.id] = true; 
       });
       setSelected(next);
     }
@@ -206,7 +204,7 @@ export default function ActivitiesSelectionModal({
           message += `⚠️ ${summary.unsupported} asset(s) not supported for export\n`;
           if (unsupportedAssets.length > 0) {
             message += `Unsupported: ${unsupportedAssets.map(a => `${a.asset_name} (${a.asset_type})`).join(', ')}\n`;
-            message += `\nSupported types: quiz, activity`;
+            message += `\nSupported types: quiz, activity, lecture`;
           }
         }
         
@@ -315,7 +313,7 @@ export default function ActivitiesSelectionModal({
         
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontWeight: 700, fontSize: 22 }}>Select Activities & Quizzes</div>
+            <div style={{ fontWeight: 700, fontSize: 22 }}>Select Activities, Quizzes & Lectures</div>
             <div style={{ color: "#6b7280", fontSize: 14 }}>
               {selectedCount} selected / {exportableCount} exportable
             </div>
@@ -328,7 +326,7 @@ export default function ActivitiesSelectionModal({
             fontSize: 13,
             color: '#1e40af'
           }}>
-            <strong>ℹ️ Note:</strong> Only <strong>Quiz</strong> and <strong>Activity</strong> assets can be exported to LMS modules. Other asset types will be shown but cannot be selected.
+            <strong>ℹ️ Note:</strong> Only <strong>Quiz</strong>, <strong>Activity</strong>, and <strong>Lecture</strong> assets can be exported to LMS modules.
           </div>
         </div>
 
@@ -387,46 +385,18 @@ export default function ActivitiesSelectionModal({
                       padding: "8px 10px",
                       borderBottom: "1px solid #eef2f7",
                       background: selected[item.id] ? "#eef6ff" : "transparent",
-                      cursor: item.isExportable ? "pointer" : "not-allowed",
-                      borderRadius: 6,
-                      opacity: item.isExportable ? 1 : 0.6
+                      cursor: "pointer",
+                      borderRadius: 6
                     }}>
                       <input 
                         type="checkbox" 
                         checked={!!selected[item.id]} 
-                        onChange={() => item.isExportable && toggleOne(item.id)}
-                        disabled={!item.isExportable}
-                        style={{ cursor: item.isExportable ? 'pointer' : 'not-allowed' }}
+                        onChange={() => toggleOne(item.id)}
+                        style={{ cursor: 'pointer' }}
                       />
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontWeight: 600 }}>{item.name}</span>
-                          {!item.isExportable && (
-                            <span style={{
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              fontSize: 10,
-                              fontWeight: 600,
-                              background: '#fee2e2',
-                              color: '#b91c1c',
-                              textTransform: 'uppercase'
-                            }}>
-                              Not Exportable
-                            </span>
-                          )}
-                          {item.isExportable && (
-                            <span style={{
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              fontSize: 10,
-                              fontWeight: 600,
-                              background: '#dcfce7',
-                              color: '#16a34a',
-                              textTransform: 'uppercase'
-                            }}>
-                              ✓ Exportable
-                            </span>
-                          )}
                         </div>
                         <span style={{ fontSize: 12, color: "#6b7280" }}>
                           {item.type.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}

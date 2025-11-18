@@ -338,7 +338,6 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         "course-outcomes": "curriculum",
         "modules": "curriculum",
         "lecture": "curriculum",
-        "concept-map": "curriculum",
         "course-notes": "curriculum",
         "project": "assessments",
         "activity": "assessments",
@@ -350,7 +349,11 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     # Default to a safe category so saving never fails due to unmapped type
     asset_category = category_map.get(asset_type, "content")
     #this text should go to openai and get cleaned up and than use the text to create the asset
-    cleaned_text = clean_text(request.content)
+    #TODO: do the cleaning for all except for mark-scheme
+    if asset_type != "mark-scheme":
+        cleaned_text = clean_text(request.content)
+    else:
+        cleaned_text = request.content
     
     # Get user's display name for the asset
     user_display_name = get_user_display_name(user_id)

@@ -15,13 +15,92 @@ const optionTitles = {
   "course-outcomes": "Course Outcomes",
   "modules-and-topics": "Modules",
   "lecture": "Lecture",
-  "concept-map": "Concept Map",
   "course-notes": "Course Notes",
   "brainstorm": "Brainstorm",
   "quiz": "Quiz",
   "assignment": "Assignment",
   "viva": "Viva",
   "sprint-plan": "Sprint Plan"
+};
+
+const MARK_SCHEME_FIELD_PATTERN = '(?:questionnumber|question|answertemplate|markingscheme)';
+
+const normalizeEscapes = (text = "") =>
+  typeof text === "string"
+    ? text.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ")
+    : text;
+
+const formatMarkSchemeResponse = (rawText = "") => {
+  if (!rawText || typeof rawText !== "string") return rawText;
+  const normalized = normalizeEscapes(rawText).replace(/\r\n/g, "\n").trim();
+  if (!normalized.toLowerCase().includes("questionnumber")) return rawText;
+
+  const sections = normalized.match(/questionnumber\s*:[\s\S]*?(?=\nquestionnumber\s*:|$)/gi);
+  if (!sections) return rawText;
+
+  const extractField = (section, field) => {
+    const regex = new RegExp(`${field}\\s*:\\s*([\\s\\S]*?)(?=\\n${MARK_SCHEME_FIELD_PATTERN}\\s*:|$)`, "i");
+    const match = section.match(regex);
+    return match ? match[1].trim() : "";
+  };
+
+  const toBullets = (text) => {
+    if (!text) return "";
+    const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+    if (!lines.length) return text.trim();
+    return lines.map(line => {
+      const cleaned = line.replace(/^[-*•\d\)\(]+\s*/, "").trim();
+      return cleaned ? `- ${cleaned}` : "";
+    }).filter(Boolean).join("\n");
+  };
+
+  const formattedSections = sections.map(section => {
+    const number = normalizeEscapes(extractField(section, "questionnumber"));
+    const question = normalizeEscapes(extractField(section, "question"));
+    const answer = normalizeEscapes(extractField(section, "answertemplate"));
+    const marking = normalizeEscapes(extractField(section, "markingscheme"));
+
+    if (!number && !question && !answer && !marking) {
+      return section.trim();
+    }
+
+    const answerBlock = toBullets(answer);
+    const markingLines = marking
+      ? marking.split(/\n+/).map(line => line.trim()).filter(Boolean)
+      : [];
+
+    let schemeHeading = "";
+    if (markingLines.length && /^marking\s*scheme/i.test(markingLines[0])) {
+      schemeHeading = markingLines.shift();
+    }
+
+    const markingBlock = markingLines
+      .map(line => {
+        const cleaned = line.replace(/^[-*•]+\s*/, "").trim();
+        return cleaned ? `- ${cleaned}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    const parts = [];
+    if (number) {
+      parts.push(`### Question ${number.trim()}`);
+    }
+    if (question) {
+      parts.push(`**Question**  \n${question.trim().replace(/\n/g, "  \n")}`);
+    }
+    if (answerBlock) {
+      parts.push(`**Answer Template**\n${answerBlock}`);
+    }
+    if (markingBlock) {
+      const heading = schemeHeading || "Marking Scheme";
+      parts.push(`**${heading}**\n${markingBlock}`);
+    }
+
+    return parts.join("\n\n");
+  });
+
+  return formattedSections.join("\n\n---\n\n");
 };
 
 
@@ -100,18 +179,6 @@ export default function AssetStudioContent() {
           return;
         }
 
-        // If concept-map, first generate image using the image endpoint
-        if (option === 'concept-map') {
-          try {
-            const img = await assetService.generateImageAsset(courseId, 'concept-map');
-            if (img && img.image_url) {
-              setChatMessages([{ type: 'bot-image', url: img.image_url }]);
-            }
-          } catch (e) {
-            console.error('Image generation failed, continuing with text prompt', e);
-          }
-        }
-
         // If no files were selected, do not create an initial message
         if (!selectedIds || selectedIds.length === 0) {
           return;
@@ -132,7 +199,11 @@ export default function AssetStudioContent() {
         
         const response = await assetService.createAssetChat(courseId, option, fileNames);
         if (response && response.response) {
-          setChatMessages(prev => [...prev, { type: "bot", text: response.response }]);
+          const normalizedResponse = normalizeEscapes(response.response);
+          const formattedResponse = option === 'mark-scheme'
+            ? formatMarkSchemeResponse(normalizedResponse)
+            : normalizedResponse;
+          setChatMessages(prev => [...prev, { type: "bot", text: formattedResponse }]);
           setThreadId(response.thread_id);
         }
       } catch (error) {
@@ -186,9 +257,13 @@ export default function AssetStudioContent() {
       
       
       if (response && response.response) {
+        const normalizedResponse = normalizeEscapes(response.response);
+        const formattedResponse = option === 'mark-scheme'
+          ? formatMarkSchemeResponse(normalizedResponse)
+          : normalizedResponse;
         const botResponse = {
           type: "bot",
-          text: response.response
+          text: formattedResponse
         };
         setChatMessages((prev) => [...prev, botResponse]);
       }
@@ -422,7 +497,7 @@ export default function AssetStudioContent() {
                   }}
                 >
                   {msg.type === 'bot-image' ? (
-                    <img src={msg.url} alt="Concept Map" style={{ maxWidth: '100%', borderRadius: 8 }} />
+                    <img src={msg.url} alt="Asset preview" style={{ maxWidth: '100%', borderRadius: 8 }} />
                   ) : msg.type === "bot" ? (
                     <div style={{ 
                       fontSize: "15px",
