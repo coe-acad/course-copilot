@@ -15,11 +15,15 @@ A computer program which learns from experience is called a machine learning pro
 
 Machine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments.
 
+---
+
 ================================================================================
 
 Question 2:
 ----------------------------------------
 when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear
+
+---
 
 ================================================================================
 
@@ -39,10 +43,18 @@ C) forecasting in time series
 
 A) Time plot:-
 
-[IMAGE DESCRIPTION: A hand-drawn line graph with two subplots. The left subplot shows an upward trend from 1990 to 2023, labeled "gold price" on the y-axis and "year" on the x-axis. The right subplot shows a downward trend, labeled "oil price" on the y-axis and "quarter two year" on the x-axis.
-TEXT IN IMAGE: gold price, oil price, year, quarter two year
-IMAGE TYPE: Line graph
-IMAGE CONTEXT: Illustrates time series data for Question 3]
+[IMAGE DESCRIPTION: A hand-drawn time series plot with two distinct segments.
+- The left segment shows an upward trend from 1990 to 2023, with fluctuations but an overall increase in values. The y-axis is labeled "gold price" and the x-axis is labeled "year."
+- The right segment shows a downward trend from 2023 onward, with fluctuations but an overall decrease in values. The y-axis is labeled "O2 level" and the x-axis is labeled "[UNCERTAIN: sugar/upper] level year."
+- The plot is drawn on lined paper with a red vertical line separating the two segments.
+
+TEXT IN IMAGE:
+- Left segment: "gold price" (y-axis), "year" (x-axis), "1990" to "2023" (x-axis range)
+- Right segment: "O2 level" (y-axis), "[UNCERTAIN: sugar/upper] level year" (x-axis)
+
+IMAGE TYPE: line_graph
+
+IMAGE CONTEXT: Illustrates time series data trends for Question 3(A)]
 
 - Time plot gives halibhe view or overall view.
 - Time plot gives having understanding about long term
@@ -51,6 +63,8 @@ IMAGE CONTEXT: Illustrates time series data for Question 3]
 
 A) What is over time this we have technique
 called smoothing.
+
+---
 
 ================================================================================
 
@@ -64,6 +78,8 @@ Question 4:
 | Reproduc-ing | No seasonality | | |
 | Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |
 | Double | both trend and seasonality |  |  |
+
+---
 
 ================================================================================
 
@@ -82,9 +98,37 @@ Question 5:
 |  | used we can used directly Holt winter |  |  |
 
 ---
+### CONFIDENCE SCORE: 88 / 100
 
-CONFIDENCE SCORE: 88 / 100
-(TEXT: 92 | IMAGES: 85 | TABLES: 88 | HANDWRITING: 80)
+**BREAKDOWN:**
+- **Text Accuracy: 35/40**
+  - Minor uncertainties in handwritten text (e.g., "sugar/upper level year" in the time plot).
+  - Some spelling inconsistencies preserved (e.g., "Reproduc-ing," "halibhe").
+  - Overall high accuracy in character recognition.
+
+- **Visual Elements: 22/25**
+  - Time series plot accurately described with clear text extraction.
+  - Slight ambiguity in the x-axis label of the right segment ("sugar/upper level year").
+
+- **Table Structure: 18/20**
+  - Tables correctly formatted with preserved headers and data.
+  - Minor inconsistency in the second table's "Reproduc-ing" repetition.
+
+- **Handwriting Legibility: 13/15**
+  - Generally clear handwriting with occasional unclear words (e.g., "halibhe").
+  - Some abbreviations and shorthand (e.g., "Dola based prediction") preserved.
+
+**KEY CHALLENGES:**
+- Ambiguity in the x-axis label of the right segment of the time plot.
+- Repetition of "Reproduc-ing" in the second table may indicate a handwriting or conceptual error.
+- Minor spelling inconsistencies (e.g., "halibhe" instead of "holistic").
+
+**RELIABILITY NOTES:**
+- The extracted content is highly reliable for automated grading or digitization.
+- The time plot description is comprehensive, but the ambiguous x-axis label may require manual verification.
+- Tables are structurally sound but contain minor redundancies.
+
+---
 
 ================================================================================
 
@@ -98,23 +142,23 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.\n\nA computer program which learns from experience is called a machine learning program or simply a learning program.\n\nMachine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments."
+      "student_answer": "Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.\n\nA computer program which learns from experience is called a machine learning program or simply a learning program.\n\nMachine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments.\n\n---"
     },
     {
       "question_number": "2",
-      "student_answer": "when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear"
+      "student_answer": "when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear\n\n---"
     },
     {
       "question_number": "3",
-      "student_answer": "Time series: - it is data which is index by time.\n- the most important part of time series is sequence.\nwhat we do with time series:- we capture the past data\nI based on that we predict for future this entire\nprocedure is called forecasting.\n\nA) Plotting time series\nB) Component of time series\nC) forecasting in time series\n   (1) Dola based prediction\n   (2) model based prediction\n\nA) Time plot:-\n\n[IMAGE DESCRIPTION: A hand-drawn line graph with two subplots. The left subplot shows an upward trend from 1990 to 2023, labeled \"gold price\" on the y-axis and \"year\" on the x-axis. The right subplot shows a downward trend, labeled \"oil price\" on the y-axis and \"quarter two year\" on the x-axis.\nTEXT IN IMAGE: gold price, oil price, year, quarter two year\nIMAGE TYPE: Line graph\nIMAGE CONTEXT: Illustrates time series data for Question 3]\n\n- Time plot gives halibhe view or overall view.\n- Time plot gives having understanding about long term\n  the far long term what happened to my data.\n- Often time line plot are difficult to understand.\n\nA) What is over time this we have technique\ncalled smoothing."
+      "student_answer": "Time series: - it is data which is index by time.\n- the most important part of time series is sequence.\nwhat we do with time series:- we capture the past data\nI based on that we predict for future this entire\nprocedure is called forecasting.\n\nA) Plotting time series\nB) Component of time series\nC) forecasting in time series\n   (1) Dola based prediction\n   (2) model based prediction\n\nA) Time plot:-\n\n[IMAGE DESCRIPTION: A hand-drawn time series plot with two distinct segments.\n- The left segment shows an upward trend from 1990 to 2023, with fluctuations but an overall increase in values. The y-axis is labeled \"gold price\" and the x-axis is labeled \"year.\"\n- The right segment shows a downward trend from 2023 onward, with fluctuations but an overall decrease in values. The y-axis is labeled \"O2 level\" and the x-axis is labeled \"[UNCERTAIN: sugar/upper] level year.\"\n- The plot is drawn on lined paper with a red vertical line separating the two segments.\n\nTEXT IN IMAGE:\n- Left segment: \"gold price\" (y-axis), \"year\" (x-axis), \"1990\" to \"2023\" (x-axis range)\n- Right segment: \"O2 level\" (y-axis), \"[UNCERTAIN: sugar/upper] level year\" (x-axis)\n\nIMAGE TYPE: line_graph\n\nIMAGE CONTEXT: Illustrates time series data trends for Question 3(A)]\n\n- Time plot gives halibhe view or overall view.\n- Time plot gives having understanding about long term\n  the far long term what happened to my data.\n- Often time line plot are difficult to understand.\n\nA) What is over time this we have technique\ncalled smoothing.\n\n---"
     },
     {
       "question_number": "4",
-      "student_answer": "| Model | When we can apply | What should be future prediction | Hyperparameter |\n|--------|----------------|--------------------------------|-------------|\n| Simple | No trend | Last possible local Avg = all future prediction | 1 |\n| Reproduc-ing | No seasonality | | |\n| Double | only trend | Last possible local Avg & changed trend | 2 |\n| Reproduc-ing | No seasonality | | |\n| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |\n| Double | both trend and seasonality |  |  |"
+      "student_answer": "| Model | When we can apply | What should be future prediction | Hyperparameter |\n|--------|----------------|--------------------------------|-------------|\n| Simple | No trend | Last possible local Avg = all future prediction | 1 |\n| Reproduc-ing | No seasonality | | |\n| Double | only trend | Last possible local Avg & changed trend | 2 |\n| Reproduc-ing | No seasonality | | |\n| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |\n| Double | both trend and seasonality |  |  |\n\n---"
     },
     {
       "question_number": "5",
-      "student_answer": "|  | Forecasting |  |  |\n|--------|----------------|--------|--------|\n|  | Solo Based | Model Based |  |\n|  | There is no previous condition | 1 | PR MA APMA APMMA |\n| Simple | Double Holt | (Stationary data) |  |\n| Reproduc-ing | Reproduc-ing |  |  |\n| Reproduc-ing | Trend √ both | (When we are not sure) |  |\n| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |\n|  | Seasonality |  |  |\n|  | (When ever we don't know which to use) |  |  |\n|  | used we can used directly Holt winter |  |  |\n\n---\n\nCONFIDENCE SCORE: 88 / 100\n(TEXT: 92 | IMAGES: 85 | TABLES: 88 | HANDWRITING: 80)"
+      "student_answer": "|  | Forecasting |  |  |\n|--------|----------------|--------|--------|\n|  | Solo Based | Model Based |  |\n|  | There is no previous condition | 1 | PR MA APMA APMMA |\n| Simple | Double Holt | (Stationary data) |  |\n| Reproduc-ing | Reproduc-ing |  |  |\n| Reproduc-ing | Trend √ both | (When we are not sure) |  |\n| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |\n|  | Seasonality |  |  |\n|  | (When ever we don't know which to use) |  |  |\n|  | used we can used directly Holt winter |  |  |\n\n---\n### CONFIDENCE SCORE: 88 / 100\n\n**BREAKDOWN:**\n- **Text Accuracy: 35/40**\n  - Minor uncertainties in handwritten text (e.g., \"sugar/upper level year\" in the time plot).\n  - Some spelling inconsistencies preserved (e.g., \"Reproduc-ing,\" \"halibhe\").\n  - Overall high accuracy in character recognition.\n\n- **Visual Elements: 22/25**\n  - Time series plot accurately described with clear text extraction.\n  - Slight ambiguity in the x-axis label of the right segment (\"sugar/upper level year\").\n\n- **Table Structure: 18/20**\n  - Tables correctly formatted with preserved headers and data.\n  - Minor inconsistency in the second table's \"Reproduc-ing\" repetition.\n\n- **Handwriting Legibility: 13/15**\n  - Generally clear handwriting with occasional unclear words (e.g., \"halibhe\").\n  - Some abbreviations and shorthand (e.g., \"Dola based prediction\") preserved.\n\n**KEY CHALLENGES:**\n- Ambiguity in the x-axis label of the right segment of the time plot.\n- Repetition of \"Reproduc-ing\" in the second table may indicate a handwriting or conceptual error.\n- Minor spelling inconsistencies (e.g., \"halibhe\" instead of \"holistic\").\n\n**RELIABILITY NOTES:**\n- The extracted content is highly reliable for automated grading or digitization.\n- The time plot description is comprehensive, but the ambiguous x-axis label may require manual verification.\n- Tables are structurally sound but contain minor redundancies.\n\n---"
     }
   ]
 }
