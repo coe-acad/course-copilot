@@ -26,7 +26,6 @@ class CourseSettingsRequest(BaseModel):
     course_level: list[str]
     study_area: list[str]   
     pedagogical_components: list[str]
-    ask_clarifying_questions: bool
 
 class CourseResponse(BaseModel):
     name: str

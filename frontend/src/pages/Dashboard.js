@@ -293,8 +293,7 @@ export default function Dashboard() {
       return settings && (
         (settings.course_level && settings.course_level.length > 0) ||
         (settings.study_area && settings.study_area.length > 0) ||
-        (settings.pedagogical_components && settings.pedagogical_components.length > 0) ||
-        settings.ask_clarifying_questions !== undefined
+        (settings.pedagogical_components && settings.pedagogical_components.length > 0)
       );
     } catch (error) {
       console.error('Error checking settings:', error);

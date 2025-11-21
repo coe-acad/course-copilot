@@ -19,11 +19,7 @@ export async function getAllResources(courseId = null) {
 export async function uploadResources(courseId, files) {
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
-  const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData, {
-    headers: {
-      'Content-Type': undefined  // Let browser set multipart/form-data with boundary
-    }
-  });
+  const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData);
   return res.data;
 }
 
@@ -52,11 +48,7 @@ export async function uploadCourseResources(courseId, files) {
   files.forEach(file => formData.append('files', file));
   
   try {
-    const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData, {
-      headers: {
-        'Content-Type': undefined  // Let browser set multipart/form-data with boundary
-      }
-    });
+    const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData);
     return res.data;
   } catch (error) {
     console.error('Upload error:', error);

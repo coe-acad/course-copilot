@@ -88,7 +88,6 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
         "course_level": course.get("settings", {}).get("course_level", ""),
         "study_area": course.get("settings", {}).get("study_area", ""),
         "pedagogical_components": course.get("settings", {}).get("pedagogical_components", ""),
-        "ask_clarifying_questions": course.get("settings", {}).get("ask_clarifying_questions", ""),
         "file_names": file_names
     }
     return input_variables
@@ -336,6 +335,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     category_map = {
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
+        "concept-plan": "curriculum",
         "modules": "curriculum",
         "lecture": "curriculum",
         "course-notes": "curriculum",

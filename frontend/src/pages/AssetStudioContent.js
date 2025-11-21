@@ -16,6 +16,7 @@ const optionTitles = {
   "modules-and-topics": "Modules",
   "lecture": "Lecture",
   "course-notes": "Course Notes",
+  "concept-plan": "Concept Plan",
   "brainstorm": "Brainstorm",
   "quiz": "Quiz",
   "assignment": "Assignment",
@@ -125,6 +126,7 @@ export default function AssetStudioContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [resources, setResources] = useState([]);
   const [resourcesLoading, setResourcesLoading] = useState(true);
+  const [isUploadingResources, setIsUploadingResources] = useState(false);
   const [threadId, setThreadId] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
@@ -409,10 +411,17 @@ export default function AssetStudioContent() {
     setShowAddResourceModal(false);
     const courseId = localStorage.getItem('currentCourseId');
     if (!courseId || !files.length) return;
-    await uploadCourseResources(courseId, files); // upload to backend
-    // Refresh resources
-    const resourcesData = await getAllResources(courseId);
-    setResources(resourcesData.resources);
+    try {
+      setIsUploadingResources(true);
+      await uploadCourseResources(courseId, files); // upload to backend
+      // Refresh resources
+      const resourcesData = await getAllResources(courseId);
+      setResources(resourcesData.resources);
+    } catch (err) {
+      console.error('Error uploading resources from modal:', err);
+    } finally {
+      setIsUploadingResources(false);
+    }
   };
 
   const handleDeleteResource = async (resourceId) => {
@@ -443,6 +452,7 @@ export default function AssetStudioContent() {
           onAddResource={() => setShowAddResourceModal(true)}
           onDelete={handleDeleteResource}
           courseId={localStorage.getItem('currentCourseId')}
+          isUploading={isUploadingResources}
         />
       }
     >

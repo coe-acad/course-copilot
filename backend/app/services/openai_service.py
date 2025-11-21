@@ -79,29 +79,67 @@ def connect_file_to_vector_store(vector_store_id: str, file_id: str):
         logger.error(f"Error connecting file {file_id} to vector store {vector_store_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _process_single_resource_file(file: UploadFile, vector_store_id: str) -> None:
+    """
+    Helper to upload a single resource file to OpenAI and connect it to the vector store.
+    Raises on error so the caller can decide how to handle failures.
+    """
+    # Create a BytesIO object with the file content and set the name
+    file_content = file.file.read()
+    if not file_content:
+        raise HTTPException(status_code=400, detail=f"File {file.filename} is empty")
+
+    file_obj = io.BytesIO(file_content)
+    file_obj.name = file.filename
+
+    openai_file_id = create_file(file_obj)
+
+    # Connect file to vector store
+    connect_file_to_vector_store(vector_store_id, openai_file_id)
+
+    # Optional verification / logging
+    vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
+    for vs_file in vs_files:
+        if vs_file.id == openai_file_id:
+            logger.info(f"File {file.filename} ({openai_file_id}) found in vector store {vector_store_id}")
+            break
+
+    logger.info(f"Connected file {file.filename} to vector store {vector_store_id}")
+
+
 def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: List[UploadFile]):
-    for file in files:
-        try:
-            # Create a BytesIO object with the file content and set the name
-            file_content = file.file.read()
-            file_obj = io.BytesIO(file_content)
-            file_obj.name = file.filename
-            
-            openai_file_id = create_file(file_obj)
+    """
+    Upload multiple resources for a course.
+    This processes files concurrently (bounded thread pool) to improve throughput
+    while keeping per-file error handling the same (errors are logged and skipped).
+    """
+    if not files:
+        return "No resources to upload"
 
-            # Connect file to vector store
-            batch = connect_file_to_vector_store(vector_store_id, openai_file_id)
+    # Use a small thread pool to avoid hitting OpenAI rate limits too hard
+    max_workers = min(4, len(files))
 
-            vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
-            for vs_file in vs_files:
-                if vs_file.id==openai_file_id:
-                    print("file found in vector store")
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_process_single_resource_file, file, vector_store_id): file
+                for file in files
+            }
 
-            logger.info(f"Connected file {file.filename} to vector store {vector_store_id}")
+            for future in futures:
+                file = futures[future]
+                try:
+                    # We don't care about the return value; just ensure it completed
+                    future.result()
+                except Exception as e:
+                    # Preserve previous behavior: log and continue with other files
+                    logger.error(f"Error processing file {file.filename}: {str(e)}")
+                    continue
 
-        except Exception as e:
-            logger.error(f"Error processing file {file.filename}: {str(e)}")
-            continue
+    except Exception as e:
+        # If the executor itself fails, log and fall back to a simple error
+        logger.error(f"Thread pool failure while uploading resources: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload resources")
 
     return "Resources uploaded successfully"
 
