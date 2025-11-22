@@ -1536,7 +1536,7 @@ export const assetService = {
       throw new Error(`Failed to generate PDF: ${error.message}`);
     }
   },
-  // Generate image for an asset type (e.g., concept-map)
+  // Generate image for an asset type
   generateImageAsset: async (courseId, assetTypeName) => {
     try {
       const res = await axiosInstance.post(

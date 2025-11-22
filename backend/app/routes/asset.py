@@ -88,7 +88,6 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
         "course_level": course.get("settings", {}).get("course_level", ""),
         "study_area": course.get("settings", {}).get("study_area", ""),
         "pedagogical_components": course.get("settings", {}).get("pedagogical_components", ""),
-        "ask_clarifying_questions": course.get("settings", {}).get("ask_clarifying_questions", ""),
         "file_names": file_names
     }
     return input_variables
@@ -336,9 +335,9 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     category_map = {
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
+        "concept-plan": "curriculum",
         "modules": "curriculum",
         "lecture": "curriculum",
-        "concept-map": "curriculum",
         "course-notes": "curriculum",
         "project": "assessments",
         "activity": "assessments",
@@ -350,7 +349,11 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     # Default to a safe category so saving never fails due to unmapped type
     asset_category = category_map.get(asset_type, "content")
     #this text should go to openai and get cleaned up and than use the text to create the asset
-    cleaned_text = clean_text(request.content)
+    #TODO: do the cleaning for all except for mark-scheme
+    if asset_type != "mark-scheme":
+        cleaned_text = clean_text(request.content)
+    else:
+        cleaned_text = request.content
     
     # Get user's display name for the asset
     user_display_name = get_user_display_name(user_id)

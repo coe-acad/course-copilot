@@ -23,7 +23,6 @@ def gather_input_variables(course_id: str, user_id: Optional[str] = None, thread
     input_vars["course_level"] = course.get("level", "Unknown Level")
     input_vars["study_area"] = course.get("settings", {}).get("study_area", "Unknown Study Area")
     input_vars["pedagogical_components"] = course.get("settings", {}).get("pedagogical_components", [])
-    input_vars["ask_clarifying_questions"] = course.get("settings", {}).get("ask_clarifying_questions", False)
 
 
     # Gather resource file names (checked-in files)
