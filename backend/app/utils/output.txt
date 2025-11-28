@@ -3,111 +3,31 @@ EXTRACTION RESULTS
 ================================================================================
 
 Email: None
-Total Questions Extracted: 5
+Total Questions Extracted: 4
 
 ================================================================================
 
-Question 1:
+Question 2023:
 ----------------------------------------
-Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.
-
-A computer program which learns from experience is called a machine learning program or simply a learning program.
-
-Machine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments.
+- The y-axis on the left graph is labeled "gold price," and the right graph is labeled "oil price/level."
 
 ================================================================================
 
-Question 2:
+Question 34:
 ----------------------------------------
-when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear
+8/40, Visual Elements 20/25, Table Structure
 
 ================================================================================
 
-Question 3:
+Question 16:
 ----------------------------------------
-Time series: - it is data which is index by time.
-- the most important part of time series is sequence.
-what we do with time series:- we capture the past data
-I based on that we predict for future this entire
-procedure is called forecasting.
-
-A) Plotting time series
-B) Component of time series
-C) forecasting in time series
-   (1) Dolabased prediction
-   (2) model based prediction
-
-A) Time plot:-
-
-[IMAGE DESCRIPTION: A hand-drawn line graph with two distinct sections. The left section shows an upward trend from 1990 to 2023, labeled "gold price" on the y-axis and "year" on the x-axis. The right section shows a downward trend, labeled "o2 level" on the y-axis and "quarter year" on the x-axis. The graph has irregular, jagged lines representing fluctuations over time.
-
-TEXT IN IMAGE:
-- "gold price" (y-axis label)
-- "year" (x-axis label)
-- "o2 level" (y-axis label)
-- "quarter year" (x-axis label)
-
-IMAGE TYPE: line_graph
-
-IMAGE CONTEXT: Illustrates time series data for Question 3]
-
-- Time plot gives halibhe view or overall view.
-- Time plot gives having understanding about long term
-  the far long term what happened to my data.
-- Often time line plot are difficult to understand.
-
-A) What is the over time this we have technique
-called smoothing.
+5/20, Handwriting
 
 ================================================================================
 
-Question 4:
+Question 13:
 ----------------------------------------
-| Model | When we can apply | What should be future prediction | Hyperparameter |
-|--------|----------------|--------------------------------|-------------|
-| Simple | No trend | Last possible local Avg = all future prediction | 1 |
-| Reproduc-ing | No seasonality | | |
-| Double | only trend | Last possible local Avg & changed trend | 2 |
-| Reproduc-ing | No seasonality | | |
-| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |
-| Double | both trend and seasonality |  |  |
-
-================================================================================
-
-Question 5:
-----------------------------------------
-|  | Forecasting |  |  |
-|--------|----------------|--------|--------|
-|  | Solo Based | Model Based |  |
-|  | There is no previous condition | 1 | PR MA APMA APMMA |
-| Simple | Double Holt | (Stationary data) |  |
-| Reproduc-ing | Reproduc-ing |  |  |
-| Reproduc-ing | Trend √ both | (When we are not sure) |  |
-| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |
-|  | Seasonality |  |  |
-|  | (When ever we don't know which to use) |  |  |
-|  | used we can used directly Holt winter |  |  |
-
----
-
-### CONFIDENCE SCORE: 85 / 100
-
-BREAKDOWN:
-- Text Accuracy: 35/40 - Minor uncertainties in handwriting interpretation, particularly in technical terms.
-- Visual Elements: 22/25 - Accurate description of the line graph, but some labels were challenging to read.
-- Table Structure: 18/20 - Tables were correctly identified and extracted, though some cell content was ambiguous.
-- Handwriting Legibility: 12/15 - Handwriting was generally clear, but some words were unclear or smudged.
-
-KEY CHALLENGES:
-- Ambiguous handwriting in technical terms (e.g., "halibhe view" instead of "holistic view").
-- Some labels in the line graph were difficult to read.
-- Minor inconsistencies in table formatting (e.g., merged cells, unclear headers).
-
-RELIABILITY NOTES:
-- The extraction is reliable for most content, but some sections may require manual review for accuracy.
-- The line graph description is comprehensive, but minor details may have been missed due to handwriting clarity.
-
----
+6/15
 
 ================================================================================
 
@@ -120,24 +40,20 @@ JSON FORMAT
   "email": null,
   "answers": [
     {
-      "question_number": "1",
-      "student_answer": "Machine learning is a branch of artificial intelligence that develops algorithms by learning the hidden patterns of the datasets used it to make predictions on new similar type data, without being explicitly programmed for each task.\n\nA computer program which learns from experience is called a machine learning program or simply a learning program.\n\nMachine learning is used in many different applications, from image and speech recognition to natural language processing recommendation systems, fraud detection, portfolio optimization, automated risk and so on. Machine learning models are also used to power autonomous vehicles, drones and robots, making them more intelligent and adaptable to changing environments."
+      "question_number": "2023",
+      "student_answer": "- The y-axis on the left graph is labeled \"gold price,\" and the right graph is labeled \"oil price/level.\""
     },
     {
-      "question_number": "2",
-      "student_answer": "when we talk about linear regression we talk about relation between y and coefficients of features and degree of coefficient is still one and thus relation between y and coefficient is still linear"
+      "question_number": "34",
+      "student_answer": "8/40, Visual Elements 20/25, Table Structure"
     },
     {
-      "question_number": "3",
-      "student_answer": "Time series: - it is data which is index by time.\n- the most important part of time series is sequence.\nwhat we do with time series:- we capture the past data\nI based on that we predict for future this entire\nprocedure is called forecasting.\n\nA) Plotting time series\nB) Component of time series\nC) forecasting in time series\n   (1) Dolabased prediction\n   (2) model based prediction\n\nA) Time plot:-\n\n[IMAGE DESCRIPTION: A hand-drawn line graph with two distinct sections. The left section shows an upward trend from 1990 to 2023, labeled \"gold price\" on the y-axis and \"year\" on the x-axis. The right section shows a downward trend, labeled \"o2 level\" on the y-axis and \"quarter year\" on the x-axis. The graph has irregular, jagged lines representing fluctuations over time.\n\nTEXT IN IMAGE:\n- \"gold price\" (y-axis label)\n- \"year\" (x-axis label)\n- \"o2 level\" (y-axis label)\n- \"quarter year\" (x-axis label)\n\nIMAGE TYPE: line_graph\n\nIMAGE CONTEXT: Illustrates time series data for Question 3]\n\n- Time plot gives halibhe view or overall view.\n- Time plot gives having understanding about long term\n  the far long term what happened to my data.\n- Often time line plot are difficult to understand.\n\nA) What is the over time this we have technique\ncalled smoothing."
+      "question_number": "16",
+      "student_answer": "5/20, Handwriting"
     },
     {
-      "question_number": "4",
-      "student_answer": "| Model | When we can apply | What should be future prediction | Hyperparameter |\n|--------|----------------|--------------------------------|-------------|\n| Simple | No trend | Last possible local Avg = all future prediction | 1 |\n| Reproduc-ing | No seasonality | | |\n| Double | only trend | Last possible local Avg & changed trend | 2 |\n| Reproduc-ing | No seasonality | | |\n| Triple | both trend and seasonality | Local Average + trend + seasonality | 3 |\n| Double | both trend and seasonality |  |  |"
-    },
-    {
-      "question_number": "5",
-      "student_answer": "|  | Forecasting |  |  |\n|--------|----------------|--------|--------|\n|  | Solo Based | Model Based |  |\n|  | There is no previous condition | 1 | PR MA APMA APMMA |\n| Simple | Double Holt | (Stationary data) |  |\n| Reproduc-ing | Reproduc-ing |  |  |\n| Reproduc-ing | Trend √ both | (When we are not sure) |  |\n| No seasonality | but No trend & directly go for APMMA | directly go for APMMA |  |\n|  | Seasonality |  |  |\n|  | (When ever we don't know which to use) |  |  |\n|  | used we can used directly Holt winter |  |  |\n\n---\n\n### CONFIDENCE SCORE: 85 / 100\n\nBREAKDOWN:\n- Text Accuracy: 35/40 - Minor uncertainties in handwriting interpretation, particularly in technical terms.\n- Visual Elements: 22/25 - Accurate description of the line graph, but some labels were challenging to read.\n- Table Structure: 18/20 - Tables were correctly identified and extracted, though some cell content was ambiguous.\n- Handwriting Legibility: 12/15 - Handwriting was generally clear, but some words were unclear or smudged.\n\nKEY CHALLENGES:\n- Ambiguous handwriting in technical terms (e.g., \"halibhe view\" instead of \"holistic view\").\n- Some labels in the line graph were difficult to read.\n- Minor inconsistencies in table formatting (e.g., merged cells, unclear headers).\n\nRELIABILITY NOTES:\n- The extraction is reliable for most content, but some sections may require manual review for accuracy.\n- The line graph description is comprehensive, but minor details may have been missed due to handwriting clarity.\n\n---"
+      "question_number": "13",
+      "student_answer": "6/15"
     }
   ]
 }

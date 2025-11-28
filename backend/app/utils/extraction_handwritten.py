@@ -130,7 +130,7 @@ def parse_questions_and_answers(markdown_text: str) -> List[Dict[str, Optional[s
         
         # Clean up common prefixes that might appear
         # Remove "Answer:" prefix if present
-        answer_text = re.sub(r'^(?i)Answer\s*:\s*', '', answer_text)
+        answer_text = re.sub(r'(?i)^Answer\s*:\s*', '', answer_text)
         # Remove leading/trailing dashes or separators
         answer_text = re.sub(r'^[-=\s]+|[-=\s]+$', '', answer_text)
         
@@ -279,7 +279,7 @@ def _fallback_extraction(markdown_text: str) -> List[Dict[str, Optional[str]]]:
         answer = match.group(2).strip() if match.group(2) else ""
         
         # Clean up answer
-        answer = re.sub(r'^(?i)Answer\s*:\s*', '', answer)
+        answer = re.sub(r'(?i)^Answer\s*:\s*', '', answer)
         answer = answer.strip()
         
         if answer and len(answer) > 2:  # Only add if answer has meaningful content
