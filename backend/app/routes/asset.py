@@ -367,29 +367,44 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
 def get_assets(course_id: str, user_id: str = Depends(verify_token)):
+    """
+    Return all assets for a course.
+
+    Optimized to avoid N+1 database queries for evaluation assets by
+    preloading all evaluations for the course in a single query and
+    mapping evaluation_type onto the corresponding assets.
+    """
     assets = get_assets_by_course_id(course_id)
-    
-    # For evaluation assets, fetch the evaluation_type from the evaluation record
+
+    # Collect evaluation_ids from assets of category "evaluation"
+    evaluation_ids = [
+        asset.get("asset_content")
+        for asset in assets
+        if asset.get("asset_category") == "evaluation" and asset.get("asset_content")
+    ]
+
+    evaluation_type_by_id = {}
+    if evaluation_ids:
+        try:
+            from app.services.mongo import get_evaluations_by_course_id
+
+            # Fetch all evaluations for this course once
+            evaluations = get_evaluations_by_course_id(course_id)
+            for eval_doc in evaluations:
+                eval_id = eval_doc.get("evaluation_id")
+                if not eval_id:
+                    continue
+                evaluation_type_by_id[eval_id] = eval_doc.get("evaluation_type", "digital")
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not preload evaluations for course {course_id}: {str(e)}")
+
+    # Attach evaluation_type to each evaluation asset (default to "digital")
     for asset in assets:
         if asset.get("asset_category") == "evaluation" and asset.get("asset_content"):
-            # asset_content contains the evaluation_id for evaluation assets
             evaluation_id = asset.get("asset_content")
-            try:
-                from app.services.mongo import get_evaluation_by_evaluation_id
-                evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-                if evaluation:
-                    # Get evaluation_type (default to "digital" for backward compatibility)
-                    evaluation_type = evaluation.get("evaluation_type", "digital")
-                    asset["evaluation_type"] = evaluation_type
-                else:
-                    # If evaluation not found, default to digital
-                    asset["evaluation_type"] = "digital"
-            except Exception as e:
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Could not fetch evaluation type for {evaluation_id}: {str(e)}")
-                # Default to digital if there's an error
-                asset["evaluation_type"] = "digital"
-    
+            asset["evaluation_type"] = evaluation_type_by_id.get(evaluation_id, "digital")
+
     return AssetListResponse(assets=assets)
 
 @router.get("/courses/{course_id}/assets/{asset_name}/view", response_model=AssetViewResponse)
