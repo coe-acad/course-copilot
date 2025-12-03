@@ -703,6 +703,9 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     if not answer_sheets_list:
         raise HTTPException(status_code=400, detail="No answer sheets found in extracted data")
 
+    logger.info(f"[EVALUATE_FILES_ALL_IN_ONE] Received {len(answer_sheets_list)} answer sheets")
+    logger.info(f"[EVALUATE_FILES_ALL_IN_ONE] File IDs: {[sheet.get('file_id') for sheet in answer_sheets_list]}")
+
     # Store email mapping before evaluation (file_id -> email)
     email_mapping = {}
     for sheet in answer_sheets_list:
@@ -713,8 +716,11 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             logger.info(f"Stored email mapping: {file_id} -> {email}")
 
     # Ensure unique answer sheets
+    logger.info(f"[DEDUP] Before deduplication: {len(answer_sheets_list)} sheets")
     unique_answer_sheets = {sheet.get('file_id'): sheet for sheet in answer_sheets_list}.values()
     answer_sheets_list = list(unique_answer_sheets)
+    logger.info(f"[DEDUP] After deduplication: {len(answer_sheets_list)} sheets")
+    logger.info(f"[DEDUP] File IDs after dedup: {[sheet.get('file_id') for sheet in answer_sheets_list]}")
 
     # Split into batches of 5
     batch_size = 5
@@ -730,13 +736,14 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     def evaluate_one_batch(batch_num: int, batch: list) -> list:
         """Inner function to evaluate a single batch and return students list."""
         logger.info(f"Evaluating batch {batch_num}/{len(batches)} with {len(batch)} answer sheets")
+        logger.info(f"[EVAL_BATCH_{batch_num}] Input batch file_ids: {[s.get('file_id') for s in batch]}")
 
         batch_payload = {
             "mark_scheme": json.dumps(extracted_mark_scheme),
             "answer_sheets": json.dumps({"answer_sheets": batch}),
             "evaluation_id": evaluation_id
         }
-        print(batch_payload)
+        logger.info(f"[EVAL_BATCH_{batch_num}] Batch payload answer_sheets count: {len(batch)}")
         evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
 
         # Create thread and run evaluation
@@ -844,18 +851,27 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
 
         logger.info(f"Successfully evaluated batch {batch_num} with {len(evaluation_result['students'])} students")
+        logger.info(f"[EVAL_BATCH_{batch_num}] Returned student file_ids: {[s.get('file_id') for s in evaluation_result['students']]}")
         return evaluation_result["students"]
 
     # Evaluate all batches sequentially
     for idx, batch in enumerate(batches):
         batch_num = idx + 1
         try:
+            logger.info(f"[BATCH_{batch_num}] Processing batch with {len(batch)} answer sheets")
+            logger.info(f"[BATCH_{batch_num}] File IDs in batch: {[s.get('file_id') for s in batch]}")
             batch_students = evaluate_one_batch(batch_num, batch)
+            logger.info(f"[BATCH_{batch_num}] Evaluation returned {len(batch_students)} students")
+            logger.info(f"[BATCH_{batch_num}] Student file_ids returned: {[s.get('file_id') for s in batch_students]}")
             all_evaluated_students.extend(batch_students)
+            logger.info(f"[BATCH_{batch_num}] Total students so far: {len(all_evaluated_students)}")
         except Exception as e:
             logger.error(f"Batch {batch_num} failed: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
 
+    logger.info(f"[FINAL_DEDUP] Before final deduplication: {len(all_evaluated_students)} students")
+    logger.info(f"[FINAL_DEDUP] File IDs in all_evaluated_students: {[s.get('file_id') for s in all_evaluated_students]}")
+    
     # Deduplicate by file_id and add email back to each student
     seen_file_ids = set()
     unique_students = []
@@ -869,6 +885,9 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                 logger.info(f"Added email to student {file_id}: {email_mapping[file_id]}")
             unique_students.append(student)
 
+    logger.info(f"[FINAL_DEDUP] After final deduplication: {len(unique_students)} students")
+    logger.info(f"[FINAL_DEDUP] File IDs in unique_students: {[s.get('file_id') for s in unique_students]}")
+    
     final_result = {"evaluation_id": evaluation_id, "students": unique_students}
     logger.info(f"Completed evaluation of {len(unique_students)}/{len(answer_sheets_list)} answer sheets "
                 f"(removed {len(all_evaluated_students) - len(unique_students)} duplicates)")
