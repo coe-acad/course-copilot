@@ -1,0 +1,153 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+Q1
+   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.
+   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users
+   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
+   c. standard error means to know the average of the sample and to the know the differences
+
+   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64
+     = 3 / 8
+     = 0.375
+
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE:
+   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.
+   - The right tail of the curve is shaded, representing the p-value.
+
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]
+
+   b. H₀ ≤ 64
+      H₁ > 64
+
+================================================================================
+
+Question 2:
+----------------------------------------
+Q2
+   a. Prior probability is P(A)
+      The value of the prior probability is P(A) = 0.9
+   b. Posterior probability is P(A|B), the probability of spam given marked as spam.
+   c. P(A) = 0.9
+      P(A∩B) = 20%
+      P(A|B) = 0.05
+
+      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]
+
+      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')
+
+   d. I think so it will be lower than the prior because it is based on data that we can say in our data
+      the prior is 0.9 and the posterior is 20%, i.e. 0.2
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+1. Q1
+   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.
+   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users
+   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
+   c. standard error means to know the average of the sample and to the know the differences
+
+   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64
+     = 3 / 8
+     = 0.375
+
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE:
+   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.
+   - The right tail of the curve is shaded, representing the p-value.
+
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]
+
+   b. H₀ ≤ 64
+      H₁ > 64
+---
+---
+2. Q2
+   a. Prior probability is P(A)
+      The value of the prior probability is P(A) = 0.9
+   b. Posterior probability is P(A|B), the probability of spam given marked as spam.
+   c. P(A) = 0.9
+      P(A∩B) = 20%
+      P(A|B) = 0.05
+
+      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]
+
+      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')
+
+   d. I think so it will be lower than the prior because it is based on data that we can say in our data
+      the prior is 0.9 and the posterior is 20%, i.e. 0.2
+---
+QUESTION 1 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 36/40 - The handwriting is generally clear, with minor ambiguity in some words.
+- Visual Elements: 23/25 - The sketch of the bell curve is clear and well-described.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 13/15 - Some words are slightly unclear but mostly legible.
+
+ISSUES FOR QUESTION 1:
+- Minor ambiguity in the phrasing of the null and alternative hypotheses.
+
+QUESTION 2 CONFIDENCE: 85 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 34/40 - Some parts of the text are unclear, particularly in the formula and explanation.
+- Visual Elements: N/A - No images in this question.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 12/15 - Some words and symbols are difficult to decipher.
+
+ISSUES FOR QUESTION 2:
+- Ambiguity in the formula and explanation of the posterior probability.
+
+TOTAL CONFIDENCE SCORE: 87.5 / 100
+OVERALL BREAKDOWN:
+- Text Accuracy: 35/40 - Overall text is clear, with some minor ambiguities.
+- Visual Elements: 23/25 - The sketch in question 1 is clear and well-described.
+- Table Structure: N/A - No tables in the document.
+- Handwriting Legibility: 12.5/15 - Some parts of the handwriting are difficult to read.
+
+KEY CHALLENGES:
+- Ambiguity in some parts of the text, particularly in mathematical formulas and explanations.
+- Some handwritten symbols and words are unclear.
+
+RELIABILITY NOTES:
+- The extraction is generally reliable, with some minor uncertainties in specific parts of the text. The overall quality is good, but some manual review may be needed for ambiguous sections.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "Q1\n   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.\n   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users\n   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.\n   c. standard error means to know the average of the sample and to the know the differences\n\n   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64\n     = 3 / 8\n     = 0.375\n\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE:\n   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.\n   - The right tail of the curve is shaded, representing the p-value.\n\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]\n\n   b. H₀ ≤ 64\n      H₁ > 64",
+      "confidence_score": "90"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "Q2\n   a. Prior probability is P(A)\n      The value of the prior probability is P(A) = 0.9\n   b. Posterior probability is P(A|B), the probability of spam given marked as spam.\n   c. P(A) = 0.9\n      P(A∩B) = 20%\n      P(A|B) = 0.05\n\n      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]\n\n      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')\n\n   d. I think so it will be lower than the prior because it is based on data that we can say in our data\n      the prior is 0.9 and the posterior is 20%, i.e. 0.2",
+      "confidence_score": "85"
+    }
+  ],
+  "confidence": {
+    "score": "87.5",
+    "details": "CONFIDENCE SCORE: 87.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 35/40 - Overall text is clear, with some minor ambiguities.\n- Visual Elements: 23/25 - The sketch in question 1 is clear and well-described.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 12.5/15 - Some parts of the handwriting are difficult to read.\n\nKEY CHALLENGES:\n- Ambiguity in some parts of the text, particularly in mathematical formulas and explanations.\n- Some handwritten symbols and words are unclear.\n\nRELIABILITY NOTES:\n- The extraction is generally reliable, with some minor uncertainties in specific parts of the text. The overall quality is good, but some manual review may be needed for ambiguous sections."
+  }
+}

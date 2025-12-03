@@ -8,6 +8,7 @@ import fitz  # PyMuPDF for PDF image extraction
 from typing import Dict, Any
 import logging
 from pathlib import Path
+from ..utils.prompt_parser import PromptParser
 
 load_dotenv()
 
@@ -196,6 +197,64 @@ Confidence: {img_desc.get('confidence', 'N/A')}
     
     return enhanced_text
 
+def format_mark_scheme_context(mark_scheme: Dict[str, Any]) -> str:
+    """
+    Format mark scheme as readable text context for the extraction prompt.
+    
+    Args:
+        mark_scheme: Dictionary with 'mark_scheme' key containing list of questions
+        
+    Returns:
+        Formatted string representation of the mark scheme
+    """
+    if not mark_scheme or not mark_scheme.get('mark_scheme'):
+        return ""
+    
+    questions = mark_scheme.get('mark_scheme', [])
+    if not questions:
+        return ""
+    
+    formatted_lines = []
+    formatted_lines.append("=" * 60)
+    formatted_lines.append("MARK SCHEME CONTEXT")
+    formatted_lines.append("=" * 60)
+    formatted_lines.append("\nUse this mark scheme as context to better understand what questions and answers to expect in the answer sheet.\n")
+    formatted_lines.append("This will help you identify questions correctly and extract answers more accurately.\n")
+    formatted_lines.append("=" * 60)
+    formatted_lines.append("")
+    
+    for question in questions:
+        qnum = question.get('questionnumber') or question.get('question_number') or 'N/A'
+        qtext = question.get('question-text') or question.get('question_text') or question.get('question', '')
+        answer_template = question.get('answertemplate') or question.get('answer_template') or question.get('answer', '')
+        marking_scheme = question.get('markingscheme') or question.get('marking_scheme') or []
+        
+        formatted_lines.append(f"Question {qnum}:")
+        formatted_lines.append("-" * 40)
+        
+        if qtext:
+            formatted_lines.append(f"Question Text: {qtext}")
+        
+        if answer_template:
+            formatted_lines.append(f"Answer Template: {answer_template}")
+        
+        if marking_scheme:
+            formatted_lines.append("Marking Scheme:")
+            if isinstance(marking_scheme, list):
+                for item in marking_scheme:
+                    formatted_lines.append(f"  - {item}")
+            else:
+                formatted_lines.append(f"  - {marking_scheme}")
+        
+        formatted_lines.append("")
+    
+    formatted_lines.append("=" * 60)
+    formatted_lines.append("END OF MARK SCHEME CONTEXT")
+    formatted_lines.append("=" * 60)
+    
+    return "\n".join(formatted_lines)
+
+
 def parse_per_question_confidence(text: str, output_file=None):
     """
     Parse per-question confidence scores from the text.
@@ -266,13 +325,14 @@ def parse_per_question_confidence(text: str, output_file=None):
     return confidence_dict
 
 
-def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dict[str, Any]:
+def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_scheme_context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     High-level API used by the evaluation pipeline.
     
     - Runs the Mistral multimodal model over the handwritten PDF
     - Parses question/answer pairs in sequential order (1., 2., 3., ...)
     - Extracts per-question and overall confidence scores
+    - Uses mark scheme context to improve extraction accuracy
     - Returns a structure compatible with the evaluation flow:
       {
         "email": None,
@@ -282,6 +342,11 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
         ],
         "confidence": {"score": "88", "details": "...raw confidence section..."}
       }
+    
+    Args:
+        pdf_path: Path to the handwritten answer sheet PDF
+        answers_only: If True, returns simplified format with only answers
+        mark_scheme_context: Optional mark scheme dictionary with 'mark_scheme' key for context
     """
     # 1) Render PDF pages to high-res images and encode as base64
     pdf_document = fitz.open(pdf_path)
@@ -295,176 +360,58 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
         pdf_images.append(img_base64)
     pdf_document.close()
 
-    # 2) Build the multimodal prompt - MUST MATCH the original CLI prompt exactly
-    system_prompt = (
-        "You are a specialized OCR system designed for extracting content from handwritten academic answer sheets with maximum accuracy. "
-        "Your task is to extract ALL visible content EXACTLY as it appears, maintaining the original layout, structure, and sequential order.\n\n"
-        "---\n\n"
-        "## CORE PRINCIPLES\n\n"
-        "CRITICAL: Extract content in the EXACT sequence it appears in the document:\n"
-        "- Top to bottom, left to right progression\n"
-        "- Page by page in order\n"
-        "- NO rearranging, regrouping, or summarizing\n"
-        "- ALL elements (text, images, tables, diagrams) must appear inline at their exact position\n\n"
-        "---\n\n"
-        "## TEXT EXTRACTION RULES\n\n"
-        "### Character-Level Accuracy\n"
-        "- Extract every character, word, and symbol exactly as written\n"
-        "- DO NOT correct spelling, grammar, or formatting errors\n"
-        "- DO NOT standardize or clean up the text\n"
-        "- Preserve original writing style and quirks\n\n"
-        "### Preserve All Formatting\n"
-        "- Original line breaks, spacing, and indentation\n"
-        "- Headers, footers, watermarks, page numbers\n"
-        "- Question numbers, bullet points, subpoints, section markers\n"
-        "- Heading hierarchy (main headings → subheadings → sub-subheadings)\n"
-        "- Natural reading flow and document structure\n\n"
-        "### Handwriting-Specific Guidelines\n"
-        "- When text is ambiguous or unclear, make your best interpretation\n"
-        "- For illegible or highly uncertain text, use: [UNCERTAIN: possible_text]\n"
-        "- Preserve strikethroughs, corrections, and insertions (use ^word^ for insertions, word for strikethroughs)\n"
-        "- Maintain spacing between words as perceived\n"
-        "- Note significant pressure variations or emphasis if visible\n\n"
-        "---\n\n"
-        "## INLINE IMAGE AND DIAGRAM HANDLING\n\n"
-        "### Critical Rule: Inline Placement\n"
-        "When you encounter ANY visual element, insert its description at that EXACT position in the document flow. Never move visuals to the end.\n\n"
-        "### Image vs. Table Distinction\n"
-        "Treat as IMAGE if:\n"
-        "- Flowcharts with arrows and decision points\n"
-        "- Diagrams with labels and relationships\n"
-        "- Charts/graphs (bar charts, pie charts, line graphs, scatter plots)\n"
-        "- Illustrations, drawings, or sketches\n"
-        "- Photos or complex visual layouts\n"
-        "- Any visual without clear row-column grid structure\n\n"
-        "Treat as TABLE only if:\n"
-        "- Clear rectangular grid with visible or implied borders\n"
-        "- Defined rows and columns with consistent structure\n"
-        "- Data organized in cells with clear alignment\n"
-        "- Header row typically present\n\n"
-        "### Image Description Format\n"
-        "[IMAGE DESCRIPTION: Provide detailed structural description focusing on layout, relationships, and visual elements. Describe shapes, arrows, connections, spatial arrangement, and overall organization.\n\n"
-        "TEXT IN IMAGE: Extract all visible text, labels, numbers, and annotations exactly as they appear. Use bullet points for multiple labels.\n\n"
-        "IMAGE TYPE: Specify one - diagram | flowchart | bar_chart | line_graph | pie_chart | scatter_plot | illustration | sketch | photo | complex_visual\n\n"
-        "IMAGE CONTEXT: Identify which question number, section, or concept this visual relates to]\n\n"
-        "Then immediately continue with the text that follows.\n\n"
-        "---\n\n"
-        "## INLINE TABLE HANDLING\n\n"
-        "### Table Detection Criteria\n"
-        "Only mark as a table if there is:\n"
-        "- Clear grid structure with rows and columns\n"
-        "- Consistent cell boundaries (visible or strongly implied)\n"
-        "- Tabular data organization\n"
-        "- Header row typically present\n\n"
-        "### Table Description Format\n"
-        "When you encounter a table, provide ONLY a detailed description at the exact position where it appears. Do NOT rewrite the full table text and do NOT recreate it in markdown.\n\n"
-        "[TABLE DESCRIPTION: Provide comprehensive structural description focusing on layout, organization, and data relationships. Describe:\n"
-        "- Number of rows and columns\n"
-        "- Header structure and column purposes\n"
-        "- Data organization pattern (e.g., comparison table, data table, calculation table)\n"
-        "- Any special formatting, merged cells, or visual emphasis\n"
-        "- Overall purpose and context of the table\n\n"
-        "TABLE TYPE: Specify one - data_table | comparison_table | calculation_table | reference_table | summary_table | other\n\n"
-        "TABLE CONTEXT: Identify which question number, section, or concept this table relates to]\n\n"
-        "Then immediately continue with the next handwritten content in order.\n\n"
-        "---\n\n"
-        "## MATHEMATICAL CONTENT EXTRACTION\n\n"
-        "### Equations and Formulas\n"
-        "- Use Unicode for special characters: ×, ÷, ±, ≤, ≥, ≠, √, ∞, ∫, ∑, π, θ\n"
-        "- Superscripts: x², a³, e^(2x)\n"
-        "- Subscripts: H₂O, x₁, aₙ\n"
-        "- Fractions: Use (numerator)/(denominator) or proper notation based on clarity\n"
-        "- Maintain alignment for multi-line equations\n\n"
-        "### Mathematical Expressions in Handwriting\n"
-        "- If notation is ambiguous, provide best interpretation\n"
-        "- Use [UNCERTAIN: x² or x³] for unclear exponents\n"
-        "- Preserve work shown, including crossed-out attempts\n\n"
-        "---\n\n"
-        "## STRUCTURAL ELEMENT PRESERVATION\n\n"
-        "Maintain all structural elements exactly:\n"
-        "- Numbering systems: 1., 2., (a), (b), i., ii., etc.\n"
-        "- Bullet types: •, ○, ■, -, →, *, etc.\n"
-        "- Question-answer layouts and spacing\n"
-        "- Bold emphasis (use text if detectable)\n"
-        "- Underlines and emphasis markers\n"
-        "- Visual separators: dashes, lines, brackets\n"
-        "- Margins and indentation levels\n\n"
-        "---\n\n"
-        "## ERROR HANDLING AND UNCERTAINTY MARKING\n\n"
-        "### Uncertainty Markers\n"
-        "Use these markers to flag extraction issues:\n\n"
-        "- [UNCERTAIN: possible_text] - Text is unclear but this is the best interpretation\n"
-        "- [ILLEGIBLE] - Text cannot be reliably read\n"
-        "- [UNCLEAR_WORD] - Single word is unreadable\n"
-        "- [SMUDGED] - Content is smudged or damaged\n"
-        "- [FADED] - Content is too faint to read confidently\n"
-        "- [PARTIAL: visible_portion...] - Only part of the content is readable\n\n"
-        "### Impact on Confidence Score\n"
-        "- Each uncertainty marker reduces text accuracy component\n"
-        "- Multiple uncertainties in critical areas (question answers) have higher impact\n"
-        "- Document overall legibility affects handwriting confidence score\n\n"
-        "---\n\n"
-        "## CONFIDENCE SCORING SYSTEM\n\n"
-        "At the end of your extraction, provide a detailed confidence assessment:\n\n"
-        "### Scoring Components\n\n"
-        "| Component | Weight | Evaluation Criteria |\n"
-        "|-----------|--------|---------------------|\n"
-        "| Text Accuracy | 40% | Character recognition precision, proper handling of handwriting variations, minimal [UNCERTAIN] markers, correct preservation of formatting and alignment |\n"
-        "| Visual Element Handling | 25% | Correct identification of images vs. tables, accurate inline placement, comprehensive structural descriptions, complete text extraction from visuals |\n"
-        "| Table Structure Accuracy | 20% | Accurate detection of true tables (no false positives from charts), complete row-column preservation, proper markdown formatting, data integrity |\n"
-        "| Handwriting Legibility | 15% | Overall clarity of handwriting, confidence in character interpretation, frequency of uncertain extractions, writing consistency |\n\n"
-        "### Per-Question Confidence Scores\n\n"
-        "CRITICAL FORMATTING REQUIREMENT: For EACH question extracted, you MUST provide an individual confidence score using the EXACT format specified below. This exact format is required for automated parsing and must be followed precisely.\n\n"
-        "REQUIRED FORMAT (use this EXACT format for each question - this is mandatory):\n\n"
-        "QUESTION [N] CONFIDENCE: [X] / 100\n\n"
-        "Where:\n"
-        "- [N] is the question number as an integer (1, 2, 3, 4, etc.)\n"
-        "- [X] is the confidence score as a number (0-100, can include decimals like 85.5)\n"
-        "- The format must be: \"QUESTION\" (all caps) followed by a space, then the question number, then a space, then \"CONFIDENCE:\" (all caps), then a space, then the score, optionally followed by \" / 100\"\n\n"
-        "Valid format examples (any of these will work):\n"
-        "- QUESTION 1 CONFIDENCE: 85 / 100\n"
-        "- QUESTION 2 CONFIDENCE: 92/100\n"
-        "- QUESTION 3 CONFIDENCE: 87.5 / 100\n"
-        "- QUESTION 4 CONFIDENCE: 90\n\n"
-        "IMPORTANT PLACEMENT: Place all per-question confidence scores in a dedicated section at the END of your response, after all question content but BEFORE the overall/total confidence score section. This ensures proper parsing.\n\n"
-        "BREAKDOWN FOR QUESTION [N]:\n"
-        "- Text Accuracy: [X]/40 - [Brief note on text quality for this question]\n"
-        "- Visual Elements: [X]/25 - [Note on any images/diagrams in this question]\n"
-        "- Table Structure: [X]/20 - [Note on any tables in this question]\n"
-        "- Handwriting Legibility: [X]/15 - [Note on handwriting clarity for this question]\n\n"
-        "ISSUES FOR QUESTION [N]:\n"
-        "- [List any specific difficulties, uncertainties, or challenges for this question]\n\n"
-        "MANDATORY: Repeat this format for ALL questions found in the document (Question 1, Question 2, Question 3, etc.). "
-        "You MUST provide a confidence score for EVERY SINGLE question you extract.\n\n"
-        "CRITICAL REQUIREMENT: If you extract 5 questions, you MUST provide exactly 5 confidence scores (one for Question 1, one for Question 2, one for Question 3, one for Question 4, and one for Question 5). "
-        "If you extract 10 questions, you MUST provide exactly 10 confidence scores. There is NO exception to this rule - every question MUST have its own confidence score.\n\n"
-        "Missing confidence scores will result in \"N/A\" being assigned to those questions, which indicates incomplete extraction. "
-        "Your response is incomplete and unacceptable if you do not provide confidence scores for ALL questions..\n\n"
-        "### Overall Confidence Score Format\n\n"
-        "TOTAL CONFIDENCE SCORE: [X] / 100\n\n"
-        "OVERALL BREAKDOWN:\n"
-        "- Text Accuracy: [X]/40 - [Brief note on overall text quality and any issues]\n"
-        "- Visual Elements: [X]/25 - [Note on overall image/diagram handling accuracy]\n"
-        "- Table Structure: [X]/20 - [Note on overall table detection and extraction]\n"
-        "- Handwriting Legibility: [X]/15 - [Note on overall handwriting clarity and challenges]\n\n"
-        "KEY CHALLENGES:\n"
-        "- [List any specific difficulties encountered across the document]\n"
-        "- [Note any sections with multiple uncertainties]\n"
-        "- [Summary of per-question confidence variations]\n\n"
-        "RELIABILITY NOTES:\n"
-        "- [Any warnings about specific sections or content types]\n"
-        "- [Overall assessment of extraction quality]\n\n"
-        "---\n\n"
-        "## GOAL\n\n"
-        "Produce a flawless, character-perfect sequential reproduction of the handwritten answer sheet where:\n"
-        "1. Every element appears in its original position\n"
-        "2. Handwriting is interpreted with maximum accuracy\n"
-        "3. Uncertainties are clearly flagged\n"
-        "4. Visual elements (images AND tables) are comprehensively described\n"
-        "5. Per-question confidence scores reflect extraction quality for each question\n"
-        "6. Overall confidence assessment reflects total extraction quality\n\n"
-        "This extraction should be usable for automated grading, archival, or digitization purposes with minimal manual review required."
-    )
+    # 2) Format mark scheme context if provided
+    mark_scheme_formatted = ""
+    if mark_scheme_context:
+        mark_scheme_text = format_mark_scheme_context(mark_scheme_context)
+        logging.info(f"Mark scheme context provided: {len(mark_scheme_text)} characters")
+        # Format with header for prompt inclusion
+        mark_scheme_formatted = (
+            "---\n\n"
+            "## MARK SCHEME CONTEXT\n\n"
+            "IMPORTANT: The following mark scheme is provided as context to help you better understand the questions and expected answer format. "
+            "Use this information to:\n"
+            "- Identify questions correctly by matching question numbers and text\n"
+            "- Understand the expected answer format and structure\n"
+            "- Better interpret handwritten answers in context\n"
+            "- Ensure you extract all questions that are present in the mark scheme\n\n"
+            f"{mark_scheme_text}\n\n"
+        )
+    
+    # 3) Load prompt from JSON file using PromptParser
+    # Use PromptParser's path resolution which works in both development and production
+    # It uses __file__ to resolve paths relative to backend/app, regardless of working directory
+    prompt_parser = PromptParser()
+    input_variables = {}
+    if mark_scheme_formatted:
+        input_variables["mark_scheme_context"] = mark_scheme_formatted
+    
+    # Resolve path using PromptParser's _get_prompt_path which handles production paths correctly
+    # This uses os.path.abspath(__file__) internally, so it works regardless of where the script is run from
+    prompt_path = prompt_parser._get_prompt_path("prompts/evaluation/handwritten-answer-sheet-extraction.json")
+    
+    # Verify the path exists before attempting to load (better error message)
+    if not os.path.exists(prompt_path):
+        error_msg = (
+            f"Prompt template file not found: {prompt_path}\n"
+            f"Base directory: {prompt_parser.base_dir}\n"
+            f"Current working directory: {os.getcwd()}\n"
+            f"Expected location: {os.path.join(prompt_parser.base_dir, 'prompts/evaluation/handwritten-answer-sheet-extraction.json')}"
+        )
+        logging.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    
+    system_prompt = prompt_parser.render_prompt(prompt_path, input_variables)
+    
+    # Log the final prompt for debugging
+    logging.info(f"Final prompt length: {len(system_prompt)} characters")
+    if mark_scheme_formatted:
+        logging.info("Mark scheme context included in prompt")
+    print("\n" + "="*80)
+    print("FINAL HANDWRITTEN EXTRACTION PROMPT (with mark scheme context)")
+    print("="*80)
+    print(system_prompt)
+    print("="*80 + "\n")
 
     content_items = [
         {
@@ -489,7 +436,7 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
         }
     ]
 
-    # 3) Call Mistral multimodal chat API
+    # 4) Call Mistral multimodal chat API
     chat_response = client.chat.complete(model="mistral-large-latest", messages=messages)
 
     extracted_text = ""
@@ -498,10 +445,13 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
             if hasattr(choice, "message") and hasattr(choice.message, "content"):
                 extracted_text += choice.message.content + "\n"
 
-    # 4) Parse per-question confidence BEFORE trimming confidence section
+    # Preserve the full raw chat response before trimming confidence sections
+    raw_chat_response = extracted_text
+
+    # 5) Parse per-question confidence BEFORE trimming confidence section
     per_question_confidence = parse_per_question_confidence(extracted_text)
 
-    # 5) Extract overall confidence section and trim it from main text
+    # 6) Extract overall confidence section and trim it from main text
     confidence_score = "N/A"
     confidence_details = ""
     confidence_section_start = None
@@ -560,7 +510,7 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
         confidence_details = extracted_text[fallback_conf_idx:].strip()
         extracted_text = extracted_text[:fallback_conf_idx].rstrip()
 
-    # 6) Parse questions/answers from the remaining text
+    # 7) Parse questions/answers from the remaining text
     questions_answers = parse_questions_and_answers(extracted_text)
 
     # Attach per-question confidence where available
@@ -568,7 +518,7 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
         qnum = qa.get("question_number")
         qa["confidence_score"] = per_question_confidence.get(qnum, "N/A") if qnum else "N/A"
 
-    # 7) Build evaluation-friendly structure
+    # 8) Build evaluation-friendly structure
     if answers_only:
         answers = [
             {
@@ -586,6 +536,9 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
                 "score": confidence_score,
                 "details": confidence_details,
             },
+            # Expose raw chat response so CLI/debug tooling can print it,
+            # but callers can ignore it if they don't need it.
+            "raw_chat_response": raw_chat_response,
         }
 
     # Non-answers_only mode: return richer raw structure (not currently used in evaluation)
@@ -596,6 +549,7 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True) -> Dic
             "score": confidence_score,
             "details": confidence_details,
         },
+        "raw_chat_response": raw_chat_response,
     }
 
 def parse_questions_and_answers(markdown_text: str, output_file=None):
@@ -706,6 +660,17 @@ def parse_questions_and_answers(markdown_text: str, output_file=None):
         
         # Extract the answer text (everything between this question number and the next sequential question)
         answer_text = markdown_text[answer_start:answer_end].strip()
+
+        # NEW: Treat a line containing only '---' as an explicit question breaker.
+        # If present, everything after the first such line belongs to the next question
+        # (or is ignored for this question).
+        lines = answer_text.splitlines()
+        trimmed_lines = []
+        for line in lines:
+            if line.strip() == "---":
+                break
+            trimmed_lines.append(line)
+        answer_text = "\n".join(trimmed_lines).strip()
         
         result.append({
             'question_number': question_num_str,
@@ -1227,7 +1192,8 @@ if __name__ == "__main__":
 
 def split_into_qas_mistral(
     pdf_path: str,
-    answers_only: bool = True
+    answers_only: bool = True,
+    mark_scheme_context: Dict[str, Any] = None
 ) -> Dict[str, any]:
     """
     Alternative interface matching extraction_answersheet.py.
@@ -1235,84 +1201,232 @@ def split_into_qas_mistral(
     Args:
         pdf_path: Path to PDF file
         answers_only: Returns simplified format
+        mark_scheme_context: Optional mark scheme dictionary with 'mark_scheme' key for context
         
     Returns:
         Dict with format: {"email": str or None, "answers": [{"question_number": str, "student_answer": str}, ...]}
     """
-    return extract_handwritten_answers(pdf_path, answers_only=answers_only)
+    return extract_handwritten_answers(pdf_path, answers_only=answers_only, mark_scheme_context=mark_scheme_context)
 
 
-# ==================== TESTING ====================
+# ==================== TESTING / CLI ENTRYPOINT ====================
 
 if __name__ == "__main__":
-    import sys
+    """
+    CLI usage (testing only, not used in the API):
     
+    - Single PDF mode (backwards compatible):
+        python extraction_handwritten.py input.pdf [output.txt]
+    
+    - Folder mode (requested):
+        python extraction_handwritten.py input_folder [output_folder]
+    
+      For each *.pdf in input_folder, writes:
+        output_folder/<pdf_stem>_output.txt
+    """
+    import sys
+
     # Configure logging for testing
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    
-    # PDF Processing Mode
-    if len(sys.argv) > 1:
-        pdf_path = sys.argv[1]
-        output_file = sys.argv[2] if len(sys.argv) > 2 else "output.txt"
-    else:
-        # Default: look for PDF in the same directory as this script
-        script_dir = Path(__file__).parent
-        pdf_path = str(script_dir / "handwritten answersheet.pdf")
-        output_file = str(script_dir / "output.txt")
-    
-    print("\n" + "=" * 80)
-    print("HANDWRITTEN ANSWER SHEET EXTRACTION")
-    print("=" * 80)
-    print(f"Input PDF: {pdf_path}")
-    print(f"Output File: {output_file}")
-    print("=" * 80 + "\n")
-    
-    try:
-        # Extract answers from the PDF
-        result = extract_handwritten_answers(pdf_path)
-        
-        # Write results to output file
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write("=" * 80 + "\n")
-            f.write("EXTRACTION RESULTS\n")
-            f.write("=" * 80 + "\n\n")
-            
-            f.write(f"Email: {result.get('email', 'None')}\n")
-            f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Write each question-answer pair
-            for qa in result['answers']:
-                f.write(f"Question {qa['question_number']}:\n")
-                f.write("-" * 40 + "\n")
-                f.write(f"{qa['student_answer']}\n")
-                f.write("\n" + "=" * 80 + "\n\n")
-            
-            # Also write JSON format at the end
-            f.write("\n\n" + "=" * 80 + "\n")
-            f.write("JSON FORMAT\n")
-            f.write("=" * 80 + "\n")
-            f.write(json.dumps(result, indent=2, ensure_ascii=False))
-        
-        print(f"\n✅ Results written to: {output_file}")
-        print(f"✅ Total questions extracted: {len(result['answers'])}")
-        
-        # Print summary to console
+
+    script_dir = Path(__file__).parent
+
+    # No args → fall back to single default PDF for convenience
+    if len(sys.argv) == 1:
+        pdf_path = script_dir / "handwritten answersheet.pdf"
+        output_file = script_dir / "output.txt"
+
         print("\n" + "=" * 80)
-        print("EXTRACTION SUMMARY")
+        print("HANDWRITTEN ANSWER SHEET EXTRACTION (single PDF default)")
         print("=" * 80)
-        for qa in result['answers']:
-            answer_preview = qa['student_answer'][:100] if qa['student_answer'] else "No answer"
-            print(f"Q{qa['question_number']}: {answer_preview}...")
+        print(f"Input PDF: {pdf_path}")
+        print(f"Output File: {output_file}")
         print("=" * 80 + "\n")
-        
-    except FileNotFoundError:
-        print(f"\n❌ Error: File '{pdf_path}' not found!")
-        print("Please make sure the PDF file exists in the current directory.\n")
-    except Exception as e:
-        print(f"\n❌ Error during extraction: {e}\n")
-        import traceback
-        traceback.print_exc()
+
+        try:
+            result = extract_handwritten_answers(str(pdf_path))
+
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write("EXTRACTION RESULTS\n")
+                f.write("=" * 80 + "\n\n")
+
+                f.write(f"Email: {result.get('email', 'None')}\n")
+                f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
+                f.write("=" * 80 + "\n\n")
+
+                for qa in result["answers"]:
+                    f.write(f"Question {qa['question_number']}:\n")
+                    f.write("-" * 40 + "\n")
+                    f.write(f"{qa['student_answer']}\n")
+                    f.write("\n" + "=" * 80 + "\n\n")
+
+                # Also write raw chat response so you can inspect the full model output
+                raw_chat = result.get("raw_chat_response", "")
+                if raw_chat:
+                    f.write("\n\n" + "=" * 80 + "\n")
+                    f.write("RAW CHAT RESPONSE\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(raw_chat)
+
+                # Finally, write JSON without the raw_chat_response field
+                result_for_json = dict(result)
+                result_for_json.pop("raw_chat_response", None)
+                f.write("\n\n" + "=" * 80 + "\n")
+                f.write("JSON FORMAT\n")
+                f.write("=" * 80 + "\n")
+                f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
+
+            print(f"\n✅ Results written to: {output_file}")
+            print(f"✅ Total questions extracted: {len(result['answers'])}")
+
+        except FileNotFoundError:
+            print(f"\n❌ Error: File '{pdf_path}' not found!")
+            print("Please make sure the PDF file exists in the current directory.\n")
+        except Exception as e:
+            print(f"\n❌ Error during extraction: {e}\n")
+            import traceback
+
+            traceback.print_exc()
+
+        sys.exit(0)
+
+    # If first arg is a directory → folder mode
+    input_path = Path(sys.argv[1])
+
+    if input_path.is_dir():
+        input_folder = input_path
+        # Optional second arg = output folder; default: <input_folder>/handwritten_outputs
+        if len(sys.argv) > 2:
+            output_folder = Path(sys.argv[2])
+        else:
+            output_folder = input_folder / "handwritten_outputs"
+
+        output_folder.mkdir(parents=True, exist_ok=True)
+
+        print("\n" + "=" * 80)
+        print("HANDWRITTEN ANSWER SHEET EXTRACTION (folder mode)")
+        print("=" * 80)
+        print(f"Input folder:  {input_folder}")
+        print(f"Output folder: {output_folder}")
+        print("=" * 80 + "\n")
+
+        pdf_files = sorted(input_folder.glob("*.pdf"))
+        if not pdf_files:
+            print(f"❌ No PDF files found in folder: {input_folder}")
+            sys.exit(1)
+
+        for pdf_file in pdf_files:
+            try:
+                print("\n" + "-" * 80)
+                print(f"Processing PDF: {pdf_file.name}")
+                print("-" * 80)
+
+                result = extract_handwritten_answers(str(pdf_file))
+
+                out_path = output_folder / f"{pdf_file.stem}_output.txt"
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write("=" * 80 + "\n")
+                    f.write("EXTRACTION RESULTS\n")
+                    f.write("=" * 80 + "\n\n")
+
+                    f.write(f"Email: {result.get('email', 'None')}\n")
+                    f.write(
+                        f"Total Questions Extracted: {len(result.get('answers', []))}\n\n"
+                    )
+                    f.write("=" * 80 + "\n\n")
+
+                    for qa in result.get("answers", []):
+                        f.write(f"Question {qa['question_number']}:\n")
+                        f.write("-" * 40 + "\n")
+                        f.write(f"{qa['student_answer']}\n")
+                        f.write("\n" + "=" * 80 + "\n\n")
+
+                    # Also write raw chat response so you can inspect the full model output
+                    raw_chat = result.get("raw_chat_response", "")
+                    if raw_chat:
+                        f.write("\n\n" + "=" * 80 + "\n")
+                        f.write("RAW CHAT RESPONSE\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write(raw_chat)
+
+                    # Finally, write JSON without the raw_chat_response field
+                    result_for_json = dict(result)
+                    result_for_json.pop("raw_chat_response", None)
+                    f.write("\n\n" + "=" * 80 + "\n")
+                    f.write("JSON FORMAT\n")
+                    f.write("=" * 80 + "\n")
+                    f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
+
+                print(f"✅ Wrote output to: {out_path}")
+
+            except Exception as e:
+                print(f"\n❌ Error during extraction for '{pdf_file}': {e}\n")
+                import traceback
+
+                traceback.print_exc()
+
+        print("\n" + "=" * 80)
+        print("FOLDER PROCESSING COMPLETE")
+        print("=" * 80 + "\n")
+
+    else:
+        # Backwards compatible single-file mode when a file path is provided
+        pdf_path = input_path
+        output_file = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("output.txt")
+
+        print("\n" + "=" * 80)
+        print("HANDWRITTEN ANSWER SHEET EXTRACTION (single PDF)")
+        print("=" * 80)
+        print(f"Input PDF: {pdf_path}")
+        print(f"Output File: {output_file}")
+        print("=" * 80 + "\n")
+
+        try:
+            result = extract_handwritten_answers(str(pdf_path))
+
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write("EXTRACTION RESULTS\n")
+                f.write("=" * 80 + "\n\n")
+
+                f.write(f"Email: {result.get('email', 'None')}\n")
+                f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
+                f.write("=" * 80 + "\n\n")
+
+                for qa in result["answers"]:
+                    f.write(f"Question {qa['question_number']}:\n")
+                    f.write("-" * 40 + "\n")
+                    f.write(f"{qa['student_answer']}\n")
+                    f.write("\n" + "=" * 80 + "\n\n")
+
+                # Also write raw chat response so you can inspect the full model output
+                raw_chat = result.get("raw_chat_response", "")
+                if raw_chat:
+                    f.write("\n\n" + "=" * 80 + "\n")
+                    f.write("RAW CHAT RESPONSE\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(raw_chat)
+
+                # Finally, write JSON without the raw_chat_response field
+                result_for_json = dict(result)
+                result_for_json.pop("raw_chat_response", None)
+                f.write("\n\n" + "=" * 80 + "\n")
+                f.write("JSON FORMAT\n")
+                f.write("=" * 80 + "\n")
+                f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
+
+            print(f"\n✅ Results written to: {output_file}")
+            print(f"✅ Total questions extracted: {len(result['answers'])}")
+
+        except FileNotFoundError:
+            print(f"\n❌ Error: File '{pdf_path}' not found!")
+            print("Please make sure the PDF file exists in the current directory.\n")
+        except Exception as e:
+            print(f"\n❌ Error during extraction: {e}\n")
+            import traceback
+
+            traceback.print_exc()

@@ -1,0 +1,110 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 0
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+Here is the extracted content following your OCR guidelines:
+
+---
+Name: P. Poojitha
+AU25U01043
+
+Q1)
+a) Population mean = 72 bpm
+   Sample mean = 69 bpm.
+
+b) H₀: The new relaxation app does not reduce the average resting rate of regular users.
+   H₁: The new relaxation app reduces the average resting rate of regular users.
+
+c) (x̄ - μ) / (σ/√n) => (69-72) / (8/√64) => -3/8 = standard error
+   => The no.of errors from the baseline to the mean.
+
+d) Z-score = (x̄ - μ) / se => -3 / (3/8) => 24/3 => -8
+
+e)
+[IMAGE DESCRIPTION:
+The image shows a hand-drawn normal distribution curve.
+- The curve is centered around the population mean (72 bpm).
+- A vertical line is drawn at 69 bpm, indicating the sample mean.
+- The area to the left of 69 bpm is shaded, representing the probability of observing a sample mean less than or equal to 69 bpm.
+
+TEXT IN IMAGE:
+- 69
+- 72
+
+IMAGE TYPE: illustration
+IMAGE CONTEXT: This visual relates to the Z-score and hypothesis testing for Question 1, part e)]
+
+---
+Q2)
+a) P(B|A).P(A) = 20%
+
+b) P(A|B)
+   If the message is not spam, the filter still marks it as "spam" with probability 0.05.
+
+c) P(B) = P(B|A).P(A) + P(B|¬A).P(¬A)
+   = 0.95 × 0.2 + 0.05 × 0.8
+   = 0.23
+
+d) Posterior Probability is higher.
+
+---
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, with minimal ambiguity.
+- Visual Elements: 24/25 - The diagram is clear and well-described.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 13/15 - Handwriting is clear, with only minor ambiguity in some characters.
+
+ISSUES FOR QUESTION 1:
+- Minor ambiguity in the handwritten mathematical symbols, but overall clear.
+
+QUESTION 2 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 36/40 - Text is clear, but some symbols are ambiguous.
+- Visual Elements: 25/25 - No visual elements present.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 9/15 - Some parts of the handwriting are less clear, particularly in mathematical symbols.
+
+ISSUES FOR QUESTION 2:
+- Ambiguity in some mathematical symbols and notation.
+
+---
+TOTAL CONFIDENCE SCORE: 92.5 / 100
+
+OVERALL BREAKDOWN:
+- Text Accuracy: 37/40 - Text is generally clear and legible, with minor ambiguity in mathematical symbols.
+- Visual Elements: 24.5/25 - The diagram in Q1 is clear and well-described.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 11/15 - Handwriting is generally clear, with some ambiguity in mathematical symbols.
+
+KEY CHALLENGES:
+- Ambiguity in mathematical symbols and notation.
+- Ensuring accurate interpretation of handwritten mathematical expressions.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable for textual content.
+- Mathematical symbols and handwritten expressions may require verification.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [],
+  "confidence": {
+    "score": "92.5",
+    "details": "CONFIDENCE SCORE: 92.5 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear and legible, with minor ambiguity in mathematical symbols.\n- Visual Elements: 24.5/25 - The diagram in Q1 is clear and well-described.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 11/15 - Handwriting is generally clear, with some ambiguity in mathematical symbols.\n\nKEY CHALLENGES:\n- Ambiguity in mathematical symbols and notation.\n- Ensuring accurate interpretation of handwritten mathematical expressions.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for textual content.\n- Mathematical symbols and handwritten expressions may require verification."
+  }
+}

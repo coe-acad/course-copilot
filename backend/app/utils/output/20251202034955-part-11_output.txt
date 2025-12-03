@@ -1,0 +1,150 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.
+   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.
+   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
+   c) Standard error is 10/√64.
+     Standard error is the standard deviation/mean.
+
+   d)
+   \[
+   Z = \frac{X - \mu}{SE} = \frac{69 - 72}{\frac{10}{\sqrt{64}}} = \frac{-3}{\frac{10}{\sqrt{64}}}
+   \]
+
+================================================================================
+
+Question 2:
+----------------------------------------
+a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.
+   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.
+   c)
+   \[
+   P(A|B) = \frac{P(A) \times P(B|A)}{P(B)}
+   \]
+   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
+   P(A) = 0.2, P(A^c) = 0.8
+   P(B|A) = 0.9, P(B|A^c) = 0.05
+
+   \[
+   P(A|B) = \frac{0.2 \times 0.9}{P(B)} = \frac{0.18}{0.22} = 0.818
+   \]
+   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22
+
+   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+---
+1. a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.
+   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.
+   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
+   c) Standard error is 10/√64.
+     Standard error is the standard deviation/mean.
+
+   d)
+   \[
+   Z = \frac{X - \mu}{SE} = \frac{69 - 72}{\frac{10}{\sqrt{64}}} = \frac{-3}{\frac{10}{\sqrt{64}}}
+   \]
+
+---
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE:
+- Historical Sample Mean
+- Obs. Sample mean = 69
+- x-axis = new relaxation app reduces the average resting heart rate of its regulars
+
+IMAGE TYPE: illustration (sketch of a normal distribution curve)
+
+IMAGE CONTEXT: Relates to question 1, part e
+]
+---
+
+2. a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.
+   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.
+   c)
+   \[
+   P(A|B) = \frac{P(A) \times P(B|A)}{P(B)}
+   \]
+   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
+   P(A) = 0.2, P(A^c) = 0.8
+   P(B|A) = 0.9, P(B|A^c) = 0.05
+
+   \[
+   P(A|B) = \frac{0.2 \times 0.9}{P(B)} = \frac{0.18}{0.22} = 0.818
+   \]
+   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22
+
+   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.
+
+---
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, minor ambiguity in mathematical notation.
+- Visual Elements: 25/25 - Image description is accurate and detailed.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 15/15 - Handwriting is clear and legible.
+
+ISSUES FOR QUESTION 1:
+- None.
+
+QUESTION 2 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 36/40 - Text is clear, some minor ambiguity in mathematical notation.
+- Visual Elements: N/A - No images in this question.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 14/15 - Handwriting is clear, some parts are slightly less legible.
+
+ISSUES FOR QUESTION 2:
+- Minor ambiguity in mathematical notation.
+
+TOTAL CONFIDENCE SCORE: 92.5 / 100
+OVERALL BREAKDOWN:
+- Text Accuracy: 37/40 - Text is generally clear and legible, minor ambiguity in mathematical notation.
+- Visual Elements: 25/25 - Image description is accurate and detailed.
+- Table Structure: N/A - No tables in the document.
+- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible.
+
+KEY CHALLENGES:
+- Minor ambiguity in mathematical notation.
+
+RELIABILITY NOTES:
+- Overall extraction quality is high, with minor ambiguity in mathematical notation.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.\n   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.\n   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.\n   c) Standard error is 10/√64.\n     Standard error is the standard deviation/mean.\n\n   d)\n   \\[\n   Z = \\frac{X - \\mu}{SE} = \\frac{69 - 72}{\\frac{10}{\\sqrt{64}}} = \\frac{-3}{\\frac{10}{\\sqrt{64}}}\n   \\]",
+      "confidence_score": "95"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.\n   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.\n   c)\n   \\[\n   P(A|B) = \\frac{P(A) \\times P(B|A)}{P(B)}\n   \\]\n   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)\n   P(A) = 0.2, P(A^c) = 0.8\n   P(B|A) = 0.9, P(B|A^c) = 0.05\n\n   \\[\n   P(A|B) = \\frac{0.2 \\times 0.9}{P(B)} = \\frac{0.18}{0.22} = 0.818\n   \\]\n   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22\n\n   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.",
+      "confidence_score": "90"
+    }
+  ],
+  "confidence": {
+    "score": "92.5",
+    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear and legible, minor ambiguity in mathematical notation.\n- Visual Elements: 25/25 - Image description is accurate and detailed.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical notation.\n\nRELIABILITY NOTES:\n- Overall extraction quality is high, with minor ambiguity in mathematical notation."
+  }
+}

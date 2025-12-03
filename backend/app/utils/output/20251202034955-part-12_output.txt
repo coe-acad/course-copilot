@@ -1,0 +1,147 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+b) Ho: The new relaxation app does not reduce the average resting heart rate
+   H₁: The new relaxation app reduces the average resting heart rate
+
+================================================================================
+
+Question 2:
+----------------------------------------
+a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
+   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
+   Let A be the spam message and A^c be the non-spam message and B is the filter.
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+---
+2/12/2025   Assignment-2   Soham N
+
+1. b) Ho: The new relaxation app does not reduce the average resting heart rate
+   H₁: The new relaxation app reduces the average resting heart rate
+
+---
+c) Standard error = σ / √n
+   σ = 10 bpm, n = 64
+   Standard error = 10 / √64
+   Standard error = 10 / 8
+   Standard error = 1.2 (Approx)
+
+---
+d) Z-Score, Z = (x̄ - μ) / (σ / √n)
+   σ / √n = 5 / 4
+   x̄ = 72 bpm, μ = 69 bpm
+   Z = (72 - 69) / (5 / 4)
+   Z = 3 / (5 / 4)
+   Z = 12 / 5 = 2.4
+
+[IMAGE DESCRIPTION:
+- The image shows a normal distribution curve with a shaded area on the right side.
+- The center of the distribution is marked at 69.
+- The shaded area starts from 72 and extends to the right.
+- The shaded area is labeled as P-Value.
+
+IMAGE TYPE: illustration
+IMAGE CONTEXT: This image relates to the Z-Score and P-Value for the question on heart rate.]
+
+---
+a) Population mean = 72 bpm
+   Sample mean = 69 bpm
+
+---
+2.
+a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
+   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
+   Let A be the spam message and A^c be the non-spam message and B is the filter.
+
+---
+b) P(A) is the prior in the above equation.
+   P(A) = 20 / 100 = 1 / 5
+   P(A) = 1 / 5
+
+---
+c) Since P(A|B) is final Probability from the expression given in question then P(A|B^c) will be its complement.
+   So that when P(A|B) and P(A|B^c) adds up it gives 1 as total Probability.
+
+   P(A) = 1 / 5
+   P(A^c) = 1 - 1 / 5 = 4 / 5
+   P(B|A) = 0.9
+   P(B|A^c) = 0.05
+
+---
+d) The posterior Probability will be higher depending upon evidence factor. Based on that
+
+   The posterior Probability will be higher than Prior. Reason is that (Prior) multiplies with evidence factor.
+
+---
+
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, minor ambiguity in some symbols.
+- Visual Elements: 25/25 - Image description is accurate and detailed.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 15/15 - Handwriting is clear and legible.
+
+ISSUES FOR QUESTION 1:
+- None
+
+QUESTION 2 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 36/40 - Text is clear, some minor ambiguity in mathematical symbols.
+- Visual Elements: N/A - No images in this question.
+- Table Structure: N/A - No tables in this question.
+- Handwriting Legibility: 14/15 - Handwriting is clear and legible.
+
+ISSUES FOR QUESTION 2:
+- Minor ambiguity in mathematical symbols.
+
+TOTAL CONFIDENCE SCORE: 92.5 / 100
+OVERALL BREAKDOWN:
+- Text Accuracy: 37/40 - Overall text is clear and legible, minor ambiguity in some mathematical symbols.
+- Visual Elements: 25/25 - Image description is accurate and detailed.
+- Table Structure: N/A - No tables in the document.
+- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible throughout the document.
+
+KEY CHALLENGES:
+- Minor ambiguity in mathematical symbols.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable with minimal uncertainties. The handwritten content is clear and legible, and the image is accurately described.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "b) Ho: The new relaxation app does not reduce the average resting heart rate\n   H₁: The new relaxation app reduces the average resting heart rate",
+      "confidence_score": "95"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]\n   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)\n   Let A be the spam message and A^c be the non-spam message and B is the filter.",
+      "confidence_score": "90"
+    }
+  ],
+  "confidence": {
+    "score": "92.5",
+    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Overall text is clear and legible, minor ambiguity in some mathematical symbols.\n- Visual Elements: 25/25 - Image description is accurate and detailed.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible throughout the document.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical symbols.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable with minimal uncertainties. The handwritten content is clear and legible, and the image is accurately described."
+  }
+}

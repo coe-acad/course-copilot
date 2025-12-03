@@ -126,6 +126,7 @@ def upload_mark_scheme_handwritten(course_id: str = Form(...), user_id: str = De
         vector_store_id = eval_info[1]
         
         # Create evaluation record with type "handwritten"
+        # Mark scheme will be extracted when answer sheets are processed (not stored in MongoDB)
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
@@ -302,8 +303,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             return
         
         # Extract mark scheme - returns {"mark_scheme": [...]}
+        # Always extract fresh (don't store in MongoDB, just keep in variable)
         logger.info(f"Extracting mark scheme from {mark_scheme_path}")
         extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        logger.info(f"Extracted mark scheme with {len(extracted_mark_scheme.get('mark_scheme', []))} questions (in memory only, not stored in DB)")
+        
         mark_scheme_questions = extracted_mark_scheme.get('mark_scheme', [])
         
         # Extract answer sheets based on evaluation type
@@ -312,8 +316,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             # Use appropriate extraction method based on evaluation type
             if evaluation_type == "handwritten":
-                # For handwritten: use Mistral OCR extraction
-                extraction_result = split_into_qas_mistral(answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
+                # For handwritten: use Mistral OCR extraction with mark scheme context
+                # Pass the extracted mark scheme as context for better extraction
+                extraction_result = split_into_qas_mistral(
+                    answer_sheet_path,
+                    mark_scheme_context=extracted_mark_scheme
+                )  # Returns {"email": ..., "answers": [...]}
             else:
                 # For digital (default): use pdfplumber extraction
                 pages = extract_text_tables(answer_sheet_path)

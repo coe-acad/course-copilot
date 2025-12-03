@@ -1,0 +1,132 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+a) Population Mean = simple random samples of 64.
+   Sample Mean = 64 regular users.
+
+   b) Null hypothesis: A simple random sample is ≤ 64
+   Alternative hypothesis: A simple random sample is ≥ 64.
+
+   c) Standard error is 64 which is the total sample mean.
+
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: "relevant distribution" on the y-axis and "relevant axis" on the x-axis.
+IMAGE TYPE: sketch
+IMAGE CONTEXT: This image relates to question 1c, illustrating the distribution of the sample mean.
+]
+
+================================================================================
+
+Question 2:
+----------------------------------------
+a) P(A) = 0.8
+   P(B) = 0.2
+   A^c = 0.9
+   P(A^c) = 0.1
+
+   b) Posterior Probability = P(C|B) P(A)
+
+   c) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+---
+1. a) Population Mean = simple random samples of 64.
+   Sample Mean = 64 regular users.
+
+   b) Null hypothesis: A simple random sample is ≤ 64
+   Alternative hypothesis: A simple random sample is ≥ 64.
+
+   c) Standard error is 64 which is the total sample mean.
+
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: "relevant distribution" on the y-axis and "relevant axis" on the x-axis.
+IMAGE TYPE: sketch
+IMAGE CONTEXT: This image relates to question 1c, illustrating the distribution of the sample mean.
+]
+---
+---
+2. a) P(A) = 0.8
+   P(B) = 0.2
+   A^c = 0.9
+   P(A^c) = 0.1
+
+   b) Posterior Probability = P(C|B) P(A)
+
+   c) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
+
+---
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, with minimal uncertainty.
+- Visual Elements: 24/25 - The sketch is clear and described accurately.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 13/15 - Handwriting is mostly clear, with some minor ambiguity in symbols.
+
+ISSUES FOR QUESTION 1:
+- Minor ambiguity in the symbols used for hypotheses.
+
+QUESTION 2 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 36/40 - Text is clear, but there are some unclear symbols in the probability expressions.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 9/15 - Some symbols and subscripts are less clear.
+
+ISSUES FOR QUESTION 2:
+- Ambiguity in the notation for probabilities and complements.
+
+---
+TOTAL CONFIDENCE SCORE: 92.5 / 100
+
+OVERALL BREAKDOWN:
+- Text Accuracy: 37/40 - Overall text is clear, with some minor ambiguities in symbols.
+- Visual Elements: 24.5/25 - Visual elements are clear and well-described.
+- Table Structure: 20/20 - No tables in the document.
+- Handwriting Legibility: 11/15 - Handwriting is generally clear but some symbols and subscripts are ambiguous.
+
+KEY CHALLENGES:
+- Ambiguity in mathematical symbols and subscripts.
+- Ensuring accurate interpretation of handwritten mathematical expressions.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable for text and visual elements.
+- Some manual review may be needed for mathematical expressions and symbols.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "a) Population Mean = simple random samples of 64.\n   Sample Mean = 64 regular users.\n\n   b) Null hypothesis: A simple random sample is ≤ 64\n   Alternative hypothesis: A simple random sample is ≥ 64.\n\n   c) Standard error is 64 which is the total sample mean.\n\n[IMAGE DESCRIPTION:\nTEXT IN IMAGE: \"relevant distribution\" on the y-axis and \"relevant axis\" on the x-axis.\nIMAGE TYPE: sketch\nIMAGE CONTEXT: This image relates to question 1c, illustrating the distribution of the sample mean.\n]",
+      "confidence_score": "95"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "a) P(A) = 0.8\n   P(B) = 0.2\n   A^c = 0.9\n   P(A^c) = 0.1\n\n   b) Posterior Probability = P(C|B) P(A)\n\n   c) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]",
+      "confidence_score": "90"
+    }
+  ],
+  "confidence": {
+    "score": "92.5",
+    "details": "CONFIDENCE SCORE: 92.5 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Overall text is clear, with some minor ambiguities in symbols.\n- Visual Elements: 24.5/25 - Visual elements are clear and well-described.\n- Table Structure: 20/20 - No tables in the document.\n- Handwriting Legibility: 11/15 - Handwriting is generally clear but some symbols and subscripts are ambiguous.\n\nKEY CHALLENGES:\n- Ambiguity in mathematical symbols and subscripts.\n- Ensuring accurate interpretation of handwritten mathematical expressions.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for text and visual elements.\n- Some manual review may be needed for mathematical expressions and symbols."
+  }
+}

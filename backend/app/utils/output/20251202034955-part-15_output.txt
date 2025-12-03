@@ -1,0 +1,152 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+(a) population mean = 64
+   sample mean = 69
+
+================================================================================
+
+Question 2:
+----------------------------------------
+P(S) = 20% = 0.2
+   P(M|S) = 0.9
+   P(M|¬S) = 0.05
+
+   p(S|M) = P(S) × P(M|S) / P(M)
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+---
+1. (a) population mean = 64
+   sample mean = 69
+
+---
+(b) null = new app does not reduce resting heart rates
+Alternative : new app reduces resting heart rates
+
+   H₀: A_new > A_old
+   H₁: A_new < A_old
+
+---
+(c) SE = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
+
+   it shows how far the sample mean is from the baseline
+
+---
+(d) Z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 10 = 2.4
+
+   Z = (Sₘ - μ) / SE
+
+---
+(e)
+[IMAGE DESCRIPTION:
+- The image is a hand-drawn normal distribution curve.
+- The curve is centered around a mean value, with a vertical line drawn at 69 and 72.
+- The area under the curve to the left of 69 is shaded, indicating the probability of the sample mean being less than 69.
+
+TEXT IN IMAGE:
+- 69
+- 72
+
+IMAGE TYPE: illustration
+IMAGE CONTEXT: This visual relates to question 1(e) and shows the distribution of sample means.]
+
+---
+2. P(S) = 20% = 0.2
+   P(M|S) = 0.9
+   P(M|¬S) = 0.05
+
+   p(S|M) = P(S) × P(M|S) / P(M)
+
+---
+(a) prior probability → P(S)
+   P(S) = 0.2
+
+---
+(b) posterior probability ⇒ P(S|M)
+   it is the probability that we are searching for which in this case is probability of spam given the message is spam.
+
+---
+(c) p(S|M) = 0.2 × 0.9 / (0.9 × 0.2) + (0.05 × 0.8)
+
+   P(M) = total probability
+   P(M) = P(M|S) × P(S) + P(M|¬S) × P(¬S)
+   = 0.9 × 0.2 + 0.05 × 0.8
+
+---
+(d) lower, since it is a conditional probability, we have a new world
+   Since world is smaller, posterior probability will also be lower
+
+---
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, with minimal uncertainty.
+- Visual Elements: 24/25 - Image description is detailed and accurate.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 13/15 - Handwriting is generally clear but some symbols could be ambiguous.
+
+ISSUES FOR QUESTION 1:
+- None significant.
+
+QUESTION 2 CONFIDENCE: 92 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 37/40 - Text is clear, but some symbols and fractions could be ambiguous.
+- Visual Elements: 25/25 - No images in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 10/15 - Some parts of the handwriting are less clear.
+
+ISSUES FOR QUESTION 2:
+- Some fractions and symbols are a bit unclear.
+
+TOTAL CONFIDENCE SCORE: 93.5 / 100
+OVERALL BREAKDOWN:
+- Text Accuracy: 75/80 - Text is generally clear and legible.
+- Visual Elements: 24/25 - Image description is detailed and accurate.
+- Table Structure: 20/20 - No tables in the document.
+- Handwriting Legibility: 23/30 - Handwriting is generally clear but some parts are less legible.
+
+KEY CHALLENGES:
+- Some symbols and fractions are ambiguous.
+- Handwriting clarity varies.
+
+RELIABILITY NOTES:
+- The extraction is reliable for automated grading and digitization purposes.
+- Minimal manual review required due to high confidence scores.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "(a) population mean = 64\n   sample mean = 69",
+      "confidence_score": "95"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "P(S) = 20% = 0.2\n   P(M|S) = 0.9\n   P(M|¬S) = 0.05\n\n   p(S|M) = P(S) × P(M|S) / P(M)",
+      "confidence_score": "92"
+    }
+  ],
+  "confidence": {
+    "score": "93.5",
+    "details": "CONFIDENCE SCORE: 93.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 75/80 - Text is generally clear and legible.\n- Visual Elements: 24/25 - Image description is detailed and accurate.\n- Table Structure: 20/20 - No tables in the document.\n- Handwriting Legibility: 23/30 - Handwriting is generally clear but some parts are less legible.\n\nKEY CHALLENGES:\n- Some symbols and fractions are ambiguous.\n- Handwriting clarity varies.\n\nRELIABILITY NOTES:\n- The extraction is reliable for automated grading and digitization purposes.\n- Minimal manual review required due to high confidence scores."
+  }
+}

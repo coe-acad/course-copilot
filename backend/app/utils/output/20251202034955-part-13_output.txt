@@ -1,0 +1,168 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+Q1.
+   a) population mean = 100
+   b) Sample mean = 64
+
+   c)
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE:
+   - 66 - 64 = 2
+   - S.E: 2/10 = 0.2
+   - Standard error = σ/√n
+
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]
+
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE: None
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]
+
+   d)
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE: None
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]
+
+================================================================================
+
+Question 2:
+----------------------------------------
+Q2.
+   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.
+
+   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.
+
+   c)
+   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))
+
+   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%
+   P(B|A^c) = 5%, P(A^c) = 80%
+
+   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]
+   = (9/50) / [(9/50) + (4/50)]
+   = (9/50) / (13/50)
+   = 9/13
+
+   d) The posterior probability will be higher.
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+1. Q1.
+   a) population mean = 100
+   b) Sample mean = 64
+
+   c)
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE:
+   - 66 - 64 = 2
+   - S.E: 2/10 = 0.2
+   - Standard error = σ/√n
+
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]
+
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE: None
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]
+
+   d)
+   [IMAGE DESCRIPTION:
+   TEXT IN IMAGE: None
+   IMAGE TYPE: sketch
+   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]
+
+---
+2. Q2.
+   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.
+
+   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.
+
+   c)
+   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))
+
+   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%
+   P(B|A^c) = 5%, P(A^c) = 80%
+
+   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]
+   = (9/50) / [(9/50) + (4/50)]
+   = (9/50) / (13/50)
+   = 9/13
+
+   d) The posterior probability will be higher.
+
+---
+QUESTION 1 CONFIDENCE: 95 / 100
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is clear and legible, with only minor ambiguity in handwriting.
+- Visual Elements: 24/25 - Images are clear and well-described.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 13/15 - Handwriting is generally clear, with some minor ambiguity.
+
+ISSUES FOR QUESTION 1:
+- Minor ambiguity in handwriting for some mathematical symbols.
+
+QUESTION 2 CONFIDENCE: 90 / 100
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 36/40 - Text is clear but some parts are slightly smudged.
+- Visual Elements: N/A - No images in this question.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 14/15 - Handwriting is generally clear, with some smudging.
+
+ISSUES FOR QUESTION 2:
+- Slight smudging in parts of the text.
+
+TOTAL CONFIDENCE SCORE: 92.5 / 100
+OVERALL BREAKDOWN:
+- Text Accuracy: 37/40 - Text is generally clear and legible, with minor smudging and ambiguity.
+- Visual Elements: 24/25 - Images are clear and well-described.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 13.5/15 - Handwriting is generally clear, with some minor ambiguity and smudging.
+
+KEY CHALLENGES:
+- Minor smudging and ambiguity in handwriting.
+- Ensuring accurate interpretation of mathematical symbols.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable, with minor uncertainties due to handwriting ambiguity and smudging.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "Q1.\n   a) population mean = 100\n   b) Sample mean = 64\n\n   c)\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE:\n   - 66 - 64 = 2\n   - S.E: 2/10 = 0.2\n   - Standard error = σ/√n\n\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]\n\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE: None\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]\n\n   d)\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE: None\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]",
+      "confidence_score": "95"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "Q2.\n   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.\n\n   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.\n\n   c)\n   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))\n\n   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%\n   P(B|A^c) = 5%, P(A^c) = 80%\n\n   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]\n   = (9/50) / [(9/50) + (4/50)]\n   = (9/50) / (13/50)\n   = 9/13\n\n   d) The posterior probability will be higher.",
+      "confidence_score": "90"
+    }
+  ],
+  "confidence": {
+    "score": "92.5",
+    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear and legible, with minor smudging and ambiguity.\n- Visual Elements: 24/25 - Images are clear and well-described.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 13.5/15 - Handwriting is generally clear, with some minor ambiguity and smudging.\n\nKEY CHALLENGES:\n- Minor smudging and ambiguity in handwriting.\n- Ensuring accurate interpretation of mathematical symbols.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable, with minor uncertainties due to handwriting ambiguity and smudging."
+  }
+}
