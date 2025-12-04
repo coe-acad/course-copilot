@@ -8,14 +8,26 @@ export default function SelectionModal({
   selectedOption,
   onSelect,
   onClose,
-  onCreate
+  onCreate,
+  loading = false
 }) {
   return (
     <Modal open={open} onClose={onClose}>
       <div style={{ fontWeight: 700, fontSize: 22, marginBottom: 8 }}>{title}</div>
       <div style={{ fontWeight: 500, fontSize: 16, marginBottom: 18 }}>Select {title} option</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
-        {options.map((opt, i) => (
+      
+      {loading ? (
+        <div style={{ padding: "40px 0", textAlign: "center", color: "#666" }}>
+          <div style={{ fontSize: 15 }}>Loading {title.toLowerCase()} options...</div>
+        </div>
+      ) : options.length === 0 ? (
+        <div style={{ padding: "40px 0", textAlign: "center", color: "#999" }}>
+          <div style={{ fontSize: 15 }}>No {title.toLowerCase()} options available</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
+            {options.map((opt, i) => (
           <label key={opt.label} style={{
             border: selectedOption === i ? "2px solid #1976d2" : "1px solid #ddd",
             borderRadius: 8,
@@ -39,17 +51,27 @@ export default function SelectionModal({
             <span style={{ fontWeight: 600 }}>{opt.label}</span>
             <span style={{ color: "#444", fontSize: 13 }}>{opt.desc}</span>
           </label>
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-        <button onClick={onClose} style={{ padding: "8px 18px", border: "1px solid #bbb", background: "#fff", borderRadius: 6 }}>Cancel</button>
-        <button
-          onClick={() => onCreate(options[selectedOption])}
-          style={{ padding: "8px 18px", background: "#222", color: "#fff", borderRadius: 6, border: "none" }}
-        >
-          Create
-        </button>
-      </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            <button onClick={onClose} style={{ padding: "8px 18px", border: "1px solid #bbb", background: "#fff", borderRadius: 6 }}>Cancel</button>
+            <button
+              onClick={() => onCreate(options[selectedOption])}
+              disabled={!options[selectedOption]}
+              style={{ 
+                padding: "8px 18px", 
+                background: options[selectedOption] ? "#222" : "#ccc", 
+                color: "#fff", 
+                borderRadius: 6, 
+                border: "none",
+                cursor: options[selectedOption] ? "pointer" : "not-allowed"
+              }}
+            >
+              Create
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

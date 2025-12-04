@@ -239,8 +239,21 @@ def delete_asset_from_db(course_id: str, asset_name: str):
 def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_id: str, vector_store_id: str, 
                      mark_scheme_path: str = None, mark_scheme_file_id: str = None,
                      answer_sheet_paths: list[str] = None, answer_sheet_file_ids: list[str] = None, 
-                     answer_sheet_filenames: list[str] = None):
-    """Create evaluation record supporting both local paths and OpenAI file IDs"""
+                     answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital"):
+    """Create evaluation record supporting both local paths and OpenAI file IDs
+    
+    Args:
+        evaluation_id: Unique ID for the evaluation
+        course_id: Course ID this evaluation belongs to
+        evaluation_assistant_id: OpenAI assistant ID
+        vector_store_id: OpenAI vector store ID
+        mark_scheme_path: Local path to mark scheme file
+        mark_scheme_file_id: OpenAI file ID for mark scheme
+        answer_sheet_paths: List of local paths to answer sheets
+        answer_sheet_file_ids: List of OpenAI file IDs for answer sheets
+        answer_sheet_filenames: Original filenames of answer sheets
+        evaluation_type: Type of evaluation - "digital" or "handwritten" (default: "digital")
+    """
     evaluation = {
         "evaluation_id": evaluation_id, 
         "course_id": course_id,
@@ -250,7 +263,8 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
         "mark_scheme_file_id": mark_scheme_file_id,
         "answer_sheet_paths": answer_sheet_paths or [],
         "answer_sheet_file_ids": answer_sheet_file_ids or [],
-        "answer_sheet_filenames": answer_sheet_filenames or []
+        "answer_sheet_filenames": answer_sheet_filenames or [],
+        "evaluation_type": evaluation_type
     }
     add_to_collection("evaluations", evaluation)
     return evaluation
@@ -357,3 +371,31 @@ def get_ai_feedback_by_evaluation_id(evaluation_id: str):
 def update_ai_feedback(evaluation_id: str, ai_feedback: dict):
     """Update AI feedback in ai_feedback collection"""
     update_in_collection("ai_feedback", {"evaluation_id": evaluation_id}, {"ai_feedback": ai_feedback})
+
+# System Configurations
+def get_configurations_by_type(config_type: str):
+    """Get all configurations by type (curriculum, assessment, setting)"""
+    configs = get_many_from_collection("system_configurations", {"type": config_type})
+    # Sort by order if available
+    configs.sort(key=lambda x: x.get("order", 999))
+    return configs
+
+def get_setting_by_category(category: str):
+    """Get a specific setting by category (e.g., course_level, study_area, pedagogical_components)"""
+    return get_one_from_collection("system_configurations", {"type": "setting", "category": category})
+
+def get_all_settings():
+    """Get all setting configurations"""
+    return get_many_from_collection("system_configurations", {"type": "setting"})
+
+def create_configuration(config_data: dict):
+    """Create a new system configuration"""
+    add_to_collection("system_configurations", config_data)
+
+def update_configuration(config_id: str, config_data: dict):
+    """Update a system configuration"""
+    update_in_collection("system_configurations", {"_id": config_id}, config_data)
+
+def delete_configuration(config_id: str):
+    """Delete a system configuration"""
+    delete_from_collection("system_configurations", {"_id": config_id})

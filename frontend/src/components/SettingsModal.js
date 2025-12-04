@@ -2,26 +2,49 @@ import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
 import { FaWrench } from "react-icons/fa";
 import { saveCourseSettings, getCourseSettings } from "../services/course";
-
-// Dummy tag data (replace with backend data if needed)
-const LEVELS = ["Year 1", "Year 2", "Year 3", "Year 4"];
-const STUDY_AREAS = [
-  "AI & Decentralised Technologies", "Life Sciences", "Energy Sciences", "eMobility",
-  "Climate Change", "Connected Intelligence"
-];
-const PEDAGOGICAL_COMPONENTS = [
-  "Theory", "Project", "Research", "Laboratory Experiments",
-  "Unplugged Activities", "Programming Activities"
-];
+import { getAllSettingsConfigurations } from "../services/configurations";
 
 export default function SettingsModal({ open, onClose, onSave }) {
   const [selectedLevels, setSelectedLevels] = useState([]);
   const [selectedStudyAreas, setSelectedStudyAreas] = useState([]);
   const [selectedPedagogical, setSelectedPedagogical] = useState([]);
   const [, setLoading] = useState(false);
+  
+  // Dynamic settings options from API
+  const [LEVELS, setLEVELS] = useState([]);
+  const [STUDY_AREAS, setSTUDY_AREAS] = useState([]);
+  const [PEDAGOGICAL_COMPONENTS, setPEDAGOGICAL_COMPONENTS] = useState([]);
+  const [loadingSettings, setLoadingSettings] = useState(true);
 
   // Get courseId from localStorage
   const courseId = localStorage.getItem("currentCourseId");
+
+  // Fetch settings options from API
+  const loadSettingsOptions = useCallback(async () => {
+    try {
+      setLoadingSettings(true);
+      const settingsConfigs = await getAllSettingsConfigurations();
+      
+      // Parse and set options from API response
+      settingsConfigs.forEach(config => {
+        if (config.category === 'course_level') {
+          setLEVELS(config.options || []);
+        } else if (config.category === 'study_area') {
+          setSTUDY_AREAS(config.options || []);
+        } else if (config.category === 'pedagogical_components') {
+          setPEDAGOGICAL_COMPONENTS(config.options || []);
+        }
+      });
+    } catch (error) {
+      console.error("Error loading settings options:", error);
+      // Fallback to empty arrays if API fails
+      setLEVELS([]);
+      setSTUDY_AREAS([]);
+      setPEDAGOGICAL_COMPONENTS([]);
+    } finally {
+      setLoadingSettings(false);
+    }
+  }, []);
 
   const loadSavedSettings = useCallback(async () => {
     if (!courseId) return;
@@ -43,12 +66,19 @@ export default function SettingsModal({ open, onClose, onSave }) {
     }
   }, [courseId]);
 
-  // Load saved settings when modal opens
+  // Load settings options and saved settings when modal opens
   useEffect(() => {
-    if (open && courseId) {
-      loadSavedSettings();
+    if (open) {
+      // Only load options if not already loaded
+      if (LEVELS.length === 0 && STUDY_AREAS.length === 0 && PEDAGOGICAL_COMPONENTS.length === 0) {
+        loadSettingsOptions();
+      }
+      // Load saved settings if courseId exists
+      if (courseId) {
+        loadSavedSettings();
+      }
     }
-  }, [open, courseId, loadSavedSettings]);
+  }, [open, courseId, loadSavedSettings, loadSettingsOptions, LEVELS.length, STUDY_AREAS.length, PEDAGOGICAL_COMPONENTS.length]);
 
   // Toggle tag selection
   const toggleTag = (tag, selectedTags, setSelectedTags) => {
@@ -87,10 +117,16 @@ export default function SettingsModal({ open, onClose, onSave }) {
         <FaWrench /> Settings
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>Course level <span style={{ fontWeight: 400, fontSize: 13 }}>(select all that are applicable)</span></div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {LEVELS.map(level => (
+      {loadingSettings ? (
+        <div style={{ padding: "40px 0", textAlign: "center", color: "#666" }}>
+          Loading settings options...
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Course level <span style={{ fontWeight: 400, fontSize: 13 }}>(select all that are applicable)</span></div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {LEVELS.map(level => (
             <button key={level}
               onClick={() => toggleTag(level, selectedLevels, setSelectedLevels)}
               style={{
@@ -150,10 +186,12 @@ export default function SettingsModal({ open, onClose, onSave }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-        <button onClick={onClose} style={{ padding: "10px 24px", background: "#fff", border: "1px solid #bbb", borderRadius: 8, fontWeight: 500, cursor: "pointer" }}>Close</button>
-        <button onClick={handleSave} style={{ padding: "10px 24px", background: "#222", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Save Changes</button>
-      </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            <button onClick={onClose} style={{ padding: "10px 24px", background: "#fff", border: "1px solid #bbb", borderRadius: 8, fontWeight: 500, cursor: "pointer" }}>Close</button>
+            <button onClick={handleSave} style={{ padding: "10px 24px", background: "#222", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Save Changes</button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
