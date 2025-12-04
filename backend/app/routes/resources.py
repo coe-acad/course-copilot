@@ -9,7 +9,7 @@ from ..services import openai_service
 from ..services.mongo import get_course, get_resources_by_course_id, create_resource, get_resource_by_course_id_and_resource_name, delete_resource as delete_resource_in_db
 from ..services.openai_service import create_file, connect_file_to_vector_store
 from ..utils.course_pdf_utils import generate_course_pdf
-from ..utils.verify_token import verify_token
+from ..utils.verify_keycloak_token import verify_keycloak_token as verify_token
 from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)

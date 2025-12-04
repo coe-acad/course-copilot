@@ -6,7 +6,7 @@ from typing_extensions import override
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from datetime import datetime
-from ..utils.verify_token import verify_token
+from ..utils.verify_keycloak_token import verify_keycloak_token as verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_user_display_name

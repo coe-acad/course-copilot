@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from ..services import openai_service
 import logging
-from ..utils.verify_token import verify_token
+from ..utils.verify_keycloak_token import verify_keycloak_token as verify_token
 from ..services.mongo import (
     get_course, get_courses_by_user_id, create_course as create_course_in_db, 
     update_course, delete_course as delete_course_in_db, get_resources_by_course_id,

@@ -22,6 +22,7 @@ import LMSCoursesModal from "../components/LMSCoursesModal";
 import LMSModulesModal from "../components/LMSModulesModal";
 import ActivitiesSelectionModal from "../components/ActivitiesSelectionModal";
 import { getCurrentUser } from "../services/auth";
+import { logoutKeycloak } from "../services/keycloak";
 
 export default function Dashboard() {
   const [showKBModal, setShowKBModal] = useState(false);
@@ -278,9 +279,13 @@ export default function Dashboard() {
     setShowKBModal(true);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logoutKeycloak();
+    } catch (error) {
+      console.error("Logout failed, forcing navigation:", error);
+      navigate("/login");
+    }
   };
 
   // Check if settings are configured (any setting is enough)

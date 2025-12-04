@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { fetchCourses } from "../services/course";
+import { logoutKeycloak } from "../services/keycloak";
 
 export function useCourses() {
   const [showModal, setShowModal] = useState(false);
@@ -27,12 +28,13 @@ export function useCourses() {
 
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Clear user data from localStorage
-    localStorage.removeItem("user");
-    
-    // Redirect to login page
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logoutKeycloak();
+    } catch (error) {
+      console.error("Logout failed, forcing navigation:", error);
+      navigate("/login");
+    }
   };
 
   const handleGetStarted = () => {

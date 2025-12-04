@@ -96,6 +96,27 @@ class Settings:
 
     # LMS Configuration
     LMS_BASE_URL: Optional[str] = os.getenv("LMS_BASE_URL")
+    
+    # Keycloak Configuration
+    KEYCLOAK_SERVER_URL: str = os.getenv("KEYCLOAK_SERVER_URL", "http://localhost:8080")
+    KEYCLOAK_REALM: str = os.getenv("KEYCLOAK_REALM", "CourseCopilot")
+    KEYCLOAK_CLIENT_ID: str = os.getenv("KEYCLOAK_CLIENT_ID", "course-copilot-backend")
+    KEYCLOAK_CLIENT_SECRET: str = os.getenv("KEYCLOAK_CLIENT_SECRET", "")
+    KEYCLOAK_ADMIN_CLIENT_ID: str = os.getenv("KEYCLOAK_ADMIN_CLIENT_ID", "admin-cli")
+    KEYCLOAK_ADMIN_USERNAME: str = os.getenv("KEYCLOAK_ADMIN_USERNAME", "admin")
+    KEYCLOAK_ADMIN_PASSWORD: str = os.getenv("KEYCLOAK_ADMIN_PASSWORD", "")
+    KEYCLOAK_AUDIENCES: List[str] = [
+        audience.strip()
+        for audience in os.getenv(
+            "KEYCLOAK_AUDIENCE",
+            "course-copilot-backend,course-copilot-frontend,account"
+        ).split(",")
+        if audience.strip()
+    ]
+    
+    # Frontend URLs for CORS
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    FRONTEND_PRODUCTION_URL: str = os.getenv("FRONTEND_PRODUCTION_URL", "https://course-copilot.atriainversity.ai")
 
 # Create global settings instance
 settings = Settings()

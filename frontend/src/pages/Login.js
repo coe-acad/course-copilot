@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { login } from "../services/auth";
+import { initKeycloak, loginKeycloak, setupTokenRefresh } from "../services/keycloak";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -11,61 +11,59 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Listen for messages from the Google login popup
-  React.useEffect(() => {
-    const handleMessage = (event) => {
-      if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
-        // Handle successful Google login
+  // Initialize Keycloak on component mount
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        setLoading(true);
+        // Initialize Keycloak and check if already logged in
+        const authenticated = await initKeycloak();
         
-        // Store complete user object
-        localStorage.setItem('user', JSON.stringify({
-          id: event.data.user.userId,
-          email: event.data.user.email,
-          displayName: event.data.user.displayName,
-          token: event.data.user.token
-        }));
-        localStorage.setItem('token', event.data.user.token);
-        localStorage.setItem('refresh_token', event.data.user.refreshToken);
-        
-        // Navigate to courses
-        navigate("/courses");
+        if (authenticated) {
+          // User is already authenticated, redirect to courses
+          setupTokenRefresh();
+          navigate("/courses");
+        } else {
+          // Not authenticated, stay on login page
+          setupTokenRefresh();
+        }
+      } catch (err) {
+        console.error("Keycloak initialization failed:", err);
+        setError("Authentication initialization failed. Please refresh the page.");
+      } finally {
+        setLoading(false);
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    initializeAuth();
   }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      await login(email, password);
-      navigate("/courses");
+      // Keycloak handles login via redirect
+      // For email/password, redirect to Keycloak login page
+      await loginKeycloak();
+      // Note: loginKeycloak redirects to Keycloak, so this code won't execute
     } catch (err) {
-      setError(err.detail || "Login failed. Please check credentials.");
-    } finally {
+      setError("Login failed. Please try again.");
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleKeycloakLogin = async () => {
     try {
       setLoading(true);
-      // Open Google login in a new tab with proper opener reference
-      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login`;
-      const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
-      
-      if (!popup) {
-        setError("Popup blocked. Please allow popups for this site.");
-        setLoading(false);
-        return;
-      }
-      
-      setLoading(false);
+      setError("");
+      // Redirect to Keycloak login page
+      // Note: loginKeycloak() causes a redirect, so code below won't execute
+      await loginKeycloak();
     } catch (err) {
-      setError("Google login failed. Please try again.");
+      console.error("Login error:", err);
+      setError("Login failed. Please try again.");
       setLoading(false);
     }
   }
@@ -86,28 +84,19 @@ export default function Login() {
           <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
         </div>
 
-        {/* Google Sign-In */}
+        {/* Keycloak Sign-In */}
         <button
           type="button"
           style={{
-            width: "100%", background: "#fff", color: "#222", border: "1px solid #ddd",
+            width: "100%", background: "#2563eb", color: "#fff", border: "none",
             borderRadius: 6, padding: "10px 0", fontWeight: 500, fontSize: 16,
             cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 1px 2px #0001",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 24
           }}
           disabled={loading}
-          onClick={handleGoogleLogin}
+          onClick={handleKeycloakLogin}
         >
-          <svg width="20" height="20" viewBox="0 0 48 48" style={{ marginRight: 8 }}>
-            {/* Google Icon */}
-            <g><path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C36.68 2.36 30.74 0 24 0 14.82 0 6.71 5.1 2.69 12.44l8.01 6.22C12.6 13.13 17.88 9.5 24 9.5z" />
-              <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.6C43.93 37.13 46.1 31.36 46.1 24.55z" />
-              <path fill="#FBBC05" d="M10.7 28.66c-1.01-2.99-1.01-6.33 0-9.32l-8.01-6.22C.68 17.1 0 20.47 0 24c0 3.53.68 6.9 2.69 10.88l8.01-6.22z" />
-              <path fill="#EA4335" d="M24 48c6.48 0 11.92-2.15 15.89-5.86l-7.19-5.6c-2.01 1.35-4.6 2.16-8.7 2.16-6.12 0-11.4-3.63-13.3-8.88l-8.01 6.22C6.71 42.9 14.82 48 24 48z" />
-              <path fill="none" d="M0 0h48v48H0z" />
-            </g>
-          </svg>
-          Sign in with Google
+          Sign in with Keycloak
         </button>
 
         {/* Email/Password Form */}

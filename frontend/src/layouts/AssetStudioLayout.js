@@ -2,15 +2,19 @@ import React from "react";
 import SettingsModal from "../components/SettingsModal";
 import StudioHeader from "../components/header/StudioHeader";
 import { useNavigate } from "react-router-dom";
-import { logout } from "../services/auth";
+import { logoutKeycloak } from "../services/keycloak";
 
 export default function AssetStudioLayout({ title = "AI Studio", children, rightPanel }) {
   const [showSettingsModal, setShowSettingsModal] = React.useState(false);
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logoutKeycloak();
+    } catch (error) {
+      console.error("Logout failed, forcing navigation:", error);
+      navigate("/login");
+    }
   };
 
   return (

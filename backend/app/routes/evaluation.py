@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import csv
 import io
-from ..utils.verify_token import verify_token
+from ..utils.verify_keycloak_token import verify_keycloak_token as verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor

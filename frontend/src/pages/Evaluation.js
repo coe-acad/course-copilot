@@ -9,6 +9,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { jsPDF } from "jspdf";
+import { logoutKeycloak } from "../services/keycloak";
 
 export default function Evaluation() {
   const navigate = useNavigate();
@@ -109,9 +110,13 @@ export default function Evaluation() {
     // This effect will run whenever forceUpdate changes, forcing a re-render
   }, [forceUpdate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logoutKeycloak();
+    } catch (error) {
+      console.error("Logout failed, forcing navigation:", error);
+      navigate("/login");
+    }
   };
 
   const handleUploadMarkScheme = async (file = null) => {
