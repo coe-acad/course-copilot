@@ -9,42 +9,48 @@ Total Questions Extracted: 2
 
 Question 1:
 ----------------------------------------
-a) population mean = 72 bpm
-   sample mean = 69 bpm
+(a) population mean : 64
+    sample mean : 69
 
-   b) H₀ -> μ ≤ 69 bpm
-      H₁ -> μ > 69 bpm
+(b) null = new app does not reduce resting heart rates
+    Alternative : new app reduces resting heart rates
 
-   c) Distance in terms of standard errors
-      S.E = σ/√n = 10/√64 = 10/8 = 1.25
+    H₀ : A_new > A_old
+    H₁ : A_new < A_old
 
-   d) Z - Score = (72 - 69) / 1.25 = 3 / 1.25 = 2.4
+(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
 
-   e)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - A normal distribution curve with a shaded area to the right.
-   - The mean (μ) is marked as 69.
-   - The point 72 is marked with a Z-score of 2.4.
-   - The shaded area represents the probability beyond 72 bpm.
+    it shows how far the sample mean is from the baseline
 
-   IMAGE TYPE: illustration
+(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5
 
-   IMAGE CONTEXT: This visual relates to question 1, illustrating the Z-score and the area under the curve for hypothesis testing.]
+    z = (S_m - μ) / Se
+
+(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded. The values 69 and 72 are labeled on the x-axis.
+
+TEXT IN IMAGE: 69, 72
+
+IMAGE TYPE: line_graph
+
+IMAGE CONTEXT: Question 1(e) showing z-score distribution for heart rate data]
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-a) P(S) = 20% = 0.2
-      probability of all incoming messages are spam (PCA) (prior).
+(a) prior probability → P(s)
+    P(s) = 0.2
 
-   b) P(A|B) is the posterior, posterior is the updated probability after getting evidence.
+(b) posterior probability ⇒ P(s/m)
+    it is the probability that we are searching for which in this case is probability of spam given the message is spam.
 
-   c) P(B|A)P(A) + P(B|A^c)P(A^c)
-      (0.9)(0.1) + (0.05)(0.95) = 0.13
+(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]
+    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]
 
-   d) The posterior probability will be high, because it is the updated probability after getting evidence, it will be finalized.
+    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)
+    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans
+
+(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower
 
 ================================================================================
 
@@ -54,77 +60,98 @@ a) P(S) = 20% = 0.2
 RAW CHAT RESPONSE
 ================================================================================
 
-1. a) population mean = 72 bpm
-   sample mean = 69 bpm
+```
+1.
+(a) population mean : 64
+    sample mean : 69
 
-   b) H₀ -> μ ≤ 69 bpm
-      H₁ -> μ > 69 bpm
+(b) null = new app does not reduce resting heart rates
+    Alternative : new app reduces resting heart rates
 
-   c) Distance in terms of standard errors
-      S.E = σ/√n = 10/√64 = 10/8 = 1.25
+    H₀ : A_new > A_old
+    H₁ : A_new < A_old
 
-   d) Z - Score = (72 - 69) / 1.25 = 3 / 1.25 = 2.4
+(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
 
-   e)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - A normal distribution curve with a shaded area to the right.
-   - The mean (μ) is marked as 69.
-   - The point 72 is marked with a Z-score of 2.4.
-   - The shaded area represents the probability beyond 72 bpm.
+    it shows how far the sample mean is from the baseline
 
-   IMAGE TYPE: illustration
+(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5
 
-   IMAGE CONTEXT: This visual relates to question 1, illustrating the Z-score and the area under the curve for hypothesis testing.]
+    z = (S_m - μ) / Se
 
----
----
+(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded. The values 69 and 72 are labeled on the x-axis.
 
-2. a) P(S) = 20% = 0.2
-      probability of all incoming messages are spam (PCA) (prior).
+TEXT IN IMAGE: 69, 72
 
-   b) P(A|B) is the posterior, posterior is the updated probability after getting evidence.
+IMAGE TYPE: line_graph
 
-   c) P(B|A)P(A) + P(B|A^c)P(A^c)
-      (0.9)(0.1) + (0.05)(0.95) = 0.13
-
-   d) The posterior probability will be high, because it is the updated probability after getting evidence, it will be finalized.
+IMAGE CONTEXT: Question 1(e) showing z-score distribution for heart rate data]
 
 ---
+
+2.
+(a) prior probability → P(s)
+    P(s) = 0.2
+
+(b) posterior probability ⇒ P(s/m)
+    it is the probability that we are searching for which in this case is probability of spam given the message is spam.
+
+(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]
+    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]
+
+    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)
+    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans
+
+(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower
+
+---
+```
+
+### PER-QUESTION CONFIDENCE SCORES
+
 QUESTION 1 CONFIDENCE: 95 / 100
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 38/40 - Text is clear and legible with minimal uncertainty.
-- Visual Elements: 24/25 - Image is clear and well-described.
-- Table Structure: 20/20 - No tables in this question.
-- Handwriting Legibility: 13/15 - Handwriting is generally clear, with some minor ambiguity in symbols.
+- Text Accuracy: 39/40 - High clarity, minor uncertainty in fraction formatting in part (d)
+- Visual Elements: 24/25 - Image description is comprehensive and accurate
+- Table Structure: 20/20 - No tables present
+- Handwriting Legibility: 12/15 - Some minor ambiguity in mathematical notation
 
 ISSUES FOR QUESTION 1:
-- Minor ambiguity in mathematical symbols, but overall clarity is high.
+- Slight uncertainty in fraction formatting in part (d) (24/5 vs 24 ÷ 5)
+- Handwriting for mathematical symbols is clear but some spacing issues
 
-QUESTION 2 CONFIDENCE: 90 / 100
+QUESTION 2 CONFIDENCE: 92 / 100
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 36/40 - Text is clear, with some minor ambiguity in symbols.
-- Visual Elements: 25/25 - No images in this question.
-- Table Structure: 20/20 - No tables in this question.
-- Handwriting Legibility: 9/15 - Some parts of the handwriting are less clear, particularly in mathematical expressions.
+- Text Accuracy: 38/40 - High accuracy, minor uncertainty in probability notation
+- Visual Elements: 23/25 - No images, but probability notation is complex
+- Table Structure: 20/20 - No tables present
+- Handwriting Legibility: 11/15 - Some probability symbols are slightly unclear
 
 ISSUES FOR QUESTION 2:
-- Some mathematical expressions are less clear, but overall text is legible.
+- Probability notation (P(s/m), P(m/s)) is occasionally ambiguous
+- The word "posterior" in part (b) is slightly unclear but contextually clear
+- Some fraction formatting could be interpreted differently
 
-TOTAL CONFIDENCE SCORE: 92.5 / 100
+### TOTAL CONFIDENCE SCORE
+
+TOTAL CONFIDENCE SCORE: 93.5 / 100
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 37/40 - Text is generally clear with minor ambiguities in symbols.
-- Visual Elements: 24.5/25 - Image in question 1 is clear and well-described.
-- Table Structure: 20/20 - No tables in the document.
-- Handwriting Legibility: 11/15 - Handwriting is generally legible, with some minor issues in mathematical expressions.
+- Text Accuracy: 38.5/40 - High character recognition accuracy with minor formatting uncertainties
+- Visual Elements: 23.5/25 - Excellent image description, no visual elements in Q2
+- Table Structure: 20/20 - No tables present in either question
+- Handwriting Legibility: 11.5/15 - Generally clear handwriting with occasional symbol ambiguity
 
 KEY CHALLENGES:
-- Minor ambiguity in mathematical symbols and expressions.
-- Some parts of the handwriting are less clear, particularly in mathematical notations.
+- Mathematical notation interpretation, particularly fractions and probability symbols
+- Some spacing and alignment issues in handwritten equations
+- Minor uncertainty in conditional probability notation
 
 RELIABILITY NOTES:
-- Overall extraction quality is high, with clear text and well-described visual elements.
-- Minor issues in handwriting legibility, particularly in mathematical expressions, but these do not significantly impact the overall extraction quality.
+- Extraction is highly reliable for both questions
+- Mathematical content should be verified for fraction formatting
+- Probability notation in Question 2 is contextually clear but has minor legibility issues
+- Image description in Question 1(e) accurately represents the visual content
 
 
 ================================================================================
@@ -135,17 +162,17 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "a) population mean = 72 bpm\n   sample mean = 69 bpm\n\n   b) H₀ -> μ ≤ 69 bpm\n      H₁ -> μ > 69 bpm\n\n   c) Distance in terms of standard errors\n      S.E = σ/√n = 10/√64 = 10/8 = 1.25\n\n   d) Z - Score = (72 - 69) / 1.25 = 3 / 1.25 = 2.4\n\n   e)\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE:\n   - A normal distribution curve with a shaded area to the right.\n   - The mean (μ) is marked as 69.\n   - The point 72 is marked with a Z-score of 2.4.\n   - The shaded area represents the probability beyond 72 bpm.\n\n   IMAGE TYPE: illustration\n\n   IMAGE CONTEXT: This visual relates to question 1, illustrating the Z-score and the area under the curve for hypothesis testing.]",
+      "student_answer": "(a) population mean : 64\n    sample mean : 69\n\n(b) null = new app does not reduce resting heart rates\n    Alternative : new app reduces resting heart rates\n\n    H₀ : A_new > A_old\n    H₁ : A_new < A_old\n\n(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4\n\n    it shows how far the sample mean is from the baseline\n\n(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5\n\n    z = (S_m - μ) / Se\n\n(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded. The values 69 and 72 are labeled on the x-axis.\n\nTEXT IN IMAGE: 69, 72\n\nIMAGE TYPE: line_graph\n\nIMAGE CONTEXT: Question 1(e) showing z-score distribution for heart rate data]",
       "confidence_score": "95"
     },
     {
       "question_number": "2",
-      "student_answer": "a) P(S) = 20% = 0.2\n      probability of all incoming messages are spam (PCA) (prior).\n\n   b) P(A|B) is the posterior, posterior is the updated probability after getting evidence.\n\n   c) P(B|A)P(A) + P(B|A^c)P(A^c)\n      (0.9)(0.1) + (0.05)(0.95) = 0.13\n\n   d) The posterior probability will be high, because it is the updated probability after getting evidence, it will be finalized.",
-      "confidence_score": "90"
+      "student_answer": "(a) prior probability → P(s)\n    P(s) = 0.2\n\n(b) posterior probability ⇒ P(s/m)\n    it is the probability that we are searching for which in this case is probability of spam given the message is spam.\n\n(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]\n    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]\n\n    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)\n    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans\n\n(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower",
+      "confidence_score": "92"
     }
   ],
   "confidence": {
-    "score": "92.5",
-    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear with minor ambiguities in symbols.\n- Visual Elements: 24.5/25 - Image in question 1 is clear and well-described.\n- Table Structure: 20/20 - No tables in the document.\n- Handwriting Legibility: 11/15 - Handwriting is generally legible, with some minor issues in mathematical expressions.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical symbols and expressions.\n- Some parts of the handwriting are less clear, particularly in mathematical notations.\n\nRELIABILITY NOTES:\n- Overall extraction quality is high, with clear text and well-described visual elements.\n- Minor issues in handwriting legibility, particularly in mathematical expressions, but these do not significantly impact the overall extraction quality."
+    "score": "93.5",
+    "details": "CONFIDENCE SCORES\n\nQUESTION 1 CONFIDENCE: 95 / 100\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 39/40 - High clarity, minor uncertainty in fraction formatting in part (d)\n- Visual Elements: 24/25 - Image description is comprehensive and accurate\n- Table Structure: 20/20 - No tables present\n- Handwriting Legibility: 12/15 - Some minor ambiguity in mathematical notation\n\nISSUES FOR QUESTION 1:\n- Slight uncertainty in fraction formatting in part (d) (24/5 vs 24 ÷ 5)\n- Handwriting for mathematical symbols is clear but some spacing issues\n\nQUESTION 2 CONFIDENCE: 92 / 100\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 38/40 - High accuracy, minor uncertainty in probability notation\n- Visual Elements: 23/25 - No images, but probability notation is complex\n- Table Structure: 20/20 - No tables present\n- Handwriting Legibility: 11/15 - Some probability symbols are slightly unclear\n\nISSUES FOR QUESTION 2:\n- Probability notation (P(s/m), P(m/s)) is occasionally ambiguous\n- The word \"posterior\" in part (b) is slightly unclear but contextually clear\n- Some fraction formatting could be interpreted differently\n\n### TOTAL CONFIDENCE SCORE\n\nTOTAL"
   }
 }

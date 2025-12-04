@@ -8,7 +8,7 @@ Error: no such file: 'handwritten answersheet.pdf'
 Traceback (most recent call last):
   File "/Users/IRFAN/course-copilot/backend/app/utils/extraction_handwritten.py", line 897, in <module>
     pdf_document = fitz.open(pdf_path)
-  File "/opt/anaconda3/lib/python3.13/site-packages/pymupdf/__init__.py", line 2957, in __init__
+  File "/Users/IRFAN/course-copilot/copilot/lib/python3.13/site-packages/pymupdf/__init__.py", line 2957, in __init__
     raise FileNotFoundError(f"no such file: '{filename}'")
 pymupdf.FileNotFoundError: no such file: 'handwritten answersheet.pdf'
 
