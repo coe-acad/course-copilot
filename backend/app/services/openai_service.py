@@ -7,7 +7,7 @@ from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..config.settings import settings
 import json
-from app.services.mongo import get_evaluation_by_evaluation_id
+from app.services.mongo import get_evaluation_by_evaluation_id, get_all_admin_files, retrieve_pdf_from_mongo, create_resource
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -46,6 +46,78 @@ def create_vector_store(assistant_id: str):
     except Exception as e:
         logger.error(f"Error creating vector store for assistant {assistant_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+def upload_admin_files_to_vector_store(course_id: str, vector_store_id: str):
+    """
+    Upload all admin files to a course's vector store and create resource records
+    
+    Args:
+        course_id: The course ID to associate resources with
+        vector_store_id: The vector store ID to upload files to
+    
+    Returns:
+        Number of files successfully uploaded
+    """
+    try:
+        # Get all admin files
+        admin_files = get_all_admin_files()
+        
+        if not admin_files:
+            logger.info("No admin files to upload to vector store")
+            return 0
+        
+        uploaded_count = 0
+        
+        for admin_file in admin_files:
+            try:
+                filename = admin_file.get("filename", "document.pdf")
+                logger.info(f"Processing admin file: {filename}")
+                
+                # Get GridFS file ID
+                gridfs_file_id = admin_file.get("gridfs_file_id")
+                if not gridfs_file_id:
+                    logger.warning(f"Admin file {admin_file.get('_id')} has no gridfs_file_id, skipping")
+                    continue
+                
+                # Retrieve file content from GridFS
+                logger.info(f"Retrieving file content from GridFS: {gridfs_file_id}")
+                file_content = retrieve_pdf_from_mongo(gridfs_file_id)
+                logger.info(f"Retrieved {len(file_content)} bytes from GridFS")
+                
+                # Create BytesIO object for upload
+                file_obj = io.BytesIO(file_content)
+                file_obj.name = filename
+                
+                # Step 1: Upload file to OpenAI first
+                logger.info(f"Uploading file '{filename}' to OpenAI...")
+                openai_file_id = create_file(file_obj)
+                logger.info(f"✅ File uploaded to OpenAI with ID: {openai_file_id}")
+                
+                # Step 2: Connect the OpenAI file to vector store
+                logger.info(f"Connecting file {openai_file_id} to vector store {vector_store_id}...")
+                connect_file_to_vector_store(vector_store_id, openai_file_id)
+                logger.info(f"✅ File connected to vector store")
+                
+                # Step 3: Create resource record in MongoDB so it shows up in UI
+                logger.info(f"Creating resource record for '{filename}' in course {course_id}...")
+                create_resource(course_id, filename)
+                logger.info(f"✅ Resource record created")
+                
+                uploaded_count += 1
+                logger.info(f"✅ Successfully processed admin file '{filename}' for course {course_id}")
+                
+            except Exception as file_error:
+                logger.error(f"❌ Error uploading admin file {admin_file.get('filename', 'unknown')}: {str(file_error)}", exc_info=True)
+                # Continue with next file even if one fails
+                continue
+        
+        logger.info(f"Successfully uploaded {uploaded_count}/{len(admin_files)} admin files to course {course_id}")
+        return uploaded_count
+        
+    except Exception as e:
+        logger.error(f"Error uploading admin files to vector store: {str(e)}")
+        # Don't raise exception - we don't want to fail course creation if admin files fail
+        return 0
 
 def connect_file_to_vector_store(vector_store_id: str, file_id: str):
     import time

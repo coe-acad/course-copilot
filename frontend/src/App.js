@@ -8,6 +8,8 @@ import NotFound from "./pages/NotFound";
 import ForgotPassword from "./pages/ForgotPassword";
 import AssetStudio from './pages/AssetStudio';
 import Evaluation from './pages/Evaluation';
+import Admin from './pages/Admin';
+import AdminLogin from './pages/AdminLogin';
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
             <Route path="/studio/:feature" element={<AssetStudio />} />
             <Route path="/evaluation" element={<Evaluation />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/admin-login" element={<AdminLogin />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

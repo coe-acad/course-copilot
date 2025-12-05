@@ -179,6 +179,93 @@ export default function Login() {
             </button>
           </form>
         )}
+
+        {/* Admin Access */}
+        <div style={{ marginTop: 28, paddingTop: 24, borderTop: "1px solid #e5e7eb" }}>
+          <div style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center",
+            marginBottom: 10,
+            gap: 6 
+          }}>
+            <div style={{ 
+              width: 24, 
+              height: 1, 
+              background: "linear-gradient(to right, transparent, #d1d5db, transparent)" 
+            }} />
+            <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 500, letterSpacing: "0.5px" }}>
+              ADMIN ACCESS
+            </span>
+            <div style={{ 
+              width: 24, 
+              height: 1, 
+              background: "linear-gradient(to right, transparent, #d1d5db, transparent)" 
+            }} />
+          </div>
+          <button
+            onClick={() => navigate("/admin-login")}
+            disabled={loading}
+            style={{
+              width: "100%",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "11px 0",
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: loading ? "not-allowed" : "pointer",
+              transition: "all 0.3s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(102, 126, 234, 0.25)";
+            }}
+          >
+            {/* Shield Icon */}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ marginRight: 8 }}
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <span style={{ letterSpacing: "0.3px" }}>Admin Panel</span>
+            {/* Arrow Icon */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ marginLeft: 6, opacity: 0.8 }}
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );

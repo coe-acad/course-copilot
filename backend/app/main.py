@@ -4,7 +4,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from .routes import auth, course, resources, asset, exportlms, configurations
+from .routes import auth, course, resources, asset, exportlms, configurations, admin
 from .config.settings import settings
 from .routes.auth import google_callback
 import logging
@@ -111,6 +111,7 @@ app.include_router(asset.router, prefix="/api")
 app.include_router(evaluation.router, prefix="/api")
 app.include_router(exportlms.router, prefix="/api")
 app.include_router(configurations.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 # Google OAuth callback is now handled by the auth router at /api/callback
 

@@ -12,7 +12,7 @@ from ..services.mongo import (
 )
 from ..routes.resources import create_course_description_file
 from app.utils.openai_client import client
-from ..services.openai_service import create_vector_store, create_evaluation_assistant_and_vector_store, course_description
+from ..services.openai_service import create_vector_store, create_evaluation_assistant_and_vector_store, course_description, upload_admin_files_to_vector_store
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,14 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
             "vector_store_id": vector_store_id
         })
         create_course_description_file(course_id, user_id)
+        
+        # Upload all admin files to the course's vector store and resources
+        try:
+            logger.info(f"Starting admin files upload for course {course_id}")
+            uploaded_count = upload_admin_files_to_vector_store(course_id, vector_store_id)
+            logger.info(f"✅ Uploaded {uploaded_count} admin files to course {course_id}")
+        except Exception as admin_error:
+            logger.error(f"❌ Error uploading admin files to course {course_id}: {str(admin_error)}", exc_info=True)
         
         # Create a default evaluation scheme for the course
         # Create evaluation assistant and vector store for the default scheme
