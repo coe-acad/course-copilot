@@ -496,3 +496,4 @@ except Exception as e:
     logger.error(f"Failed to initialize Keycloak Admin service: {str(e)}")
     keycloak_admin = None
 
+ 

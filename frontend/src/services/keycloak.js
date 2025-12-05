@@ -110,6 +110,113 @@ export async function loginKeycloak() {
 }
 
 /**
+ * Login with Google - redirects to Google OAuth via Keycloak
+ */
+export async function loginWithGoogle() {
+  const redirectUri = window.location.origin + '/dashboard';
+  console.log('Attempting Google login via Keycloak...');
+  
+  try {
+    // Use Keycloak's identity provider hint to redirect directly to Google
+    keycloak.login({
+      redirectUri: redirectUri,
+      idpHint: 'google', // This tells Keycloak to use Google identity provider
+    });
+  } catch (error) {
+    console.error('Google login failed, using direct redirect:', error);
+    // Fallback: direct redirect to Google identity provider
+    const encodedRedirect = encodeURIComponent(redirectUri);
+    const loginUrl = `${keycloakConfig.url}/realms/${keycloakConfig.realm}/protocol/openid-connect/auth?client_id=${keycloakConfig.clientId}&redirect_uri=${encodedRedirect}&response_type=code&scope=openid&kc_idp_hint=google`;
+    window.location.href = loginUrl;
+  }
+}
+
+/**
+ * Direct login with username/password (no redirect)
+ * Uses Keycloak's Direct Access Grants (password grant) flow
+ */
+export async function loginDirect(username, password) {
+  try {
+    console.log('Attempting direct login with username/password...');
+    
+    // Make direct API call to Keycloak token endpoint
+    const tokenUrl = `${keycloakConfig.url}/realms/${keycloakConfig.realm}/protocol/openid-connect/token`;
+    
+    const formData = new URLSearchParams();
+    formData.append('grant_type', 'password');
+    formData.append('client_id', keycloakConfig.clientId);
+    formData.append('username', username);
+    formData.append('password', password);
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error_description || errorData.error || 'Login failed');
+    }
+    
+    const tokenData = await response.json();
+    
+    // Parse token to get user info
+    const parsedToken = parseToken(tokenData.access_token);
+    
+    // Store tokens directly in Keycloak instance (setToken doesn't exist, so we set properties directly)
+    keycloak.token = tokenData.access_token;
+    if (tokenData.refresh_token) {
+      keycloak.refreshToken = tokenData.refresh_token;
+    }
+    if (tokenData.id_token) {
+      keycloak.idToken = tokenData.id_token;
+    }
+    
+    // Store parsed token data
+    keycloak.tokenParsed = parsedToken;
+    keycloak.authenticated = true;
+    
+    // Mark as initialized
+    keycloakInitialized = true;
+    
+    // Update localStorage (this stores the token for API calls)
+    await updateLocalStorage();
+    
+    // Setup token refresh
+    setupTokenRefresh();
+    
+    console.log('Direct login successful');
+    return true;
+  } catch (error) {
+    console.error('Direct login failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to parse JWT token
+ */
+function parseToken(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('Error parsing token:', error);
+    return null;
+  }
+}
+
+/**
  * Logout user
  */
 export async function logoutKeycloak() {
