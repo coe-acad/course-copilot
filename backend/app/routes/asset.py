@@ -1,14 +1,18 @@
 import logging
 import asyncio
+import time
+from io import BytesIO
 from typing import Optional
 from openai import AssistantEventHandler
 from typing_extensions import override
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from datetime import datetime
 from ..utils.verify_keycloak_token import verify_keycloak_token as verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
+from ..utils.text_to_pdf import text_to_pdf
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_user_display_name
 from ..services.openai_service import clean_text
 from ..services.task_manager import task_manager, TaskStatus
@@ -71,6 +75,10 @@ class ImageRequest(BaseModel):
 class ImageResponse(BaseModel):
     image_url: str
 
+class TextToPdfRequest(BaseModel):
+    content: str
+    filename: Optional[str] = None
+
 class AssetChatStreamHandler(AssistantEventHandler):
     def __init__(self):
         super().__init__()  # ✅ This is the fix
@@ -88,13 +96,13 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
         "course_level": course.get("settings", {}).get("course_level", ""),
         "study_area": course.get("settings", {}).get("study_area", ""),
         "pedagogical_components": course.get("settings", {}).get("pedagogical_components", ""),
-        "ask_clarifying_questions": course.get("settings", {}).get("ask_clarifying_questions", ""),
         "file_names": file_names
     }
     return input_variables
 
 def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, user_id: str):
     """Background task to process asset chat generation"""
+    thread_id = None  # Initialize thread_id for recovery purposes
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for asset '{asset_type_name}'")
@@ -122,16 +130,27 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             )
             
             handler_qp = AssetChatStreamHandler()
-            with client.beta.threads.runs.stream(
-                thread_id=thread_qp.id,
-                assistant_id=assistant_id,
-                event_handler=handler_qp
-            ) as stream:
-                stream.until_done()
+            try:
+                with client.beta.threads.runs.stream(
+                    thread_id=thread_qp.id,
+                    assistant_id=assistant_id,
+                    event_handler=handler_qp
+                ) as stream:
+                    stream.until_done()
+            except Exception as stream_error:
+                logger.warning(f"Stream interrupted during question extraction in task {task_id}: {stream_error}")
+                # Continue - we can still get the response from thread messages
             
-            messages_qp = client.beta.threads.messages.list(thread_id=thread_qp.id)
-            extracted_questions = messages_qp.data[0].content[0].text.value
-            logger.info(f"Extracted questions: {extracted_questions}")
+            try:
+                messages_qp = client.beta.threads.messages.list(thread_id=thread_qp.id)
+                if not messages_qp.data or len(messages_qp.data) == 0:
+                    raise Exception("No messages found in question extraction thread")
+                extracted_questions = messages_qp.data[0].content[0].text.value
+                logger.info(f"Extracted questions: {extracted_questions}")
+            except Exception as msg_error:
+                logger.error(f"Error retrieving extracted questions from thread {thread_qp.id}: {msg_error}")
+                # Don't fail the entire task - continue without extracted questions
+                extracted_questions = ""
 
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names)
@@ -155,19 +174,64 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             content=prompt
         )
 
-        # Stream run
+        # Stream run with proper error handling
         handler = AssetChatStreamHandler()
-        with client.beta.threads.runs.stream(
-            thread_id=thread_id,
-            assistant_id=assistant_id,
-            event_handler=handler
-        ) as stream:
-            stream.until_done()
+        stream_was_interrupted = False
+        try:
+            with client.beta.threads.runs.stream(
+                thread_id=thread_id,
+                assistant_id=assistant_id,
+                event_handler=handler
+            ) as stream:
+                stream.until_done()
+        except Exception as stream_error:
+            stream_was_interrupted = True
+            logger.warning(f"Stream interrupted in task {task_id}, but continuing to retrieve response: {stream_error}")
+            # Continue - we can still get the response from thread messages even if stream was interrupted
 
-        # Get complete response from thread messages
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
-        latest_message = messages.data[0]
-        complete_response = latest_message.content[0].text.value
+        # Get complete response from thread messages with retry logic
+        complete_response = None
+        
+        # First, check if handler accumulated any response text during streaming
+        if handler.response_text and len(handler.response_text.strip()) > 0:
+            logger.info(f"Using accumulated response text from handler for task {task_id}")
+            complete_response = handler.response_text
+        
+        # If stream was interrupted, wait a bit for message to be written to thread
+        if stream_was_interrupted:
+            time.sleep(2)  # Wait 2 seconds for message to be persisted
+        
+        # Try to get response from thread messages with polling
+        max_retries = 5
+        retry_delay = 2
+        for attempt in range(max_retries):
+            try:
+                messages = client.beta.threads.messages.list(thread_id=thread_id)
+                if messages.data and len(messages.data) > 0:
+                    latest_message = messages.data[0]
+                    if latest_message.content and len(latest_message.content) > 0:
+                        thread_response = latest_message.content[0].text.value
+                        if thread_response and len(thread_response.strip()) > 0:
+                            # Prefer thread response over handler response as it's more complete
+                            complete_response = thread_response
+                            logger.info(f"Retrieved response from thread messages for task {task_id}")
+                            break
+                else:
+                    logger.warning(f"No messages found in thread on attempt {attempt + 1}")
+            except Exception as msg_error:
+                logger.warning(f"Error retrieving messages on attempt {attempt + 1}: {msg_error}")
+            
+            # Wait before next retry (except on last attempt)
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+        
+        # Use handler response if thread messages failed
+        if not complete_response or len(complete_response.strip()) == 0:
+            if handler.response_text and len(handler.response_text.strip()) > 0:
+                logger.info(f"Falling back to handler accumulated text for task {task_id}")
+                complete_response = handler.response_text
+            else:
+                raise Exception("No response available from stream handler or thread messages")
 
         # Mark task as completed with result
         result = {
@@ -178,8 +242,30 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         logger.info(f"Completed background task {task_id} for asset '{asset_type_name}'")
 
     except Exception as e:
-        logger.error(f"Exception in background task {task_id} for asset '{asset_type_name}': {e}")
-        task_manager.mark_failed(task_id, str(e))
+        error_msg = str(e)
+        # Don't fail the task if it's just a connection interruption - response might still be available
+        if "incomplete chunked read" in error_msg.lower() or "peer closed connection" in error_msg.lower():
+            logger.warning(f"Connection interrupted in background task {task_id} for asset '{asset_type_name}': {error_msg}")
+            # Try to get the response anyway if thread_id exists
+            if thread_id:
+                try:
+                    messages = client.beta.threads.messages.list(thread_id=thread_id)
+                    if messages.data and len(messages.data) > 0:
+                        latest_message = messages.data[0]
+                        if latest_message.content and len(latest_message.content) > 0:
+                            complete_response = latest_message.content[0].text.value
+                            result = {
+                                "response": complete_response,
+                                "thread_id": thread_id
+                            }
+                            task_manager.mark_completed(task_id, result)
+                            logger.info(f"Retrieved response after connection interruption for task {task_id}")
+                            return
+                except Exception as recovery_error:
+                    logger.error(f"Failed to recover response after connection error: {recovery_error}")
+        
+        logger.error(f"Exception in background task {task_id} for asset '{asset_type_name}': {error_msg}")
+        task_manager.mark_failed(task_id, error_msg)
 
 @router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=TaskResponse)
 async def create_asset_chat(
@@ -336,9 +422,9 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     category_map = {
         "brainstorm": "curriculum",
         "course-outcomes": "curriculum",
+        "concept-plan": "curriculum",
         "modules": "curriculum",
         "lecture": "curriculum",
-        "concept-map": "curriculum",
         "course-notes": "curriculum",
         "project": "assessments",
         "activity": "assessments",
@@ -350,7 +436,11 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     # Default to a safe category so saving never fails due to unmapped type
     asset_category = category_map.get(asset_type, "content")
     #this text should go to openai and get cleaned up and than use the text to create the asset
-    cleaned_text = clean_text(request.content)
+    #TODO: do the cleaning for all except for mark-scheme
+    if asset_type != "mark-scheme":
+        cleaned_text = clean_text(request.content)
+    else:
+        cleaned_text = request.content
     
     # Get user's display name for the asset
     user_display_name = get_user_display_name(user_id)
@@ -363,6 +453,31 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))
     return AssetCreateResponse(message=f"Asset '{asset_name}' created successfully")
+
+@router.post("/courses/{course_id}/assets/pdf")
+def generate_asset_pdf(
+    course_id: str,
+    request: TextToPdfRequest,
+    user_id: str = Depends(verify_token),
+):
+    """Generate a PDF from provided text content and stream it back to the client."""
+
+    course = get_course(course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Content must not be empty")
+
+    pdf_bytes = text_to_pdf(content)
+    filename = request.filename or f"{course_id}-asset.pdf"
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
 def get_assets(course_id: str, user_id: str = Depends(verify_token)):

@@ -25,7 +25,44 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
   const handleDownload = async () => {
     try {
       if (!courseId || !assetData?.asset_name) return;
-      await assetService.downloadAsset(courseId, assetData.asset_name);
+      
+      // Add Type and Category to content before downloading
+      let content = assetData.asset_content;
+      const assetType = assetData.asset_type || '';
+      const assetCategory = assetData.asset_category || '';
+      
+      if (assetType || assetCategory) {
+        const metadataLines = [];
+        if (assetType) {
+          metadataLines.push(`- **Type:** ${assetType}`);
+        }
+        if (assetCategory) {
+          metadataLines.push(`- **Category:** ${assetCategory}`);
+        }
+        
+        const metadataText = metadataLines.join('\n');
+        
+        // Find Duration line and insert after it
+        if (content.includes('Duration:')) {
+          const lines = content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes('Duration:')) {
+              lines.splice(i + 1, 0, metadataText);
+              break;
+            }
+          }
+          content = lines.join('\n');
+        } else {
+          // If no Duration found, prepend to content
+          content = metadataText + '\n\n' + content;
+        }
+      }
+      
+      await assetService.downloadAsset(
+        courseId,
+        assetData.asset_name,
+        content
+      );
       setShowDownloadMessage(true);
       setTimeout(() => setShowDownloadMessage(false), 2000);
     } catch (error) {

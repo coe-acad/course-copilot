@@ -7,7 +7,7 @@ from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..config.settings import settings
 import json
-from app.services.mongo import get_evaluation_by_evaluation_id
+from app.services.mongo import get_evaluation_by_evaluation_id, get_all_admin_files, retrieve_pdf_from_mongo, create_resource
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -47,6 +47,78 @@ def create_vector_store(assistant_id: str):
         logger.error(f"Error creating vector store for assistant {assistant_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def upload_admin_files_to_vector_store(course_id: str, vector_store_id: str):
+    """
+    Upload all admin files to a course's vector store and create resource records
+    
+    Args:
+        course_id: The course ID to associate resources with
+        vector_store_id: The vector store ID to upload files to
+    
+    Returns:
+        Number of files successfully uploaded
+    """
+    try:
+        # Get all admin files
+        admin_files = get_all_admin_files()
+        
+        if not admin_files:
+            logger.info("No admin files to upload to vector store")
+            return 0
+        
+        uploaded_count = 0
+        
+        for admin_file in admin_files:
+            try:
+                filename = admin_file.get("filename", "document.pdf")
+                logger.info(f"Processing admin file: {filename}")
+                
+                # Get GridFS file ID
+                gridfs_file_id = admin_file.get("gridfs_file_id")
+                if not gridfs_file_id:
+                    logger.warning(f"Admin file {admin_file.get('_id')} has no gridfs_file_id, skipping")
+                    continue
+                
+                # Retrieve file content from GridFS
+                logger.info(f"Retrieving file content from GridFS: {gridfs_file_id}")
+                file_content = retrieve_pdf_from_mongo(gridfs_file_id)
+                logger.info(f"Retrieved {len(file_content)} bytes from GridFS")
+                
+                # Create BytesIO object for upload
+                file_obj = io.BytesIO(file_content)
+                file_obj.name = filename
+                
+                # Step 1: Upload file to OpenAI first
+                logger.info(f"Uploading file '{filename}' to OpenAI...")
+                openai_file_id = create_file(file_obj)
+                logger.info(f"✅ File uploaded to OpenAI with ID: {openai_file_id}")
+                
+                # Step 2: Connect the OpenAI file to vector store
+                logger.info(f"Connecting file {openai_file_id} to vector store {vector_store_id}...")
+                connect_file_to_vector_store(vector_store_id, openai_file_id)
+                logger.info(f"✅ File connected to vector store")
+                
+                # Step 3: Create resource record in MongoDB so it shows up in UI
+                logger.info(f"Creating resource record for '{filename}' in course {course_id}...")
+                create_resource(course_id, filename)
+                logger.info(f"✅ Resource record created")
+                
+                uploaded_count += 1
+                logger.info(f"✅ Successfully processed admin file '{filename}' for course {course_id}")
+                
+            except Exception as file_error:
+                logger.error(f"❌ Error uploading admin file {admin_file.get('filename', 'unknown')}: {str(file_error)}", exc_info=True)
+                # Continue with next file even if one fails
+                continue
+        
+        logger.info(f"Successfully uploaded {uploaded_count}/{len(admin_files)} admin files to course {course_id}")
+        return uploaded_count
+        
+    except Exception as e:
+        logger.error(f"Error uploading admin files to vector store: {str(e)}")
+        # Don't raise exception - we don't want to fail course creation if admin files fail
+        return 0
+
 def connect_file_to_vector_store(vector_store_id: str, file_id: str):
     import time
     try:
@@ -79,29 +151,67 @@ def connect_file_to_vector_store(vector_store_id: str, file_id: str):
         logger.error(f"Error connecting file {file_id} to vector store {vector_store_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _process_single_resource_file(file: UploadFile, vector_store_id: str) -> None:
+    """
+    Helper to upload a single resource file to OpenAI and connect it to the vector store.
+    Raises on error so the caller can decide how to handle failures.
+    """
+    # Create a BytesIO object with the file content and set the name
+    file_content = file.file.read()
+    if not file_content:
+        raise HTTPException(status_code=400, detail=f"File {file.filename} is empty")
+
+    file_obj = io.BytesIO(file_content)
+    file_obj.name = file.filename
+
+    openai_file_id = create_file(file_obj)
+
+    # Connect file to vector store
+    connect_file_to_vector_store(vector_store_id, openai_file_id)
+
+    # Optional verification / logging
+    vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
+    for vs_file in vs_files:
+        if vs_file.id == openai_file_id:
+            logger.info(f"File {file.filename} ({openai_file_id}) found in vector store {vector_store_id}")
+            break
+
+    logger.info(f"Connected file {file.filename} to vector store {vector_store_id}")
+
+
 def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: List[UploadFile]):
-    for file in files:
-        try:
-            # Create a BytesIO object with the file content and set the name
-            file_content = file.file.read()
-            file_obj = io.BytesIO(file_content)
-            file_obj.name = file.filename
-            
-            openai_file_id = create_file(file_obj)
+    """
+    Upload multiple resources for a course.
+    This processes files concurrently (bounded thread pool) to improve throughput
+    while keeping per-file error handling the same (errors are logged and skipped).
+    """
+    if not files:
+        return "No resources to upload"
 
-            # Connect file to vector store
-            batch = connect_file_to_vector_store(vector_store_id, openai_file_id)
+    # Use a small thread pool to avoid hitting OpenAI rate limits too hard
+    max_workers = min(4, len(files))
 
-            vs_files = client.vector_stores.files.list(vector_store_id=vector_store_id)
-            for vs_file in vs_files:
-                if vs_file.id==openai_file_id:
-                    print("file found in vector store")
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_process_single_resource_file, file, vector_store_id): file
+                for file in files
+            }
 
-            logger.info(f"Connected file {file.filename} to vector store {vector_store_id}")
+            for future in futures:
+                file = futures[future]
+                try:
+                    # We don't care about the return value; just ensure it completed
+                    future.result()
+                except Exception as e:
+                    # Preserve previous behavior: log and continue with other files
+                    logger.error(f"Error processing file {file.filename}: {str(e)}")
+                    continue
 
-        except Exception as e:
-            logger.error(f"Error processing file {file.filename}: {str(e)}")
-            continue
+    except Exception as e:
+        # If the executor itself fails, log and fall back to a simple error
+        logger.error(f"Thread pool failure while uploading resources: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload resources")
 
     return "Resources uploaded successfully"
 
@@ -665,6 +775,9 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     if not answer_sheets_list:
         raise HTTPException(status_code=400, detail="No answer sheets found in extracted data")
 
+    logger.info(f"[EVALUATE_FILES_ALL_IN_ONE] Received {len(answer_sheets_list)} answer sheets")
+    logger.info(f"[EVALUATE_FILES_ALL_IN_ONE] File IDs: {[sheet.get('file_id') for sheet in answer_sheets_list]}")
+
     # Store email mapping before evaluation (file_id -> email)
     email_mapping = {}
     for sheet in answer_sheets_list:
@@ -675,8 +788,11 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             logger.info(f"Stored email mapping: {file_id} -> {email}")
 
     # Ensure unique answer sheets
+    logger.info(f"[DEDUP] Before deduplication: {len(answer_sheets_list)} sheets")
     unique_answer_sheets = {sheet.get('file_id'): sheet for sheet in answer_sheets_list}.values()
     answer_sheets_list = list(unique_answer_sheets)
+    logger.info(f"[DEDUP] After deduplication: {len(answer_sheets_list)} sheets")
+    logger.info(f"[DEDUP] File IDs after dedup: {[sheet.get('file_id') for sheet in answer_sheets_list]}")
 
     # Split into batches of 5
     batch_size = 5
@@ -692,13 +808,14 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     def evaluate_one_batch(batch_num: int, batch: list) -> list:
         """Inner function to evaluate a single batch and return students list."""
         logger.info(f"Evaluating batch {batch_num}/{len(batches)} with {len(batch)} answer sheets")
+        logger.info(f"[EVAL_BATCH_{batch_num}] Input batch file_ids: {[s.get('file_id') for s in batch]}")
 
         batch_payload = {
             "mark_scheme": json.dumps(extracted_mark_scheme),
             "answer_sheets": json.dumps({"answer_sheets": batch}),
             "evaluation_id": evaluation_id
         }
-        print(batch_payload)
+        logger.info(f"[EVAL_BATCH_{batch_num}] Batch payload answer_sheets count: {len(batch)}")
         evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, batch_payload)
 
         # Create thread and run evaluation
@@ -806,18 +923,27 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             raise HTTPException(status_code=500, detail=f"Invalid JSON response from OpenAI: {str(e)}")
 
         logger.info(f"Successfully evaluated batch {batch_num} with {len(evaluation_result['students'])} students")
+        logger.info(f"[EVAL_BATCH_{batch_num}] Returned student file_ids: {[s.get('file_id') for s in evaluation_result['students']]}")
         return evaluation_result["students"]
 
     # Evaluate all batches sequentially
     for idx, batch in enumerate(batches):
         batch_num = idx + 1
         try:
+            logger.info(f"[BATCH_{batch_num}] Processing batch with {len(batch)} answer sheets")
+            logger.info(f"[BATCH_{batch_num}] File IDs in batch: {[s.get('file_id') for s in batch]}")
             batch_students = evaluate_one_batch(batch_num, batch)
+            logger.info(f"[BATCH_{batch_num}] Evaluation returned {len(batch_students)} students")
+            logger.info(f"[BATCH_{batch_num}] Student file_ids returned: {[s.get('file_id') for s in batch_students]}")
             all_evaluated_students.extend(batch_students)
+            logger.info(f"[BATCH_{batch_num}] Total students so far: {len(all_evaluated_students)}")
         except Exception as e:
             logger.error(f"Batch {batch_num} failed: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to process batch {batch_num}: {str(e)}")
 
+    logger.info(f"[FINAL_DEDUP] Before final deduplication: {len(all_evaluated_students)} students")
+    logger.info(f"[FINAL_DEDUP] File IDs in all_evaluated_students: {[s.get('file_id') for s in all_evaluated_students]}")
+    
     # Deduplicate by file_id and add email back to each student
     seen_file_ids = set()
     unique_students = []
@@ -831,6 +957,9 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                 logger.info(f"Added email to student {file_id}: {email_mapping[file_id]}")
             unique_students.append(student)
 
+    logger.info(f"[FINAL_DEDUP] After final deduplication: {len(unique_students)} students")
+    logger.info(f"[FINAL_DEDUP] File IDs in unique_students: {[s.get('file_id') for s in unique_students]}")
+    
     final_result = {"evaluation_id": evaluation_id, "students": unique_students}
     logger.info(f"Completed evaluation of {len(unique_students)}/{len(answer_sheets_list)} answer sheets "
                 f"(removed {len(all_evaluated_students) - len(unique_students)} duplicates)")

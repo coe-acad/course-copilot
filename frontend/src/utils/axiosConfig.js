@@ -5,10 +5,7 @@ const API_BASE = new URL('/api', baseUrl).toString();
 
 // Create axios instance with default config
 const axiosInstance = axios.create({
-  baseURL: API_BASE,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  baseURL: API_BASE
 });
 
 // Flag to prevent multiple refresh token requests
@@ -67,6 +64,18 @@ async function refreshAuthToken() {
 // Request interceptor to add auth token
 axiosInstance.interceptors.request.use(
   (config) => {
+    // If sending FormData, let the browser/axios set the Content-Type (multipart/form-data with boundary)
+    if (config.data instanceof FormData) {
+      if (config.headers && config.headers['Content-Type']) {
+        delete config.headers['Content-Type'];
+      }
+    } else {
+      // Default to JSON for non-FormData requests if not already set
+      if (config.headers && !config.headers['Content-Type']) {
+        config.headers['Content-Type'] = 'application/json';
+      }
+    }
+
     const user = localStorage.getItem('user');
     if (user) {
       const userData = JSON.parse(user);

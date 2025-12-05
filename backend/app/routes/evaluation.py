@@ -181,32 +181,48 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
-            pages = extract_text_tables(answer_sheet_path)
-            # Pass pdf_path to extract email along with answers
-            extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
-            
-            # Extract email and answers from result
-            extracted_email = extraction_result.get("email", None)
-            qas_list = extraction_result.get("answers", [])
-            
-            # Log extracted email for debugging
-            if extracted_email:
-                logger.info(f"Extracted email from answer sheet {i+1}: {extracted_email}")
-            else:
-                logger.warning(f"No email found in answer sheet {i+1}")
-            
-            # Wrap in proper structure with email
-            answer_sheet_data = {
-                "file_id": f"answer_sheet_{i+1}",
-                "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
-                "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                "email": extracted_email,  # Add extracted email to the data
-                "answers": qas_list  # Use answers directly from extraction_result
-            }
-            extracted_answer_sheets.append(answer_sheet_data)
+            try:
+                logger.info(f"[EXTRACTION] Starting extraction for answer sheet {i+1}/{len(answer_sheet_paths)}: {answer_sheet_path}")
+                pages = extract_text_tables(answer_sheet_path)
+                logger.info(f"[EXTRACTION] Extracted {len(pages)} pages from answer sheet {i+1}")
+                
+                # Pass pdf_path to extract email along with answers
+                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
+                
+                # Extract email and answers from result
+                extracted_email = extraction_result.get("email", None)
+                qas_list = extraction_result.get("answers", [])
+                
+                logger.info(f"[EXTRACTION] Answer sheet {i+1}: Found {len(qas_list)} answers")
+                
+                # Log extracted email for debugging
+                if extracted_email:
+                    logger.info(f"[EXTRACTION] Extracted email from answer sheet {i+1}: {extracted_email}")
+                else:
+                    logger.warning(f"[EXTRACTION] No email found in answer sheet {i+1}")
+                
+                # Wrap in proper structure with email
+                answer_sheet_data = {
+                    "file_id": f"answer_sheet_{i+1}",
+                    "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
+                    "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
+                    "email": extracted_email,  # Add extracted email to the data
+                    "answers": qas_list  # Use answers directly from extraction_result
+                }
+                extracted_answer_sheets.append(answer_sheet_data)
+                logger.info(f"[EXTRACTION] Successfully added answer sheet {i+1} with file_id: {answer_sheet_data['file_id']}")
+                
+            except Exception as extraction_error:
+                logger.error(f"[EXTRACTION] FAILED to extract answer sheet {i+1} ({answer_sheet_path}): {str(extraction_error)}")
+                logger.error(f"[EXTRACTION] Error details: {extraction_error}", exc_info=True)
+                # Continue with other sheets instead of failing completely
+                continue
         
         # Log for debugging
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
+        logger.info(f"Answer sheet file_ids: {[sheet.get('file_id') for sheet in extracted_answer_sheets]}")
+        for i, sheet in enumerate(extracted_answer_sheets):
+            logger.info(f"  Sheet {i+1}: file_id={sheet.get('file_id')}, filename={sheet.get('filename')}, answers_count={len(sheet.get('answers', []))}")
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
         logger.info(f"Mark scheme has {question_count} questions")
 
@@ -231,6 +247,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             batch_num = (batch_start // BATCH_SIZE) + 1
             
             logger.info(f"Processing batch {batch_num}: sheets {batch_start + 1} to {batch_end}")
+            logger.info(f"Batch {batch_num} file_ids: {[sheet.get('file_id') for sheet in batch_sheets]}")
             
             if BATCH_SIZE == 10:
                 # For batch size 5, process in rounds of 10 sheets max (2 workers * 5 sheets)
@@ -246,8 +263,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                     if len(round_sheets) <= 5:
                         # If 5 or fewer sheets, use single worker
                         logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
+                        logger.info(f"Round {round_num}: File IDs being evaluated: {[s.get('file_id') for s in round_sheets]}")
                         round_data = {"answer_sheets": round_sheets}
                         round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
+                        logger.info(f"Round {round_num}: Evaluation returned {len(round_result.get('students', []))} students")
+                        logger.info(f"Round {round_num}: Returned file_ids: {[s.get('file_id') for s in round_result.get('students', [])]}")
                         all_students.extend(round_result.get("students", []))
                     else:
                         # If more than 5 sheets, split between 2 workers, max 5 sheets each
@@ -284,6 +304,9 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                             result2 = future2.result()
                         
                         # Merge results from both workers in this round
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Merging results - Worker 1: {len(result1.get('students', []))} students, Worker 2: {len(result2.get('students', []))} students")
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Worker 1 file_ids: {[s.get('file_id') for s in result1.get('students', [])]}")
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Worker 2 file_ids: {[s.get('file_id') for s in result2.get('students', [])]}")
                         round_students = result1.get("students", []) + result2.get("students", [])
                         all_students.extend(round_students)
                         logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
@@ -302,8 +325,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                     # If 3 or fewer sheets, use single worker
                     if len(round_sheets) <= 3:
                         logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
+                        logger.info(f"Round {round_num}: File IDs being evaluated: {[s.get('file_id') for s in round_sheets]}")
                         round_data = {"answer_sheets": round_sheets}
                         round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
+                        logger.info(f"Round {round_num}: Evaluation returned {len(round_result.get('students', []))} students")
+                        logger.info(f"Round {round_num}: Returned file_ids: {[s.get('file_id') for s in round_result.get('students', [])]}")
                         all_students.extend(round_result.get("students", []))
                     else:
                         # Split between 2 workers for more than 3 sheets
@@ -335,6 +361,9 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                             result2 = future2.result()
                         
                         # Merge results from both workers in this round
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Merging results - Worker 1: {len(result1.get('students', []))} students, Worker 2: {len(result2.get('students', []))} students")
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Worker 1 file_ids: {[s.get('file_id') for s in result1.get('students', [])]}")
+                        logger.info(f"Batch {batch_num}, Round {round_num}: Worker 2 file_ids: {[s.get('file_id') for s in result2.get('students', [])]}")
                         round_students = result1.get("students", []) + result2.get("students", [])
                         all_students.extend(round_students)
                         logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
@@ -346,9 +375,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             "students": all_students
         }
         logger.info(f"All batches completed: {len(all_students)} total students processed")
-        logger.info(f"Evaluation result: {evaluation_result}")
-        logger.info(f"Extracted mark scheme: {extracted_mark_scheme}")
-        logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
+        logger.info(f"Student file_ids in all_students: {[s.get('file_id') for s in all_students]}")
+        logger.info(f"Expected number of students: {len(extracted_answer_sheets)}")
+        if len(all_students) != len(extracted_answer_sheets):
+            logger.error(f"MISMATCH: Expected {len(extracted_answer_sheets)} students but got {len(all_students)} students!")
+            logger.error(f"Expected file_ids: {[s.get('file_id') for s in extracted_answer_sheets]}")
+            logger.error(f"Actual file_ids: {[s.get('file_id') for s in all_students]}")
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
             answers = student.get("answers", [])

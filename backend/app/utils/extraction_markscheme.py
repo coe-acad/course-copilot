@@ -302,7 +302,7 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
         
         # Extract question text (before answer/template)
         qtext_match = re.search(
-            r'^(.*?)(?=(?:answer|answertemplate|marking|mark\s+scheme))',
+            r'^(.*?)(?=(?:answer\s*template|answer\s*:|correct\s*answer|marking|mark\s+scheme))',
             content,
             re.DOTALL | re.IGNORECASE
         )

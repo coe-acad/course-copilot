@@ -7,6 +7,9 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 from pymongo.server_api import ServerApi
 from uuid import uuid4
+import gridfs
+from bson import ObjectId
+from fastapi import HTTPException
 
 uri = "mongodb+srv://acad:nPyjuhmdeIgTxySD@creators-copilot-demo.aoq6p75.mongodb.net/?retryWrites=true&w=majority&appName=creators-copilot-demo&tls=true&tlsAllowInvalidCertificates=true"
 # Create a new client and connect to the server
@@ -20,6 +23,10 @@ except Exception as e:
 
 db = client["creators-copilot-demo"]
 
+# Initialize GridFS for file storage
+fs = gridfs.GridFS(db)
+
+# Add to collection
 def add_to_collection(collection_name: str, data: dict):
     collection = db[collection_name]
     collection.insert_one(data)
@@ -50,11 +57,19 @@ def delete_from_collection(collection_name: str, query: dict):
     collection.delete_one(query)
 
 # Users
-def create_user(user_id: str, email: str, display_name: str = None):
-    user_data = {"_id": user_id, "email": email}
+def create_user(user_id: str, email: str, display_name: str = None, role: str = "user"):
+    user_data = {"_id": user_id, "email": email, "role": role}
     if display_name:
         user_data["display_name"] = display_name
     add_to_collection("users", user_data)
+
+def update_user_role(user_id: str, role: str):
+    """Update user's role"""
+    update_in_collection("users", {"_id": user_id}, {"role": role})
+
+def delete_user(user_id: str):
+    """Delete a user"""
+    delete_from_collection("users", {"_id": user_id})
 
 def get_user_by_user_id(user_id: str):
     return get_one_from_collection("users", {"_id": user_id})
@@ -76,6 +91,359 @@ def get_user_display_name(user_id: str):
 def get_user_by_email(email: str):
     """Get user by email address"""
     return get_one_from_collection("users", {"email": email})
+
+# Organization Databases
+def create_new_organization_database(org_name: str, org_id: str = None):
+    """
+    Create a complete new database for an organization with all collections and default data.
+    This will be used when multi-organization support is added.
+    
+    Args:
+        org_name: Name of the organization
+        org_id: Optional organization ID (generates UUID if not provided)
+    
+    Returns:
+        dict: Contains database name, organization ID, and status
+    """
+    import re
+    from datetime import datetime
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Generate org_id if not provided
+        if not org_id:
+            org_id = str(uuid4())
+        
+        # Create database name from org name (sanitize for MongoDB)
+        db_name = re.sub(r'[^a-zA-Z0-9_-]', '_', org_name.lower())
+        db_name = f"org_{db_name}_{org_id[:8]}"
+        
+        logger.info(f"Creating new organization database: {db_name}")
+        
+        # Create new database reference
+        new_db = client[db_name]
+        
+        # Initialize GridFS for the new database
+        new_fs = gridfs.GridFS(new_db)
+        
+        # Define all collections that need to be created
+        collections_to_create = [
+            "users",
+            "courses",
+            "course_shares",
+            "resources",
+            "assets",
+            "evaluations",
+            "extracted_data",
+            "ai_feedback",
+            "system_configurations",
+            "admin_files"
+        ]
+        
+        # Create collections
+        created_collections = []
+        for collection_name in collections_to_create:
+            new_db.create_collection(collection_name)
+            created_collections.append(collection_name)
+            logger.info(f"Created collection: {collection_name}")
+        
+        # Seed system_configurations with default data
+        default_configs = get_default_system_configurations()
+        for config in default_configs:
+            new_db["system_configurations"].insert_one(config)
+        logger.info(f"Seeded {len(default_configs)} system configurations")
+        
+        # Create indexes for better performance
+        create_database_indexes(new_db)
+        logger.info("Created database indexes")
+        
+        # Create organization metadata document
+        org_metadata = {
+            "_id": org_id,
+            "org_name": org_name,
+            "database_name": db_name,
+            "created_at": datetime.utcnow().isoformat(),
+            "status": "active"
+        }
+        
+        logger.info(f"✅ Successfully created organization database: {db_name}")
+        
+        return {
+            "success": True,
+            "org_id": org_id,
+            "org_name": org_name,
+            "database_name": db_name,
+            "collections_created": created_collections,
+            "configurations_seeded": len(default_configs),
+            "metadata": org_metadata
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating organization database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create organization database: {str(e)}")
+
+def get_default_system_configurations():
+    """
+    Returns default system configurations to be seeded in new organization databases.
+    """
+    curriculum_configs = [
+        {
+            "_id": "curr-brainstorm",
+            "type": "curriculum",
+            "key": "brainstorm",
+            "label": "Brainstorm",
+            "desc": "Generate and organize initial ideas for your course curriculum.",
+            "url": "brainstorm",
+            "order": 1
+        },
+        {
+            "_id": "curr-course-outcomes",
+            "type": "curriculum",
+            "key": "course-outcomes",
+            "label": "Course Outcomes",
+            "desc": "Set clear learning goals students are expected to achieve by the end of the course.",
+            "url": "course-outcomes",
+            "order": 2
+        },
+        {
+            "_id": "curr-modules",
+            "type": "curriculum",
+            "key": "modules",
+            "label": "Modules",
+            "desc": "Organize content into structured modules and focused topics for easy navigation.",
+            "url": "modules",
+            "order": 3
+        },
+        {
+            "_id": "curr-lecture",
+            "type": "curriculum",
+            "key": "lecture",
+            "label": "Lecture",
+            "desc": "Plan each session with defined objectives, activities, and resources.",
+            "url": "lecture",
+            "order": 4
+        },
+        {
+            "_id": "curr-course-notes",
+            "type": "curriculum",
+            "key": "course-notes",
+            "label": "Course Notes",
+            "desc": "Add notes to support student understanding and revision.",
+            "url": "course-notes",
+            "order": 5
+        },
+        {
+            "_id": "curr-concept-plan",
+            "type": "curriculum",
+            "key": "concept-plan",
+            "label": "Concept Plan",
+            "desc": "Generate a session-by-session concept plan aligned with best-practice learning design.",
+            "url": "concept-plan",
+            "order": 6
+        }
+    ]
+    
+    assessment_configs = [
+        {
+            "_id": "assess-project",
+            "type": "assessment",
+            "key": "project",
+            "label": "Project",
+            "desc": "Encourage deep learning through hands-on, outcome-driven assignments.",
+            "url": "project",
+            "order": 1
+        },
+        {
+            "_id": "assess-activity",
+            "type": "assessment",
+            "key": "activity",
+            "label": "Activity",
+            "desc": "Engage students with interactive tasks that reinforce learning through application.",
+            "url": "activity",
+            "order": 2
+        },
+        {
+            "_id": "assess-quiz",
+            "type": "assessment",
+            "key": "quiz",
+            "label": "Quiz",
+            "desc": "Assess student understanding with short, focused questions on key concepts.",
+            "url": "quiz",
+            "order": 3
+        },
+        {
+            "_id": "assess-question-paper",
+            "type": "assessment",
+            "key": "question-paper",
+            "label": "Question Paper",
+            "desc": "Create formal assessments to evaluate overall learning and subject mastery.",
+            "url": "question-paper",
+            "order": 4
+        },
+        {
+            "_id": "assess-mark-scheme",
+            "type": "assessment",
+            "key": "mark-scheme",
+            "label": "Mark Scheme",
+            "desc": "Create detailed marking criteria and rubrics for fair and consistent assessment.(Select the Question Paper to generate the Mark Scheme)",
+            "url": "mark-scheme",
+            "order": 5
+        },
+        {
+            "_id": "assess-mock-interview",
+            "type": "assessment",
+            "key": "mock-interview",
+            "label": "Mock Interview",
+            "desc": "Simulate real-world interviews to prepare students for job readiness.",
+            "url": "mock-interview",
+            "order": 6
+        }
+    ]
+    
+    settings_configs = [
+        {
+            "_id": "setting-course-level",
+            "type": "setting",
+            "category": "course_level",
+            "label": "Course level",
+            "options": ["Year 1", "Year 2", "Year 3", "Year 4"]
+        },
+        {
+            "_id": "setting-study-area",
+            "type": "setting",
+            "category": "study_area",
+            "label": "Study area",
+            "options": [
+                "AI & Decentralised Technologies",
+                "Life Sciences",
+                "Energy Sciences",
+                "eMobility",
+                "Climate Change",
+                "Connected Intelligence"
+            ]
+        },
+        {
+            "_id": "setting-pedagogical",
+            "type": "setting",
+            "category": "pedagogical_components",
+            "label": "Pedagogical Components",
+            "options": [
+                "Theory",
+                "Project",
+                "Research",
+                "Laboratory Experiments",
+                "Unplugged Activities",
+                "Programming Activities"
+            ]
+        }
+    ]
+    
+    return curriculum_configs + assessment_configs + settings_configs
+
+def create_database_indexes(database):
+    """
+    Create indexes for better query performance in the new database.
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Users collection indexes
+        database["users"].create_index("email", unique=True)
+        database["users"].create_index("role")
+        
+        # Courses collection indexes
+        database["courses"].create_index("user_id")
+        database["courses"].create_index("created_at")
+        
+        # Course shares indexes
+        database["course_shares"].create_index([("course_id", 1), ("shared_with_user_id", 1)], unique=True)
+        database["course_shares"].create_index("shared_with_user_id")
+        
+        # Resources indexes
+        database["resources"].create_index("course_id")
+        database["resources"].create_index([("course_id", 1), ("resource_name", 1)])
+        
+        # Assets indexes
+        database["assets"].create_index("course_id")
+        database["assets"].create_index([("course_id", 1), ("asset_type", 1)])
+        database["assets"].create_index([("course_id", 1), ("asset_name", 1)])
+        
+        # Evaluations indexes
+        database["evaluations"].create_index("evaluation_id", unique=True)
+        database["evaluations"].create_index("course_id")
+        
+        # Extracted data indexes
+        database["extracted_data"].create_index("evaluation_id", unique=True)
+        
+        # AI feedback indexes
+        database["ai_feedback"].create_index("evaluation_id", unique=True)
+        
+        # System configurations indexes
+        database["system_configurations"].create_index("type")
+        database["system_configurations"].create_index([("type", 1), ("category", 1)])
+        
+        # Admin files indexes
+        database["admin_files"].create_index("created_at")
+        
+        logger.info("Successfully created all database indexes")
+        
+    except Exception as e:
+        logger.warning(f"Error creating indexes (non-critical): {str(e)}")
+
+def get_organization_database(org_id: str = None, database_name: str = None):
+    """
+    Get a database reference for a specific organization.
+    Can be called with either org_id or database_name.
+    
+    Args:
+        org_id: Organization ID (will search for database with this org_id)
+        database_name: Direct database name
+    
+    Returns:
+        Database object for the organization
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        if database_name:
+            return client[database_name]
+        elif org_id:
+            # List all databases and find the one matching org_id
+            db_list = client.list_database_names()
+            for db_name in db_list:
+                if org_id[:8] in db_name and db_name.startswith("org_"):
+                    return client[db_name]
+            raise HTTPException(status_code=404, detail=f"Database for organization {org_id} not found")
+        else:
+            raise HTTPException(status_code=400, detail="Either org_id or database_name must be provided")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting organization database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get organization database: {str(e)}")
+
+def list_all_organization_databases():
+    """
+    List all organization databases in the MongoDB instance.
+    Useful for admin purposes and migration.
+    
+    Returns:
+        list: List of organization database names
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        all_databases = client.list_database_names()
+        # Filter for organization databases (start with "org_")
+        org_databases = [db for db in all_databases if db.startswith("org_")]
+        
+        logger.info(f"Found {len(org_databases)} organization databases")
+        return org_databases
+        
+    except Exception as e:
+        logger.error(f"Error listing organization databases: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list organization databases: {str(e)}")
 
 # Courses
 def create_course(data: dict):
@@ -239,8 +607,21 @@ def delete_asset_from_db(course_id: str, asset_name: str):
 def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_id: str, vector_store_id: str, 
                      mark_scheme_path: str = None, mark_scheme_file_id: str = None,
                      answer_sheet_paths: list[str] = None, answer_sheet_file_ids: list[str] = None, 
-                     answer_sheet_filenames: list[str] = None):
-    """Create evaluation record supporting both local paths and OpenAI file IDs"""
+                     answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital"):
+    """Create evaluation record supporting both local paths and OpenAI file IDs
+    
+    Args:
+        evaluation_id: Unique ID for the evaluation
+        course_id: Course ID this evaluation belongs to
+        evaluation_assistant_id: OpenAI assistant ID
+        vector_store_id: OpenAI vector store ID
+        mark_scheme_path: Local path to mark scheme file
+        mark_scheme_file_id: OpenAI file ID for mark scheme
+        answer_sheet_paths: List of local paths to answer sheets
+        answer_sheet_file_ids: List of OpenAI file IDs for answer sheets
+        answer_sheet_filenames: Original filenames of answer sheets
+        evaluation_type: Type of evaluation - "digital" or "handwritten" (default: "digital")
+    """
     evaluation = {
         "evaluation_id": evaluation_id, 
         "course_id": course_id,
@@ -250,7 +631,8 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
         "mark_scheme_file_id": mark_scheme_file_id,
         "answer_sheet_paths": answer_sheet_paths or [],
         "answer_sheet_file_ids": answer_sheet_file_ids or [],
-        "answer_sheet_filenames": answer_sheet_filenames or []
+        "answer_sheet_filenames": answer_sheet_filenames or [],
+        "evaluation_type": evaluation_type
     }
     add_to_collection("evaluations", evaluation)
     return evaluation
@@ -340,13 +722,6 @@ def update_question_score_feedback(evaluation_id: str, file_id: str, question_nu
             logger.error(f"Error in alternative update approach: {str(e)}")
             raise
 
-# Extraction
-def create_extracted_data(evaluation_id: str, extracted_data: dict):
-    add_to_collection("extracted_data", {"evaluation_id": evaluation_id, "extracted_data": extracted_data})
-
-def get_extracted_data_by_evaluation_id(evaluation_id: str):
-    return get_one_from_collection("extracted_data", {"evaluation_id": evaluation_id})
-
 # AI Feedback
 def create_ai_feedback(evaluation_id: str, ai_feedback: dict):
     add_to_collection("ai_feedback", {"evaluation_id": evaluation_id, "ai_feedback": ai_feedback})
@@ -357,3 +732,112 @@ def get_ai_feedback_by_evaluation_id(evaluation_id: str):
 def update_ai_feedback(evaluation_id: str, ai_feedback: dict):
     """Update AI feedback in ai_feedback collection"""
     update_in_collection("ai_feedback", {"evaluation_id": evaluation_id}, {"ai_feedback": ai_feedback})
+
+# System Configurations
+def get_configurations_by_type(config_type: str):
+    """Get all configurations by type (curriculum, assessment, setting)"""
+    configs = get_many_from_collection("system_configurations", {"type": config_type})
+    # Sort by order if available
+    configs.sort(key=lambda x: x.get("order", 999))
+    return configs
+
+def get_setting_by_category(category: str):
+    """Get a specific setting by category (e.g., course_level, study_area, pedagogical_components)"""
+    return get_one_from_collection("system_configurations", {"type": "setting", "category": category})
+
+def get_all_settings():
+    """Get all setting configurations"""
+    return get_many_from_collection("system_configurations", {"type": "setting"})
+
+def create_configuration(config_data: dict):
+    """Create a new system configuration"""
+    add_to_collection("system_configurations", config_data)
+
+def update_configuration(config_id: str, config_data: dict):
+    """Update a system configuration"""
+    update_in_collection("system_configurations", {"_id": config_id}, config_data)
+
+def delete_configuration(config_id: str):
+    """Delete a system configuration"""
+    delete_from_collection("system_configurations", {"_id": config_id})
+
+def add_setting_label(category: str, label: str):
+    """Add a label to a setting category's options array"""
+    setting = get_setting_by_category(category)
+    if not setting:
+        raise ValueError(f"Setting category '{category}' not found")
+    
+    options = setting.get("options", [])
+    if label in options:
+        raise ValueError(f"Label '{label}' already exists in category '{category}'")
+    
+    options.append(label)
+    update_configuration(setting["_id"], {"options": options})
+
+def remove_setting_label(category: str, label: str):
+    """Remove a label from a setting category's options array"""
+    setting = get_setting_by_category(category)
+    if not setting:
+        raise ValueError(f"Setting category '{category}' not found")
+    
+    options = setting.get("options", [])
+    if label not in options:
+        raise ValueError(f"Label '{label}' not found in category '{category}'")
+    
+    options.remove(label)
+    update_configuration(setting["_id"], {"options": options})
+
+# GridFS File Storage Functions
+def store_pdf_in_mongo(file_content: bytes, filename: str, metadata: dict = None) -> str:
+    """Store file binary data in MongoDB using GridFS"""
+    logger = logging.getLogger(__name__)
+    file_id = fs.put(
+        file_content,
+        filename=filename,
+        content_type=metadata.get("content_type", "application/pdf") if metadata else "application/pdf",
+        metadata=metadata or {}
+    )
+    logger.info(f"Stored file '{filename}' in MongoDB with file_id: {file_id}")
+    return str(file_id)
+
+def retrieve_pdf_from_mongo(file_id: str) -> bytes:
+    """Retrieve file binary data from MongoDB using GridFS"""
+    logger = logging.getLogger(__name__)
+    try:
+        grid_out = fs.get(ObjectId(file_id))
+        logger.info(f"Retrieved file with file_id: {file_id}, filename: {grid_out.filename}")
+        return grid_out.read()
+    except gridfs.NoFile:
+        logger.error(f"File not found in MongoDB with file_id: {file_id}")
+        raise HTTPException(status_code=404, detail="File not found in database")
+
+def delete_pdf_from_mongo(file_id: str):
+    """Delete file from MongoDB GridFS"""
+    logger = logging.getLogger(__name__)
+    try:
+        fs.delete(ObjectId(file_id))
+        logger.info(f"Deleted file with file_id: {file_id}")
+    except gridfs.NoFile:
+        logger.warning(f"Attempted to delete non-existent file: {file_id}")
+
+# Admin Files
+def create_admin_file(file_data: dict):
+    """Create a new admin file record"""
+    from uuid import uuid4
+    file_id = str(uuid4())
+    file_data["_id"] = file_id
+    file_data["created_at"] = datetime.utcnow().isoformat()
+    add_to_collection("admin_files", file_data)
+    return file_id
+
+def get_all_admin_files():
+    """Get all admin files"""
+    return get_many_from_collection("admin_files", {})
+
+def get_admin_file_by_id(file_id: str):
+    """Get admin file by ID"""
+    return get_one_from_collection("admin_files", {"_id": file_id})
+
+def delete_admin_file(file_id: str):
+    """Delete an admin file"""
+    delete_from_collection("admin_files", {"_id": file_id})

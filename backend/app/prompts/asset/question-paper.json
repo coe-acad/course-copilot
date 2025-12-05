@@ -1,5 +1,5 @@
 {
     "id": "question-paper",
     "prompt": "app/prompts/asset/question-paper.txt",
-    "required_input_variables": ["file_names","ask_clarifying_questions"]
+    "required_input_variables": ["file_names"]
   }

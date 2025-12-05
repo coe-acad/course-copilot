@@ -12,8 +12,7 @@ import SelectionModal from "../components/SelectionModal";
 import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
 import { getCourseSettings } from "../services/course";
 import { assetService } from "../services/asset";
-import curriculumOptions from "../config/curriculumOptions";
-import assessmentOptions from "../config/assessmentsOptions";
+import { getCurriculumConfigurations, getAssessmentConfigurations } from "../services/configurations";
 import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
 import ExportAssetsModal from "../components/ExportAssetsModal";
@@ -53,6 +52,12 @@ export default function Dashboard() {
   const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
   const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const navigate = useNavigate();
+  
+  // Dynamic configurations from API
+  const [curriculumOptions, setCurriculumOptions] = useState([]);
+  const [assessmentOptions, setAssessmentOptions] = useState([]);
+  const [loadingCurriculumConfigs, setLoadingCurriculumConfigs] = useState(false);
+  const [loadingAssessmentConfigs, setLoadingAssessmentConfigs] = useState(false);
   
   // Get current user for display name logic
   const currentUser = getCurrentUser();
@@ -158,6 +163,38 @@ export default function Dashboard() {
   };
 
 
+  // Fetch curriculum configurations when needed
+  const fetchCurriculumConfigurations = async () => {
+    if (curriculumOptions.length > 0) return; // Already fetched
+    
+    try {
+      setLoadingCurriculumConfigs(true);
+      const data = await getCurriculumConfigurations();
+      setCurriculumOptions(data || []);
+    } catch (error) {
+      console.error('Error fetching curriculum configurations:', error);
+      setCurriculumOptions([]);
+    } finally {
+      setLoadingCurriculumConfigs(false);
+    }
+  };
+
+  // Fetch assessment configurations when needed
+  const fetchAssessmentConfigurations = async () => {
+    if (assessmentOptions.length > 0) return; // Already fetched
+    
+    try {
+      setLoadingAssessmentConfigs(true);
+      const data = await getAssessmentConfigurations();
+      setAssessmentOptions(data || []);
+    } catch (error) {
+      console.error('Error fetching assessment configurations:', error);
+      setAssessmentOptions([]);
+    } finally {
+      setLoadingAssessmentConfigs(false);
+    }
+  };
+
   // Fetch resources on component mount
   useEffect(() => {
     const fetchResources = async () => {
@@ -249,6 +286,7 @@ export default function Dashboard() {
 
   const handleCurriculumCreate = () => {
     handleContentCreation('curriculum', () => {
+      fetchCurriculumConfigurations(); // Fetch configs when modal opens
       setSelectedOption(0);
       setShowCurriculumModal(true);
     });
@@ -256,6 +294,7 @@ export default function Dashboard() {
 
   const handleAssessmentCreate = () => {
     handleContentCreation('assessments', () => {
+      fetchAssessmentConfigurations(); // Fetch configs when modal opens
       setSelectedAssessmentOption(0);
       setShowAssessmentModal(true);
     });
@@ -298,8 +337,7 @@ export default function Dashboard() {
       return settings && (
         (settings.course_level && settings.course_level.length > 0) ||
         (settings.study_area && settings.study_area.length > 0) ||
-        (settings.pedagogical_components && settings.pedagogical_components.length > 0) ||
-        settings.ask_clarifying_questions !== undefined
+        (settings.pedagogical_components && settings.pedagogical_components.length > 0)
       );
     } catch (error) {
       console.error('Error checking settings:', error);
@@ -323,9 +361,11 @@ export default function Dashboard() {
     setShowSettingsPrompt(false);
     // Continue with the pending content creation
     if (pendingContentType === 'curriculum') {
+      fetchCurriculumConfigurations(); // Fetch configs when modal opens
       setSelectedOption(0);
       setShowCurriculumModal(true);
     } else if (pendingContentType === 'assessments') {
+      fetchAssessmentConfigurations(); // Fetch configs when modal opens
       setSelectedAssessmentOption(0);
       setShowAssessmentModal(true);
     } else if (pendingContentType === 'evaluation') {
@@ -637,6 +677,7 @@ export default function Dashboard() {
           onSelect={setSelectedOption}
           onClose={() => setShowCurriculumModal(false)}
           onCreate={handleCurriculumSubmit}
+          loading={loadingCurriculumConfigs}
         />
 
         <SelectionModal
@@ -647,6 +688,7 @@ export default function Dashboard() {
           onSelect={setSelectedAssessmentOption}
           onClose={() => setShowAssessmentModal(false)}
           onCreate={handleAssessmentSubmit}
+          loading={loadingAssessmentConfigs}
         />
 
         <KnowledgeBaseSelectModal
