@@ -177,8 +177,40 @@ export const assetService = {
     }
   },
 
-  // Generate a PDF from raw markdown/text content with the same styling
+  // Generate a PDF from raw markdown/text content using backend text_to_pdf utility
   downloadContentAsPdf: async (title, content, meta = {}) => {
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) {
+        throw new Error('No course ID found');
+      }
+
+      const filename = `${title || 'asset'}.pdf`;
+
+      // Use backend text_to_pdf endpoint
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/assets/pdf`,
+        { content, filename },
+        { responseType: 'blob' }
+      );
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // OLD FRONTEND IMPLEMENTATION - REMOVED TO USE BACKEND text_to_pdf
+  // Generate a PDF Blob from raw markdown/text content with the same styling as downloadContentAsPdf
+  generateContentPdfBlob_OLD: async (title, content, meta = {}) => {
     try {
       const pdf = new jsPDF();
 
@@ -589,8 +621,31 @@ export const assetService = {
       throw new Error(`Failed to generate PDF: ${error.message}`);
     }
   },
-  // Generate a PDF Blob from raw markdown/text content with the same styling as downloadContentAsPdf
+  // Generate a PDF Blob from raw markdown/text content using backend text_to_pdf utility
   generateContentPdfBlob: async (title, content, meta = {}) => {
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) {
+        throw new Error('No course ID found');
+      }
+
+      const filename = `${title || 'asset'}.pdf`;
+
+      // Use backend text_to_pdf endpoint
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/assets/pdf`,
+        { content, filename },
+        { responseType: 'blob' }
+      );
+
+      return new Blob([response.data], { type: 'application/pdf' });
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      throw new Error(`Failed to generate PDF: ${error.message}`);
+    }
+  },
+  // OLD FRONTEND IMPLEMENTATION - REMOVED TO USE BACKEND text_to_pdf
+  generateContentPdfBlob_OLD_UNUSED: async (title, content, meta = {}) => {
     try {
       const pdf = new jsPDF();
 
