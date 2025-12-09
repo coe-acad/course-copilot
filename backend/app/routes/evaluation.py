@@ -543,43 +543,6 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         logger.error(f"Error saving evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error saving evaluation: {str(e)}")
 
-def format_evaluation_report(evaluation):
-    """Format evaluation data into a readable combined report for all students"""
-    result = evaluation["evaluation_result"]
-    students = result.get("students", [])
-    stored_filenames = evaluation.get("answer_sheet_filenames", [])
-    logger.info(f"Stored filenames: {stored_filenames}")
-    report = f"# Evaluation Report\n\n"
-    report += f"**Total Students:** {len(students)}\n"
-    report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
-    
-    for i, student in enumerate(students, 1):
-        # Use stored filename if available, otherwise fall back to student_name or file_id
-        original_filename = "Unknown"
-        if i <= len(stored_filenames):
-            original_filename = stored_filenames[i-1]
-        elif student.get('student_name'):
-            original_filename = student.get('student_name')
-        elif student.get('file_id'):
-            original_filename = f"File_{student.get('file_id')}"
-            
-        report += f"## Student {i}\n"
-        report += f"**File:** {original_filename}\n"
-        report += f"**Total Score:** {student.get('total_score', 0)}/{student.get('max_total_score', 0)}\n"
-        report += f"**Status:** {student.get('status', 'completed')}\n\n"
-        
-        answers = student.get('answers', [])
-        for j, answer in enumerate(answers, 1):
-            report += f"### Question {j}\n"
-            report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
-            report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
-            report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
-            report += f"**Feedback:** {answer.get('feedback', 'N/A')}\n\n"
-        
-        report += "---\n\n"
-    
-    return report
-
 def format_student_report(evaluation, student_index: int):
     """Format evaluation data into a readable report for a single student"""
     result = evaluation["evaluation_result"]
@@ -682,23 +645,6 @@ def format_evaluation_csv(evaluation):
     writer.writerows(rows)
     
     return output.getvalue()
-
-@router.get("/evaluation/report/{evaluation_id}")
-def get_evaluation_report(evaluation_id: str, user_id: str = Depends(verify_token)):
-    """Get combined evaluation report for all students"""
-    try:
-        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-        if not evaluation:
-            raise HTTPException(status_code=404, detail="Evaluation not found")
-        if not evaluation.get("evaluation_result"):
-            raise HTTPException(status_code=400, detail="Evaluation not yet completed")
-        report = format_evaluation_report(evaluation)
-        return {"report": report}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting evaluation report for {evaluation_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting evaluation report: {str(e)}")
 
 @router.get("/evaluation/report/{evaluation_id}/student/{student_index}")
 def get_student_report(evaluation_id: str, student_index: int, user_id: str = Depends(verify_token)):
