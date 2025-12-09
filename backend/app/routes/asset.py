@@ -177,10 +177,13 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         # Stream run with proper error handling
         handler = AssetChatStreamHandler()
         stream_was_interrupted = False
+        # Use temperature 0.3 for mark-scheme to ensure consistency
+        temp = 0.3 if asset_type_name == "mark-scheme" else 1.0
         try:
             with client.beta.threads.runs.stream(
                 thread_id=thread_id,
                 assistant_id=assistant_id,
+                temperature=temp,
                 event_handler=handler
             ) as stream:
                 stream.until_done()
@@ -332,6 +335,11 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
             return
         assistant_id = course["assistant_id"]
 
+        # Get asset type to determine temperature
+        asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
+        asset_type = asset.get("asset_type", "") if asset else ""
+        temp = 0.3 if asset_type == "mark-scheme" else 1.0
+        print(f"Temperature: {temp}")
         # Send user prompt to the thread
         client.beta.threads.messages.create(
             thread_id=thread_id,
@@ -344,6 +352,7 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
         with client.beta.threads.runs.stream(
             thread_id=thread_id,
             assistant_id=assistant_id,
+            temperature=temp,
             event_handler=handler
         ) as stream:
             stream.until_done()

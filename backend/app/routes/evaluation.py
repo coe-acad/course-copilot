@@ -232,7 +232,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             logger.info(f"  Batch {batch_num}: {filenames}")
         logger.info("=" * 60)
         
-        with ThreadPoolExecutor(max_workers=total_batches) as executor:
+        # Limit workers based on batch size to control concurrency
+        max_workers = 2 if BATCH_SIZE == 5 else 3
+        logger.info(f"Using {max_workers} workers for parallel processing")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all batch jobs
             futures = {}
             for batch_start in range(0, total_sheets, BATCH_SIZE):
