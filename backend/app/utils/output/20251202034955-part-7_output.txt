@@ -1,0 +1,166 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+(a) The Population mean is 72 bpm & Sample Mean is 69 bpm
+
+(b) null hypothesis H₀: μ ≥ 72 bpm
+alternative hypothesis H₁: μ < 72 bpm
+
+(c) Standard error = (72 - 69)/2
+[UNCERTAIN: calculation appears incomplete or unclear]
+
+Standard Error means the distance bw baseline and Sample mean
+
+================================================================================
+
+Question 2:
+----------------------------------------
+(a) P(B) = 0.20 x ~ 0.2 | Probability of Prior = P(B|S) x P(S) =
+P(B) = 0.9
+
+= 0.9 x 0.2 = 0.18
+
+(b) P(S/F) ≈ P(F/S) x P(S)
+        P(F/S) x P(S) + P(F/~S) x P(~S)
+
+P(F/S) = 0.9
+P(~S) = 0.2
+P(F/~S) = 0.05
+P(S) = 100 - 20% = 80 = 0.8
+P(~S) = 0.8
+
+P(S/F) ≈ 0.9 x 0.2
+        0.9 x 0.2 + 0.05 x 0.8
+
+≈ 0.18
+  0.18 + 0.04
+
+≈ 0.8
+
+(b) Posterior Probability in the experiment above is P(S/F)
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+```
+1.
+(a) The Population mean is 72 bpm & Sample Mean is 69 bpm
+
+(b) null hypothesis H₀: μ ≥ 72 bpm
+alternative hypothesis H₁: μ < 72 bpm
+
+(c) Standard error = (72 - 69)/2
+[UNCERTAIN: calculation appears incomplete or unclear]
+
+Standard Error means the distance bw baseline and Sample mean
+
+---
+
+2.
+(a) P(B) = 0.20 x ~ 0.2 | Probability of Prior = P(B|S) x P(S) =
+P(B) = 0.9
+
+= 0.9 x 0.2 = 0.18
+
+(b) P(S/F) ≈ P(F/S) x P(S)
+        P(F/S) x P(S) + P(F/~S) x P(~S)
+
+P(F/S) = 0.9
+P(~S) = 0.2
+P(F/~S) = 0.05
+P(S) = 100 - 20% = 80 = 0.8
+P(~S) = 0.8
+
+P(S/F) ≈ 0.9 x 0.2
+        0.9 x 0.2 + 0.05 x 0.8
+
+≈ 0.18
+  0.18 + 0.04
+
+≈ 0.8
+
+(b) Posterior Probability in the experiment above is P(S/F)
+
+---
+
+```
+
+QUESTION 1 CONFIDENCE: 88 / 100
+- Text Accuracy: 36/40 - Most text is clear, but one calculation in part (c) is uncertain and appears incomplete.
+- Visual Elements: 25/25 - No visual elements present.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 12/15 - Some parts are slightly unclear, particularly the calculation in (c).
+
+ISSUES FOR QUESTION 1:
+- The standard error calculation in part (c) is unclear and may be incomplete.
+- Some minor ambiguity in handwriting for mathematical symbols.
+
+---
+
+QUESTION 2 CONFIDENCE: 85 / 100
+- Text Accuracy: 34/40 - Some expressions are slightly unclear, particularly the use of "~" and "=" signs.
+- Visual Elements: 25/25 - No visual elements present.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 11/15 - Some probability expressions are cramped and slightly difficult to read.
+
+ISSUES FOR QUESTION 2:
+- The notation "~" for complement is occasionally unclear.
+- The alignment of fractions and equations is slightly ambiguous.
+- Some probability values are written in a condensed manner.
+
+---
+
+TOTAL CONFIDENCE SCORE: 86.5 / 100
+
+OVERALL BREAKDOWN:
+- Text Accuracy: 35/40 - Most text is clear, but some calculations and probability expressions are ambiguous.
+- Visual Elements: 25/25 - No visual elements were present in the extracted content.
+- Table Structure: 20/20 - No tables were present in the extracted content.
+- Handwriting Legibility: 11.5/15 - Handwriting is generally legible but has some unclear or cramped sections.
+
+KEY CHALLENGES:
+- Some mathematical expressions and calculations are incomplete or unclear.
+- Probability notation and alignment of equations are occasionally ambiguous.
+- The use of shorthand and symbols in probability expressions can be difficult to interpret.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable for clear, well-written sections.
+- Caution is advised for interpreting uncertain or incomplete calculations.
+- The student's use of notation should be reviewed for consistency.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "(a) The Population mean is 72 bpm & Sample Mean is 69 bpm\n\n(b) null hypothesis H₀: μ ≥ 72 bpm\nalternative hypothesis H₁: μ < 72 bpm\n\n(c) Standard error = (72 - 69)/2\n[UNCERTAIN: calculation appears incomplete or unclear]\n\nStandard Error means the distance bw baseline and Sample mean",
+      "confidence_score": "88"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "(a) P(B) = 0.20 x ~ 0.2 | Probability of Prior = P(B|S) x P(S) =\nP(B) = 0.9\n\n= 0.9 x 0.2 = 0.18\n\n(b) P(S/F) ≈ P(F/S) x P(S)\n        P(F/S) x P(S) + P(F/~S) x P(~S)\n\nP(F/S) = 0.9\nP(~S) = 0.2\nP(F/~S) = 0.05\nP(S) = 100 - 20% = 80 = 0.8\nP(~S) = 0.8\n\nP(S/F) ≈ 0.9 x 0.2\n        0.9 x 0.2 + 0.05 x 0.8\n\n≈ 0.18\n  0.18 + 0.04\n\n≈ 0.8\n\n(b) Posterior Probability in the experiment above is P(S/F)",
+      "confidence_score": "85"
+    }
+  ],
+  "confidence": {
+    "score": "86.5",
+    "details": "CONFIDENCE SCORE: 86.5 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 35/40 - Most text is clear, but some calculations and probability expressions are ambiguous.\n- Visual Elements: 25/25 - No visual elements were present in the extracted content.\n- Table Structure: 20/20 - No tables were present in the extracted content.\n- Handwriting Legibility: 11.5/15 - Handwriting is generally legible but has some unclear or cramped sections.\n\nKEY CHALLENGES:\n- Some mathematical expressions and calculations are incomplete or unclear.\n- Probability notation and alignment of equations are occasionally ambiguous.\n- The use of shorthand and symbols in probability expressions can be difficult to interpret.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for clear, well-written sections.\n- Caution is advised for interpreting uncertain or incomplete calculations.\n- The student's use of notation should be reviewed for consistency."
+  }
+}

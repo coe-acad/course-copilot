@@ -1,0 +1,143 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 2
+
+================================================================================
+
+Question 1:
+----------------------------------------
+(a) Population mean = 72 And Sample mean = 69
+
+(b) The hypothesis which is less than 5 is known as Null hypothesis. And the hypothesis which is greater than 5 is known as alternative hypothesis.
+
+(c) 1.25
+
+(d) 2.4
+
+(e) [IMAGE DESCRIPTION:
+TEXT IN IMAGE: None visible beyond the graph elements
+IMAGE TYPE: line_graph
+A normal distribution curve is drawn with a vertical dashed line near the right tail. The area to the left of a value around 69 is shaded, representing the region under the curve for the sample mean relative to the population mean.
+IMAGE CONTEXT: This graph relates to question 1, showing the distribution of sample means and the position of the observed sample mean.]
+
+================================================================================
+
+Question 2:
+----------------------------------------
+(a) 0.2
+
+(b) P(A|B)
+
+(c) A|B
+
+(d) P(B|A)P(A) + P(B|Aᶜ)P(Aᶜ)
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+```
+1.
+(a) Population mean = 72 And Sample mean = 69
+
+(b) The hypothesis which is less than 5 is known as Null hypothesis. And the hypothesis which is greater than 5 is known as alternative hypothesis.
+
+(c) 1.25
+
+(d) 2.4
+
+(e) [IMAGE DESCRIPTION:
+TEXT IN IMAGE: None visible beyond the graph elements
+IMAGE TYPE: line_graph
+A normal distribution curve is drawn with a vertical dashed line near the right tail. The area to the left of a value around 69 is shaded, representing the region under the curve for the sample mean relative to the population mean.
+IMAGE CONTEXT: This graph relates to question 1, showing the distribution of sample means and the position of the observed sample mean.]
+
+---
+
+2.
+(a) 0.2
+
+(b) P(A|B)
+
+(c) A|B
+
+(d) P(B|A)P(A) + P(B|Aᶜ)P(Aᶜ)
+
+---
+```
+
+### PER-QUESTION CONFIDENCE SCORES
+
+**QUESTION 1 CONFIDENCE: 92 / 100**
+
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Most text is clear, though some words in part (b) are slightly ambiguous ("less than 5" and "greater than 5" appear to reference a threshold, but the exact value is unclear).
+- Visual Elements: 23/25 - The graph is well-described, but the exact position of the vertical dashed line is approximate.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 11/15 - Some words in part (b) are slightly unclear due to handwriting style.
+
+ISSUES FOR QUESTION 1:
+- The phrase "less than 5" and "greater than 5" in part (b) is ambiguous; it may refer to a significance level or a test statistic threshold.
+- The graph's exact numerical labels on the x-axis are not fully clear.
+
+---
+
+**QUESTION 2 CONFIDENCE: 95 / 100**
+
+BREAKDOWN FOR QUESTION 2:
+- Text Accuracy: 39/40 - All text is clear and accurately transcribed.
+- Visual Elements: 25/25 - No images or diagrams present.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 11/15 - The handwriting is clear, though some symbols (e.g., Aᶜ) are slightly ambiguous in style.
+
+ISSUES FOR QUESTION 2:
+- The complement symbol (Aᶜ) in part (d) is assumed based on context but could be misinterpreted due to handwriting.
+
+---
+
+### TOTAL CONFIDENCE SCORE: 93.5 / 100
+
+OVERALL BREAKDOWN:
+- Text Accuracy: 38.5/40 - High accuracy overall, with minor ambiguities in handwriting interpretation.
+- Visual Elements: 24/25 - The graph in Question 1 was well-described, but exact positioning of elements is approximate.
+- Table Structure: 20/20 - No tables were present in the document.
+- Handwriting Legibility: 11/15 - Some phrases and symbols are slightly unclear due to handwriting style.
+
+KEY CHALLENGES:
+- Ambiguity in the phrasing of part (b) in Question 1 regarding the "5" threshold.
+- Interpretation of handwritten symbols, particularly in probability notation.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable for most content, with minor uncertainties in specific phrases and symbols.
+- The graph in Question 1 is accurately described but may require verification for exact numerical values.
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "(a) Population mean = 72 And Sample mean = 69\n\n(b) The hypothesis which is less than 5 is known as Null hypothesis. And the hypothesis which is greater than 5 is known as alternative hypothesis.\n\n(c) 1.25\n\n(d) 2.4\n\n(e) [IMAGE DESCRIPTION:\nTEXT IN IMAGE: None visible beyond the graph elements\nIMAGE TYPE: line_graph\nA normal distribution curve is drawn with a vertical dashed line near the right tail. The area to the left of a value around 69 is shaded, representing the region under the curve for the sample mean relative to the population mean.\nIMAGE CONTEXT: This graph relates to question 1, showing the distribution of sample means and the position of the observed sample mean.]",
+      "confidence_score": "92"
+    },
+    {
+      "question_number": "2",
+      "student_answer": "(a) 0.2\n\n(b) P(A|B)\n\n(c) A|B\n\n(d) P(B|A)P(A) + P(B|Aᶜ)P(Aᶜ)",
+      "confidence_score": "95"
+    }
+  ],
+  "confidence": {
+    "score": "93.5",
+    "details": "CONFIDENCE SCORES\n\n**QUESTION 1 CONFIDENCE: 92 / 100**\n\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 38/40 - Most text is clear, though some words in part (b) are slightly ambiguous (\"less than 5\" and \"greater than 5\" appear to reference a threshold, but the exact value is unclear).\n- Visual Elements: 23/25 - The graph is well-described, but the exact position of the vertical dashed line is approximate.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 11/15 - Some words in part (b) are slightly unclear due to handwriting style.\n\nISSUES FOR QUESTION 1:\n- The phrase \"less than 5\" and \"greater than 5\" in part (b) is ambiguous; it may refer to a significance level or a test statistic threshold.\n- The graph's exact numerical labels on the x-axis are not fully clear.\n\n---\n\n**QUESTION 2 CONFIDENCE: 95 / 100**\n\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 39/40 - All text is clear and accurately transcribed.\n- Visual Elements: 25/25 - No images or diagrams present.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 11/15 - The handwriting is clear, though some symbols (e.g., Aᶜ) are slightly ambiguous in style.\n\nISSUES FOR QUESTION 2:\n- The complement symbol (Aᶜ) in part (d) is assumed based on context but could be misinterpreted due to handwriting.\n\n---\n\n### TOTAL"
+  }
+}

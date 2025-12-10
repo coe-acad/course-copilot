@@ -8,7 +8,7 @@ import fitz  # PyMuPDF for PDF image extraction
 from typing import Dict, Any
 import logging
 from pathlib import Path
-from ..utils.prompt_parser import PromptParser
+from app.utils.prompt_parser import PromptParser
 
 load_dotenv()
 

@@ -9,37 +9,49 @@ Total Questions Extracted: 2
 
 Question 1:
 ----------------------------------------
-a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.
-   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.
-   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
-   c) Standard error is 10/√64.
-     Standard error is the standard deviation/mean.
+(a) Population mean is 72 bpm and the Sample mean is, 64, 64 regular users of the app.
 
-   d)
-   \[
-   Z = \frac{X - \mu}{SE} = \frac{69 - 72}{\frac{10}{\sqrt{64}}} = \frac{-3}{\frac{10}{\sqrt{64}}}
-   \]
+(b) null Hypothesis (H₀): New relaxation app doesn't not reduces the average resting heart rate of its regular users.
+Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
+
+(c) Standard error is 10/√64.
+Standard error is the standard deviation mean.
+
+(d) Z = (x̄ - μ) / SE = (69 - 72) / (10 / √64) = -3 / (10 / 8) = -3 / 1.25
+
+(e) [IMAGE DESCRIPTION:
+TEXT IN IMAGE:
+- historical sample mean
+- obs. sample mean = 69
+- x axis = new relaxation app reduces the average resting rate heart rate of its regula[UNCERTAIN: rs]
+- p value
+
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Normal distribution curve showing the historical mean, observed sample mean, and shaded area representing the p-value for question 1(e).]
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.
-   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.
-   c)
-   \[
-   P(A|B) = \frac{P(A) \times P(B|A)}{P(B)}
-   \]
-   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
-   P(A) = 0.2, P(A^c) = 0.8
-   P(B|A) = 0.9, P(B|A^c) = 0.05
+P(A|B) = P(B|A) × P(A) / P(B)
 
-   \[
-   P(A|B) = \frac{0.2 \times 0.9}{P(B)} = \frac{0.18}{0.22} = 0.818
-   \]
-   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22
+P(B) = P(B|A) P(A) + P(B|A') P(A')
 
-   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.
+P(A) = 0.2, P(A') = 0.8
+P(B|A) = 0.9, P(B|A') = 0.05
+
+(a) Prior probability is 0.2 or 20%. and P(A) is the prior probability.
+
+(b) Posterior probability is P(A|B). Posterior probability, the final updated evidence of the probability or its the probability of spam given marked as spam.
+
+(c) P(A|B) = P(A) × P(B|A) / P(B)
+= 0.2 × 0.9 / P(B) = 0.2 × 0.9 / 0.22
+
+P(B) = 0.9 × 0.2 + 0.05 × 0.8
+P(B) = 0.18 + 0.04 = 0.22
+
+(d) Yes the NO, the posterior probability will not be higher @ than the priors. It would be lower than the posterior will be heightened than prior. Because priors is high while we update the probability by the evidence.
+The posterior probability will be higher than prior, as we update the initial probability with evidence.
 
 ================================================================================
 
@@ -49,81 +61,103 @@ a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.
 RAW CHAT RESPONSE
 ================================================================================
 
----
-1. a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.
-   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.
-   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
-   c) Standard error is 10/√64.
-     Standard error is the standard deviation/mean.
+```
+1.
+(a) Population mean is 72 bpm and the Sample mean is, 64, 64 regular users of the app.
 
-   d)
-   \[
-   Z = \frac{X - \mu}{SE} = \frac{69 - 72}{\frac{10}{\sqrt{64}}} = \frac{-3}{\frac{10}{\sqrt{64}}}
-   \]
+(b) null Hypothesis (H₀): New relaxation app doesn't not reduces the average resting heart rate of its regular users.
+Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.
 
----
-[IMAGE DESCRIPTION:
+(c) Standard error is 10/√64.
+Standard error is the standard deviation mean.
+
+(d) Z = (x̄ - μ) / SE = (69 - 72) / (10 / √64) = -3 / (10 / 8) = -3 / 1.25
+
+(e) [IMAGE DESCRIPTION:
 TEXT IN IMAGE:
-- Historical Sample Mean
-- Obs. Sample mean = 69
-- x-axis = new relaxation app reduces the average resting heart rate of its regulars
+- historical sample mean
+- obs. sample mean = 69
+- x axis = new relaxation app reduces the average resting rate heart rate of its regula[UNCERTAIN: rs]
+- p value
 
-IMAGE TYPE: illustration (sketch of a normal distribution curve)
-
-IMAGE CONTEXT: Relates to question 1, part e
-]
----
-
-2. a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.
-   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.
-   c)
-   \[
-   P(A|B) = \frac{P(A) \times P(B|A)}{P(B)}
-   \]
-   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
-   P(A) = 0.2, P(A^c) = 0.8
-   P(B|A) = 0.9, P(B|A^c) = 0.05
-
-   \[
-   P(A|B) = \frac{0.2 \times 0.9}{P(B)} = \frac{0.18}{0.22} = 0.818
-   \]
-   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22
-
-   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Normal distribution curve showing the historical mean, observed sample mean, and shaded area representing the p-value for question 1(e).]
 
 ---
-QUESTION 1 CONFIDENCE: 95 / 100
+
+2.
+P(A|B) = P(B|A) × P(A) / P(B)
+
+P(B) = P(B|A) P(A) + P(B|A') P(A')
+
+P(A) = 0.2, P(A') = 0.8
+P(B|A) = 0.9, P(B|A') = 0.05
+
+(a) Prior probability is 0.2 or 20%. and P(A) is the prior probability.
+
+(b) Posterior probability is P(A|B). Posterior probability, the final updated evidence of the probability or its the probability of spam given marked as spam.
+
+(c) P(A|B) = P(A) × P(B|A) / P(B)
+= 0.2 × 0.9 / P(B) = 0.2 × 0.9 / 0.22
+
+P(B) = 0.9 × 0.2 + 0.05 × 0.8
+P(B) = 0.18 + 0.04 = 0.22
+
+(d) Yes the NO, the posterior probability will not be higher @ than the priors. It would be lower than the posterior will be heightened than prior. Because priors is high while we update the probability by the evidence.
+The posterior probability will be higher than prior, as we update the initial probability with evidence.
+
+---
+```
+
+### PER-QUESTION CONFIDENCE SCORES
+
+**QUESTION 1 CONFIDENCE: 90 / 100**
+
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 38/40 - Text is clear and legible, minor ambiguity in mathematical notation.
-- Visual Elements: 25/25 - Image description is accurate and detailed.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 15/15 - Handwriting is clear and legible.
+- Text Accuracy: 38/40 - Most text is clear, minor uncertainty in part (e) label.
+- Visual Elements: 22/25 - Diagram description is comprehensive but some text in the image is uncertain.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 10/15 - Some corrections and overwriting, but generally legible.
 
 ISSUES FOR QUESTION 1:
-- None.
+- Minor uncertainty in the label on the x-axis of the diagram in part (e).
+- Some overwriting in the Z calculation in part (d).
 
-QUESTION 2 CONFIDENCE: 90 / 100
+---
+
+**QUESTION 2 CONFIDENCE: 88 / 100**
+
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 36/40 - Text is clear, some minor ambiguity in mathematical notation.
-- Visual Elements: N/A - No images in this question.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 14/15 - Handwriting is clear, some parts are slightly less legible.
+- Text Accuracy: 36/40 - Some overwriting and unclear phrasing in part (d).
+- Visual Elements: 25/25 - No images or diagrams.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 7/15 - Some parts are difficult to read due to overwriting and corrections.
 
 ISSUES FOR QUESTION 2:
-- Minor ambiguity in mathematical notation.
+- Part (d) contains overwriting and unclear phrasing.
+- Some corrections in the probability calculations.
 
-TOTAL CONFIDENCE SCORE: 92.5 / 100
+---
+
+### TOTAL CONFIDENCE SCORE
+
+**TOTAL CONFIDENCE SCORE: 89 / 100**
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 37/40 - Text is generally clear and legible, minor ambiguity in mathematical notation.
-- Visual Elements: 25/25 - Image description is accurate and detailed.
-- Table Structure: N/A - No tables in the document.
-- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible.
+- Text Accuracy: 37/40 - High accuracy, minor issues with overwriting and corrections.
+- Visual Elements: 23.5/25 - Good handling of the diagram, no tables to extract.
+- Table Structure: 20/20 - No tables present in the document.
+- Handwriting Legibility: 8.5/15 - Some parts are difficult to read due to corrections and overwriting.
 
 KEY CHALLENGES:
-- Minor ambiguity in mathematical notation.
+- Overwriting and corrections in parts of the answers.
+- Minor uncertainty in the text within the diagram in question 1(e).
+- Some unclear phrasing in question 2(d).
 
 RELIABILITY NOTES:
-- Overall extraction quality is high, with minor ambiguity in mathematical notation.
+- The extraction is highly reliable for the majority of the text.
+- The diagram in question 1(e) is well-described but contains minor uncertainties.
+- Question 2(d) should be reviewed for clarity due to overwriting.
 
 
 ================================================================================
@@ -134,17 +168,17 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "a) Population mean is 72 bpm and the Sample mean is 64. 64 regular users of the app.\n   b) Null Hypothesis (H₀): New relaxation app does not reduce the average resting heart rate of its regular users.\n   Alternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.\n   c) Standard error is 10/√64.\n     Standard error is the standard deviation/mean.\n\n   d)\n   \\[\n   Z = \\frac{X - \\mu}{SE} = \\frac{69 - 72}{\\frac{10}{\\sqrt{64}}} = \\frac{-3}{\\frac{10}{\\sqrt{64}}}\n   \\]",
-      "confidence_score": "95"
+      "student_answer": "(a) Population mean is 72 bpm and the Sample mean is, 64, 64 regular users of the app.\n\n(b) null Hypothesis (H₀): New relaxation app doesn't not reduces the average resting heart rate of its regular users.\nAlternative Hypothesis (H₁): New relaxation app reduces the average resting heart rate of its regular users.\n\n(c) Standard error is 10/√64.\nStandard error is the standard deviation mean.\n\n(d) Z = (x̄ - μ) / SE = (69 - 72) / (10 / √64) = -3 / (10 / 8) = -3 / 1.25\n\n(e) [IMAGE DESCRIPTION:\nTEXT IN IMAGE:\n- historical sample mean\n- obs. sample mean = 69\n- x axis = new relaxation app reduces the average resting rate heart rate of its regula[UNCERTAIN: rs]\n- p value\n\nIMAGE TYPE: diagram\nIMAGE CONTEXT: Normal distribution curve showing the historical mean, observed sample mean, and shaded area representing the p-value for question 1(e).]",
+      "confidence_score": "90"
     },
     {
       "question_number": "2",
-      "student_answer": "a) Prior probability is 0.2 or 20%, and P(A) is the prior probability.\n   b) Posterior probability is P(A|B). Posterior probability is the final updated evidence of the probability or it is the probability of spam given marked as spam.\n   c)\n   \\[\n   P(A|B) = \\frac{P(A) \\times P(B|A)}{P(B)}\n   \\]\n   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)\n   P(A) = 0.2, P(A^c) = 0.8\n   P(B|A) = 0.9, P(B|A^c) = 0.05\n\n   \\[\n   P(A|B) = \\frac{0.2 \\times 0.9}{P(B)} = \\frac{0.18}{0.22} = 0.818\n   \\]\n   P(B) = 0.9 × 0.2 + 0.05 × 0.8 = 0.22\n\n   d) Yes, the posterior probability will be higher than the prior. The posterior will be higher than prior. Because prior is tight while we update the probability by the evidence.",
-      "confidence_score": "90"
+      "student_answer": "P(A|B) = P(B|A) × P(A) / P(B)\n\nP(B) = P(B|A) P(A) + P(B|A') P(A')\n\nP(A) = 0.2, P(A') = 0.8\nP(B|A) = 0.9, P(B|A') = 0.05\n\n(a) Prior probability is 0.2 or 20%. and P(A) is the prior probability.\n\n(b) Posterior probability is P(A|B). Posterior probability, the final updated evidence of the probability or its the probability of spam given marked as spam.\n\n(c) P(A|B) = P(A) × P(B|A) / P(B)\n= 0.2 × 0.9 / P(B) = 0.2 × 0.9 / 0.22\n\nP(B) = 0.9 × 0.2 + 0.05 × 0.8\nP(B) = 0.18 + 0.04 = 0.22\n\n(d) Yes the NO, the posterior probability will not be higher @ than the priors. It would be lower than the posterior will be heightened than prior. Because priors is high while we update the probability by the evidence.\nThe posterior probability will be higher than prior, as we update the initial probability with evidence.",
+      "confidence_score": "88"
     }
   ],
   "confidence": {
-    "score": "92.5",
-    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear and legible, minor ambiguity in mathematical notation.\n- Visual Elements: 25/25 - Image description is accurate and detailed.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical notation.\n\nRELIABILITY NOTES:\n- Overall extraction quality is high, with minor ambiguity in mathematical notation."
+    "score": "89",
+    "details": "CONFIDENCE SCORES\n\n**QUESTION 1 CONFIDENCE: 90 / 100**\n\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 38/40 - Most text is clear, minor uncertainty in part (e) label.\n- Visual Elements: 22/25 - Diagram description is comprehensive but some text in the image is uncertain.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 10/15 - Some corrections and overwriting, but generally legible.\n\nISSUES FOR QUESTION 1:\n- Minor uncertainty in the label on the x-axis of the diagram in part (e).\n- Some overwriting in the Z calculation in part (d).\n\n---\n\n**QUESTION 2 CONFIDENCE: 88 / 100**\n\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 36/40 - Some overwriting and unclear phrasing in part (d).\n- Visual Elements: 25/25 - No images or diagrams.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 7/15 - Some parts are difficult to read due to overwriting and corrections.\n\nISSUES FOR QUESTION 2:\n- Part (d) contains overwriting and unclear phrasing.\n- Some corrections in the probability calculations.\n\n---\n\n### TOTAL CONFIDENCE SCORE\n\n**TOTAL"
   }
 }

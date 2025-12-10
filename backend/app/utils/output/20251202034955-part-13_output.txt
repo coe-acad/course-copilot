@@ -9,52 +9,42 @@ Total Questions Extracted: 2
 
 Question 1:
 ----------------------------------------
-Q1.
-   a) population mean = 100
-   b) Sample mean = 64
+(a) population mean = 100
+    Sample mean = 64
 
-   c)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - 66 - 64 = 2
-   - S.E: 2/10 = 0.2
-   - Standard error = σ/√n
+(b) [IMAGE DESCRIPTION: Normal distribution curve with mean at 66, sample mean at 64, shaded area on the left with z-score calculation shown.
+TEXT IN IMAGE: 66 - 64 = z, S.E. = 2/10 = 0.2, 64, 66
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Question 1 part (b), showing z-score calculation and standard error]
 
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]
+# Standard error = σ / √n
 
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE: None
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]
-
-   d)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE: None
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]
+(c) [IMAGE DESCRIPTION: Normal distribution curve with mean at 64, population mean at 66, shaded area on the right.
+TEXT IN IMAGE: σ/√n, 64, 66, x
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Question 1 part (c), showing relationship between sample and population means]
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-Q2.
-   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.
+(a) The prior probability here in the above equation is P(A), the Value of the priors probability based on the example is 20%.
 
-   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.
+(b) The posterior probability in the equation above is P(B|A), if a message is spam, the filter masks it as spam with 90% probability.
 
-   c)
-   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))
+(c) P(A|B) = P(B|A) P(A) / [P(B|A) P(A) + P(B|A^c) P(A^c)]
 
-   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%
-   P(B|A^c) = 5%, P(A^c) = 80%
+= (90/100)(20/100) / [(90/100)(20/100) + (5/100)(80/100)]
 
-   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]
-   = (9/50) / [(9/50) + (4/50)]
-   = (9/50) / (13/50)
-   = 9/13
+= (9/50) / [(9/50) + (4/50)]
 
-   d) The posterior probability will be higher.
+= 9/13
+
+[TABLE DESCRIPTION: Small calculation table showing intermediate steps for posterior probability.
+TABLE TYPE: calculation_table
+TABLE CONTEXT: Question 2 part (c), showing arithmetic steps for probability calculation]
+
+(d) The Posterior Probability will be higher.
 
 ================================================================================
 
@@ -64,84 +54,91 @@ Q2.
 RAW CHAT RESPONSE
 ================================================================================
 
-1. Q1.
-   a) population mean = 100
-   b) Sample mean = 64
+```
+1.
+(a) population mean = 100
+    Sample mean = 64
 
-   c)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - 66 - 64 = 2
-   - S.E: 2/10 = 0.2
-   - Standard error = σ/√n
+(b) [IMAGE DESCRIPTION: Normal distribution curve with mean at 66, sample mean at 64, shaded area on the left with z-score calculation shown.
+TEXT IN IMAGE: 66 - 64 = z, S.E. = 2/10 = 0.2, 64, 66
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Question 1 part (b), showing z-score calculation and standard error]
 
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]
+# Standard error = σ / √n
 
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE: None
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]
-
-   d)
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE: None
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]
+(c) [IMAGE DESCRIPTION: Normal distribution curve with mean at 64, population mean at 66, shaded area on the right.
+TEXT IN IMAGE: σ/√n, 64, 66, x
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Question 1 part (c), showing relationship between sample and population means]
 
 ---
-2. Q2.
-   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.
 
-   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.
+2.
+(a) The prior probability here in the above equation is P(A), the Value of the priors probability based on the example is 20%.
 
-   c)
-   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))
+(b) The posterior probability in the equation above is P(B|A), if a message is spam, the filter masks it as spam with 90% probability.
 
-   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%
-   P(B|A^c) = 5%, P(A^c) = 80%
+(c) P(A|B) = P(B|A) P(A) / [P(B|A) P(A) + P(B|A^c) P(A^c)]
 
-   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]
-   = (9/50) / [(9/50) + (4/50)]
-   = (9/50) / (13/50)
-   = 9/13
+= (90/100)(20/100) / [(90/100)(20/100) + (5/100)(80/100)]
 
-   d) The posterior probability will be higher.
+= (9/50) / [(9/50) + (4/50)]
+
+= 9/13
+
+[TABLE DESCRIPTION: Small calculation table showing intermediate steps for posterior probability.
+TABLE TYPE: calculation_table
+TABLE CONTEXT: Question 2 part (c), showing arithmetic steps for probability calculation]
+
+(d) The Posterior Probability will be higher.
 
 ---
-QUESTION 1 CONFIDENCE: 95 / 100
+```
+
+**PER-QUESTION CONFIDENCE SCORES**
+
+QUESTION 1 CONFIDENCE: 92 / 100
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 38/40 - Text is clear and legible, with only minor ambiguity in handwriting.
-- Visual Elements: 24/25 - Images are clear and well-described.
-- Table Structure: 20/20 - No tables present.
-- Handwriting Legibility: 13/15 - Handwriting is generally clear, with some minor ambiguity.
+- Text Accuracy: 38/40 - Clear handwriting, minor ambiguity in "Sample mean" vs "sample mean" capitalization
+- Visual Elements: 23/25 - Diagrams are clear but some text in images is slightly faded
+- Table Structure: 20/20 - No tables in this question
+- Handwriting Legibility: 11/15 - Some symbols and spacing are slightly unclear
 
 ISSUES FOR QUESTION 1:
-- Minor ambiguity in handwriting for some mathematical symbols.
+- The standard error formula uses "#" which may be a handwritten quirk for a bullet point
+- Diagram labels are slightly faded but mostly legible
 
-QUESTION 2 CONFIDENCE: 90 / 100
+QUESTION 2 CONFIDENCE: 88 / 100
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 36/40 - Text is clear but some parts are slightly smudged.
-- Visual Elements: N/A - No images in this question.
-- Table Structure: 20/20 - No tables present.
-- Handwriting Legibility: 14/15 - Handwriting is generally clear, with some smudging.
+- Text Accuracy: 36/40 - Some probability notation is slightly unclear (e.g., A^c vs A')
+- Visual Elements: 22/25 - No images but calculation layout is clear
+- Table Structure: 18/20 - Small calculation steps are tabular but not a formal table
+- Handwriting Legibility: 12/15 - Some fractions and probability symbols are cramped
 
 ISSUES FOR QUESTION 2:
-- Slight smudging in parts of the text.
+- The notation "A^c" vs "A'" is ambiguous in handwriting
+- The calculation steps are slightly crowded but readable
+- The final answer "9/13" is clear but the path to it has some unclear fractions
 
-TOTAL CONFIDENCE SCORE: 92.5 / 100
+---
+
+**TOTAL CONFIDENCE SCORE: 90 / 100**
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 37/40 - Text is generally clear and legible, with minor smudging and ambiguity.
-- Visual Elements: 24/25 - Images are clear and well-described.
-- Table Structure: 20/20 - No tables present.
-- Handwriting Legibility: 13.5/15 - Handwriting is generally clear, with some minor ambiguity and smudging.
+- Text Accuracy: 37/40 - High accuracy with minor ambiguities in mathematical notation
+- Visual Elements: 22.5/25 - Diagrams are well-described but some text within images is faded
+- Table Structure: 19/20 - Calculation steps are accurately captured
+- Handwriting Legibility: 11.5/15 - Generally clear but some symbols and spacing are challenging
 
 KEY CHALLENGES:
-- Minor smudging and ambiguity in handwriting.
-- Ensuring accurate interpretation of mathematical symbols.
+- Faded text in diagrams reduces confidence for visual elements
+- Ambiguous probability notation (A^c vs A') in Question 2
+- Cramped fractions and calculations in probability work
 
 RELIABILITY NOTES:
-- The extraction is highly reliable, with minor uncertainties due to handwriting ambiguity and smudging.
+- The extraction is highly reliable for the main content
+- Mathematical notation should be verified for A^c vs A' interpretation
+- Diagram text is mostly clear but may need slight review for 100% accuracy
 
 
 ================================================================================
@@ -152,17 +149,17 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "Q1.\n   a) population mean = 100\n   b) Sample mean = 64\n\n   c)\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE:\n   - 66 - 64 = 2\n   - S.E: 2/10 = 0.2\n   - Standard error = σ/√n\n\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This diagram relates to the standard error calculation for Q1c.]\n\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE: None\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This normal distribution curve relates to Q1c.]\n\n   d)\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE: None\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This normal distribution curve with shaded area relates to Q1d.]",
-      "confidence_score": "95"
+      "student_answer": "(a) population mean = 100\n    Sample mean = 64\n\n(b) [IMAGE DESCRIPTION: Normal distribution curve with mean at 66, sample mean at 64, shaded area on the left with z-score calculation shown.\nTEXT IN IMAGE: 66 - 64 = z, S.E. = 2/10 = 0.2, 64, 66\nIMAGE TYPE: diagram\nIMAGE CONTEXT: Question 1 part (b), showing z-score calculation and standard error]\n\n# Standard error = σ / √n\n\n(c) [IMAGE DESCRIPTION: Normal distribution curve with mean at 64, population mean at 66, shaded area on the right.\nTEXT IN IMAGE: σ/√n, 64, 66, x\nIMAGE TYPE: diagram\nIMAGE CONTEXT: Question 1 part (c), showing relationship between sample and population means]",
+      "confidence_score": "92"
     },
     {
       "question_number": "2",
-      "student_answer": "Q2.\n   a) The prior probability here in the above equation is P(A), the value of the prior probability based on the example is 20%.\n\n   b) The posterior probability in the equation above is P(B|A). If a message is spam, the filter marks it as spam with 90% probability.\n\n   c)\n   P(A|B) = (P(B|A) P(A)) / (P(B|A) P(A) + P(B|A^c) P(A^c))\n\n   [UNCERTAIN: P(B|A) = 90%], P(A) = 20%\n   P(B|A^c) = 5%, P(A^c) = 80%\n\n   = (9/10)(20/100) / [(9/10)(20/100) + (5/100)(80/100)]\n   = (9/50) / [(9/50) + (4/50)]\n   = (9/50) / (13/50)\n   = 9/13\n\n   d) The posterior probability will be higher.",
-      "confidence_score": "90"
+      "student_answer": "(a) The prior probability here in the above equation is P(A), the Value of the priors probability based on the example is 20%.\n\n(b) The posterior probability in the equation above is P(B|A), if a message is spam, the filter masks it as spam with 90% probability.\n\n(c) P(A|B) = P(B|A) P(A) / [P(B|A) P(A) + P(B|A^c) P(A^c)]\n\n= (90/100)(20/100) / [(90/100)(20/100) + (5/100)(80/100)]\n\n= (9/50) / [(9/50) + (4/50)]\n\n= 9/13\n\n[TABLE DESCRIPTION: Small calculation table showing intermediate steps for posterior probability.\nTABLE TYPE: calculation_table\nTABLE CONTEXT: Question 2 part (c), showing arithmetic steps for probability calculation]\n\n(d) The Posterior Probability will be higher.",
+      "confidence_score": "88"
     }
   ],
   "confidence": {
-    "score": "92.5",
-    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Text is generally clear and legible, with minor smudging and ambiguity.\n- Visual Elements: 24/25 - Images are clear and well-described.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 13.5/15 - Handwriting is generally clear, with some minor ambiguity and smudging.\n\nKEY CHALLENGES:\n- Minor smudging and ambiguity in handwriting.\n- Ensuring accurate interpretation of mathematical symbols.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable, with minor uncertainties due to handwriting ambiguity and smudging."
+    "score": "90",
+    "details": "CONFIDENCE SCORES**\n\nQUESTION 1 CONFIDENCE: 92 / 100\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 38/40 - Clear handwriting, minor ambiguity in \"Sample mean\" vs \"sample mean\" capitalization\n- Visual Elements: 23/25 - Diagrams are clear but some text in images is slightly faded\n- Table Structure: 20/20 - No tables in this question\n- Handwriting Legibility: 11/15 - Some symbols and spacing are slightly unclear\n\nISSUES FOR QUESTION 1:\n- The standard error formula uses \"#\" which may be a handwritten quirk for a bullet point\n- Diagram labels are slightly faded but mostly legible\n\nQUESTION 2 CONFIDENCE: 88 / 100\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 36/40 - Some probability notation is slightly unclear (e.g., A^c vs A')\n- Visual Elements: 22/25 - No images but calculation layout is clear\n- Table Structure: 18/20 - Small calculation steps are tabular but not a formal table\n- Handwriting Legibility: 12/15 - Some fractions and probability symbols are cramped\n\nISSUES FOR QUESTION 2:\n- The notation \"A^c\" vs \"A'\" is ambiguous in handwriting\n- The calculation steps are slightly crowded but readable\n- The final answer \"9/13\" is clear but the path to it has some unclear fractions\n\n---\n\n**TOTAL"
   }
 }

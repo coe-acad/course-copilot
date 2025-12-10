@@ -3,22 +3,107 @@ EXTRACTION RESULTS
 ================================================================================
 
 Email: None
-Total Questions Extracted: 2
+Total Questions Extracted: 7
 
 ================================================================================
 
 Question 1:
 ----------------------------------------
-b) Ho: The new relaxation app does not reduce the average resting heart rate
-   H₁: The new relaxation app reduces the average resting heart rate
+H₀: The new relaxation app does not reduce the average resting heart rate
+
+H₁: The new relaxation app reduces the average resting heart rate
+
+(c) Standard error = σ / √n
+
+σ = 10 bpm    n = 64
+
+Standard error = σ / √n
+
+Standard error = 10 / √64
+
+Standard error = 10 / 8
+
+Standard error = 1.2 (Approx)
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
-   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
-   Let A be the spam message and A^c be the non-spam message and B is the filter.
+(d) Z-Score, Z = (X̄ - μ) / (σ / √n)
+
+σ / √n = 5 / 4
+
+X̄ = 69 bpm    μ = 72 bpm
+
+Z = (72 - 69) / (5 / 4)
+
+Z = 3 / (5 / 4)
+
+Z = 12 / 5 ≈ 2.4
+
+================================================================================
+
+Question 3:
+----------------------------------------
+[IMAGE DESCRIPTION: Normal distribution curve with a vertical dashed line near the center labeled 72, and another vertical dashed line to the left labeled 69. The area to the left of 69 is shaded and labeled "P-value".
+
+TEXT IN IMAGE:
+- 69
+- 72
+- P-value
+
+IMAGE TYPE: line_graph
+
+IMAGE CONTEXT: This graph relates to the z-score calculation for the resting heart rate hypothesis test.]
+
+================================================================================
+
+Question 4:
+----------------------------------------
+(a) Population mean = 72 bpm
+Sample mean = 69 bpm
+
+================================================================================
+
+Question 5:
+----------------------------------------
+P(A|B) = [P(A) P(B|A)] / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]
+
+P(B) = P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)
+
+Let A be the spam and Aᶜ be the non-spam message and B is the filter
+
+(c) P(A) is the prior in the above equation.
+
+P(A) = 20 / 100 = 1 / 5
+
+P(A) = 1 / 5
+
+(d) P(A|B) is the posterior probability in the above equation. Posterior is being the product prior and evidence factor.
+
+Evidence factor = P(B|A) / P(B) = P(B|A) / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]
+
+================================================================================
+
+Question 6:
+----------------------------------------
+(e) Since P(A|B) is final Probability from the expression given in question then P(A|Bᶜ) will be it's compliment so that when P(A|B) and P(A|Bᶜ) adds up it gives 1 as total Probability.
+
+P(A) = 1 / 5
+
+P(Aᶜ) = 1 - 1 / 5 = 4 / 5
+
+P(B|A) = 0.9
+
+P(B|Aᶜ) = 0.05
+
+================================================================================
+
+Question 7:
+----------------------------------------
+(a) The posterior probability will be higher depending upon evidence factor. Based on that
+
+(b) The posterior probability will be higher than Prior. Reason is that (Plenty) Prior multiplies with Evidence factor.
 
 ================================================================================
 
@@ -28,99 +113,206 @@ a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
 RAW CHAT RESPONSE
 ================================================================================
 
----
-2/12/2025   Assignment-2   Soham N
+1.
+H₀: The new relaxation app does not reduce the average resting heart rate
 
-1. b) Ho: The new relaxation app does not reduce the average resting heart rate
-   H₁: The new relaxation app reduces the average resting heart rate
+H₁: The new relaxation app reduces the average resting heart rate
 
----
-c) Standard error = σ / √n
-   σ = 10 bpm, n = 64
-   Standard error = 10 / √64
-   Standard error = 10 / 8
-   Standard error = 1.2 (Approx)
+(c) Standard error = σ / √n
 
----
-d) Z-Score, Z = (x̄ - μ) / (σ / √n)
-   σ / √n = 5 / 4
-   x̄ = 72 bpm, μ = 69 bpm
-   Z = (72 - 69) / (5 / 4)
-   Z = 3 / (5 / 4)
-   Z = 12 / 5 = 2.4
+σ = 10 bpm    n = 64
 
-[IMAGE DESCRIPTION:
-- The image shows a normal distribution curve with a shaded area on the right side.
-- The center of the distribution is marked at 69.
-- The shaded area starts from 72 and extends to the right.
-- The shaded area is labeled as P-Value.
+Standard error = σ / √n
 
-IMAGE TYPE: illustration
-IMAGE CONTEXT: This image relates to the Z-Score and P-Value for the question on heart rate.]
+Standard error = 10 / √64
+
+Standard error = 10 / 8
+
+Standard error = 1.2 (Approx)
 
 ---
-a) Population mean = 72 bpm
-   Sample mean = 69 bpm
 
----
 2.
-a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]
-   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)
-   Let A be the spam message and A^c be the non-spam message and B is the filter.
+(d) Z-Score, Z = (X̄ - μ) / (σ / √n)
+
+σ / √n = 5 / 4
+
+X̄ = 69 bpm    μ = 72 bpm
+
+Z = (72 - 69) / (5 / 4)
+
+Z = 3 / (5 / 4)
+
+Z = 12 / 5 ≈ 2.4
 
 ---
-b) P(A) is the prior in the above equation.
-   P(A) = 20 / 100 = 1 / 5
-   P(A) = 1 / 5
+
+3.
+[IMAGE DESCRIPTION: Normal distribution curve with a vertical dashed line near the center labeled 72, and another vertical dashed line to the left labeled 69. The area to the left of 69 is shaded and labeled "P-value".
+
+TEXT IN IMAGE:
+- 69
+- 72
+- P-value
+
+IMAGE TYPE: line_graph
+
+IMAGE CONTEXT: This graph relates to the z-score calculation for the resting heart rate hypothesis test.]
 
 ---
-c) Since P(A|B) is final Probability from the expression given in question then P(A|B^c) will be its complement.
-   So that when P(A|B) and P(A|B^c) adds up it gives 1 as total Probability.
 
-   P(A) = 1 / 5
-   P(A^c) = 1 - 1 / 5 = 4 / 5
-   P(B|A) = 0.9
-   P(B|A^c) = 0.05
+4.
+(a) Population mean = 72 bpm
+Sample mean = 69 bpm
 
 ---
-d) The posterior Probability will be higher depending upon evidence factor. Based on that
 
-   The posterior Probability will be higher than Prior. Reason is that (Prior) multiplies with evidence factor.
+5.
+P(A|B) = [P(A) P(B|A)] / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]
+
+P(B) = P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)
+
+Let A be the spam and Aᶜ be the non-spam message and B is the filter
+
+(c) P(A) is the prior in the above equation.
+
+P(A) = 20 / 100 = 1 / 5
+
+P(A) = 1 / 5
+
+(d) P(A|B) is the posterior probability in the above equation. Posterior is being the product prior and evidence factor.
+
+Evidence factor = P(B|A) / P(B) = P(B|A) / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]
+
+---
+
+6.
+(e) Since P(A|B) is final Probability from the expression given in question then P(A|Bᶜ) will be it's compliment so that when P(A|B) and P(A|Bᶜ) adds up it gives 1 as total Probability.
+
+P(A) = 1 / 5
+
+P(Aᶜ) = 1 - 1 / 5 = 4 / 5
+
+P(B|A) = 0.9
+
+P(B|Aᶜ) = 0.05
+
+---
+
+7.
+(a) The posterior probability will be higher depending upon evidence factor. Based on that
+
+(b) The posterior probability will be higher than Prior. Reason is that (Plenty) Prior multiplies with Evidence factor.
 
 ---
 
 QUESTION 1 CONFIDENCE: 95 / 100
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 38/40 - Text is clear and legible, minor ambiguity in some symbols.
-- Visual Elements: 25/25 - Image description is accurate and detailed.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 15/15 - Handwriting is clear and legible.
+- Text Accuracy: 39/40 - Clear handwriting, minor uncertainty in "Approx" abbreviation.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 14/15 - Some minor ambiguity in mathematical notation spacing.
 
 ISSUES FOR QUESTION 1:
-- None
+- Minor spacing irregularities in mathematical expressions.
 
-QUESTION 2 CONFIDENCE: 90 / 100
+---
+
+QUESTION 2 CONFIDENCE: 96 / 100
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 36/40 - Text is clear, some minor ambiguity in mathematical symbols.
-- Visual Elements: N/A - No images in this question.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 14/15 - Handwriting is clear and legible.
+- Text Accuracy: 39/40 - Very clear handwriting, minor formatting in fraction alignment.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 15/15 - Excellent legibility.
 
 ISSUES FOR QUESTION 2:
-- Minor ambiguity in mathematical symbols.
+- Slight ambiguity in fraction bar length in "12/5".
 
-TOTAL CONFIDENCE SCORE: 92.5 / 100
+---
+
+QUESTION 3 CONFIDENCE: 92 / 100
+BREAKDOWN FOR QUESTION 3:
+- Text Accuracy: 36/40 - Image description based on visible elements, some uncertainty in exact label positions.
+- Visual Elements: 24/25 - Diagram well-described, minor uncertainty in shading extent.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 12/15 - Image context is clear but handwritten labels are partially obscured.
+
+ISSUES FOR QUESTION 3:
+- Image description relies on interpretation of partially visible labels.
+- Shading area in the graph is approximate.
+
+---
+
+QUESTION 4 CONFIDENCE: 98 / 100
+BREAKDOWN FOR QUESTION 4:
+- Text Accuracy: 40/40 - Extremely clear and unambiguous.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 15/15 - Perfect legibility.
+
+ISSUES FOR QUESTION 4:
+- None.
+
+---
+
+QUESTION 5 CONFIDENCE: 93 / 100
+BREAKDOWN FOR QUESTION 5:
+- Text Accuracy: 38/40 - Mostly clear, minor ambiguity in equation formatting.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 13/15 - Some crowding in probability expressions.
+
+ISSUES FOR QUESTION 5:
+- Some probability expressions are slightly crowded.
+- Minor uncertainty in superscript "c" notation.
+
+---
+
+QUESTION 6 CONFIDENCE: 94 / 100
+BREAKDOWN FOR QUESTION 6:
+- Text Accuracy: 38/40 - Clear but some notation spacing issues.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 14/15 - Mostly clear, minor ambiguity in "compliment" vs "complement".
+
+ISSUES FOR QUESTION 6:
+- "Compliment" likely intended as "complement".
+- Minor spacing in probability expressions.
+
+---
+
+QUESTION 7 CONFIDENCE: 91 / 100
+BREAKDOWN FOR QUESTION 7:
+- Text Accuracy: 37/40 - Some unclear phrasing and minor spelling issues.
+- Visual Elements: 25/25 - No visual elements in this question.
+- Table Structure: 20/20 - No tables in this question.
+- Handwriting Legibility: 12/15 - Some words are partially unclear or crowded.
+
+ISSUES FOR QUESTION 7:
+- "Plenty" appears to be a miswriting, possibly intended as "Prior".
+- Some phrasing is awkward or unclear.
+- Minor crowding in handwriting.
+
+---
+
+TOTAL CONFIDENCE SCORE: 94 / 100
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 37/40 - Overall text is clear and legible, minor ambiguity in some mathematical symbols.
-- Visual Elements: 25/25 - Image description is accurate and detailed.
-- Table Structure: N/A - No tables in the document.
-- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible throughout the document.
+- Text Accuracy: 38/40 - High accuracy overall, minor issues with mathematical notation spacing and occasional unclear phrasing.
+- Visual Elements: 24.5/25 - One image described with high accuracy, minor uncertainty in shading.
+- Table Structure: 20/20 - No tables present in the document.
+- Handwriting Legibility: 13.5/15 - Generally clear handwriting with occasional crowding and minor ambiguities.
 
 KEY CHALLENGES:
-- Minor ambiguity in mathematical symbols.
+- Interpreting partially obscured or crowded mathematical notation.
+- Describing the image with precise detail based on limited visibility.
+- Distinguishing between similar-looking words or intended corrections (e.g., "compliment" vs "complement").
+- Maintaining consistent spacing and alignment in mathematical expressions.
 
 RELIABILITY NOTES:
-- The extraction is highly reliable with minimal uncertainties. The handwritten content is clear and legible, and the image is accurately described.
+- The extraction is highly reliable for automated processing, with only minor uncertainties in phrasing and image description.
+- Mathematical content is accurately captured with only negligible formatting ambiguities.
+- Per-question confidence scores reflect the high overall quality of the extraction.
 
 
 ================================================================================
@@ -131,17 +323,42 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "b) Ho: The new relaxation app does not reduce the average resting heart rate\n   H₁: The new relaxation app reduces the average resting heart rate",
+      "student_answer": "H₀: The new relaxation app does not reduce the average resting heart rate\n\nH₁: The new relaxation app reduces the average resting heart rate\n\n(c) Standard error = σ / √n\n\nσ = 10 bpm    n = 64\n\nStandard error = σ / √n\n\nStandard error = 10 / √64\n\nStandard error = 10 / 8\n\nStandard error = 1.2 (Approx)",
       "confidence_score": "95"
     },
     {
       "question_number": "2",
-      "student_answer": "a) P(A|B) = [P(B|A) P(A)] / [P(B|A) P(A) + P(B|A^c) P(A^c)]\n   P(B) = P(B|A) P(A) + P(B|A^c) P(A^c)\n   Let A be the spam message and A^c be the non-spam message and B is the filter.",
-      "confidence_score": "90"
+      "student_answer": "(d) Z-Score, Z = (X̄ - μ) / (σ / √n)\n\nσ / √n = 5 / 4\n\nX̄ = 69 bpm    μ = 72 bpm\n\nZ = (72 - 69) / (5 / 4)\n\nZ = 3 / (5 / 4)\n\nZ = 12 / 5 ≈ 2.4",
+      "confidence_score": "96"
+    },
+    {
+      "question_number": "3",
+      "student_answer": "[IMAGE DESCRIPTION: Normal distribution curve with a vertical dashed line near the center labeled 72, and another vertical dashed line to the left labeled 69. The area to the left of 69 is shaded and labeled \"P-value\".\n\nTEXT IN IMAGE:\n- 69\n- 72\n- P-value\n\nIMAGE TYPE: line_graph\n\nIMAGE CONTEXT: This graph relates to the z-score calculation for the resting heart rate hypothesis test.]",
+      "confidence_score": "92"
+    },
+    {
+      "question_number": "4",
+      "student_answer": "(a) Population mean = 72 bpm\nSample mean = 69 bpm",
+      "confidence_score": "98"
+    },
+    {
+      "question_number": "5",
+      "student_answer": "P(A|B) = [P(A) P(B|A)] / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]\n\nP(B) = P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)\n\nLet A be the spam and Aᶜ be the non-spam message and B is the filter\n\n(c) P(A) is the prior in the above equation.\n\nP(A) = 20 / 100 = 1 / 5\n\nP(A) = 1 / 5\n\n(d) P(A|B) is the posterior probability in the above equation. Posterior is being the product prior and evidence factor.\n\nEvidence factor = P(B|A) / P(B) = P(B|A) / [P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)]",
+      "confidence_score": "93"
+    },
+    {
+      "question_number": "6",
+      "student_answer": "(e) Since P(A|B) is final Probability from the expression given in question then P(A|Bᶜ) will be it's compliment so that when P(A|B) and P(A|Bᶜ) adds up it gives 1 as total Probability.\n\nP(A) = 1 / 5\n\nP(Aᶜ) = 1 - 1 / 5 = 4 / 5\n\nP(B|A) = 0.9\n\nP(B|Aᶜ) = 0.05",
+      "confidence_score": "94"
+    },
+    {
+      "question_number": "7",
+      "student_answer": "(a) The posterior probability will be higher depending upon evidence factor. Based on that\n\n(b) The posterior probability will be higher than Prior. Reason is that (Plenty) Prior multiplies with Evidence factor.",
+      "confidence_score": "91"
     }
   ],
   "confidence": {
-    "score": "92.5",
-    "details": "CONFIDENCE SCORE: 92.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 37/40 - Overall text is clear and legible, minor ambiguity in some mathematical symbols.\n- Visual Elements: 25/25 - Image description is accurate and detailed.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 14.5/15 - Handwriting is clear and legible throughout the document.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical symbols.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable with minimal uncertainties. The handwritten content is clear and legible, and the image is accurately described."
+    "score": "94",
+    "details": "CONFIDENCE SCORE: 94 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 38/40 - High accuracy overall, minor issues with mathematical notation spacing and occasional unclear phrasing.\n- Visual Elements: 24.5/25 - One image described with high accuracy, minor uncertainty in shading.\n- Table Structure: 20/20 - No tables present in the document.\n- Handwriting Legibility: 13.5/15 - Generally clear handwriting with occasional crowding and minor ambiguities.\n\nKEY CHALLENGES:\n- Interpreting partially obscured or crowded mathematical notation.\n- Describing the image with precise detail based on limited visibility.\n- Distinguishing between similar-looking words or intended corrections (e.g., \"compliment\" vs \"complement\").\n- Maintaining consistent spacing and alignment in mathematical expressions.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for automated processing, with only minor uncertainties in phrasing and image description.\n- Mathematical content is accurately captured with only negligible formatting ambiguities.\n- Per-question confidence scores reflect the high overall quality of the extraction."
   }
 }

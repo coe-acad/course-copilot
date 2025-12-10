@@ -9,45 +9,41 @@ Total Questions Extracted: 2
 
 Question 1:
 ----------------------------------------
-Q1
-   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.
-   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users
-   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
-   c. standard error means to know the average of the sample and to the know the differences
+a. New relaxation app reduces the average is the population mean. 6u regular users is the sample mean.
 
-   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64
-     = 3 / 8
-     = 0.375
+b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
 
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.
-   - The right tail of the curve is shaded, representing the p-value.
+c. standard error means to know the average of the sample and to know the differences
 
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]
+d. Z-score = (d̅ - o) / n = 64. 3 - o / √64 = 3 / 8 = -0.375
 
-   b. H₀ ≤ 64
-      H₁ > 64
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: 64, p-value
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Normal distribution curve with a shaded area on the left side indicating the p-value for the z-score calculation in question 1e.
+]
+
+b. H₀ = 64
+H₁ = 764
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-Q2
-   a. Prior probability is P(A)
-      The value of the prior probability is P(A) = 0.9
-   b. Posterior probability is P(A|B), the probability of spam given marked as spam.
-   c. P(A) = 0.9
-      P(A∩B) = 20%
-      P(A|B) = 0.05
+a. prior probability is P(A)
+The value of the prior probability is P(A) = 0.4
 
-      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]
+b. posterior probability is P(A|B), the probability of spam given marked as spam.
 
-      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')
+c. P(A) = 0.4
+   P(A|B) = 20%
+   P(A|B) = 0.08
 
-   d. I think so it will be lower than the prior because it is based on data that we can say in our data
-      the prior is 0.9 and the posterior is 20%, i.e. 0.2
+This is the formula: P(A|B) = P(B|A) · P(A) / [P(B|A) · P(A) + P(B|Aᶜ) · P(Aᶜ)]
+
+To find P(B) the formula is P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)
+
+d. I think so it will be lower than the prior because the p̂ is based on data that we can say in our data the prior is 0.4 and the posterior is 20% ie 0.2
 
 ================================================================================
 
@@ -57,76 +53,95 @@ Q2
 RAW CHAT RESPONSE
 ================================================================================
 
-1. Q1
-   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.
-   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users
-   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
-   c. standard error means to know the average of the sample and to the know the differences
+```
+1.
+a. New relaxation app reduces the average is the population mean. 6u regular users is the sample mean.
 
-   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64
-     = 3 / 8
-     = 0.375
+b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.
 
-   [IMAGE DESCRIPTION:
-   TEXT IN IMAGE:
-   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.
-   - The right tail of the curve is shaded, representing the p-value.
+c. standard error means to know the average of the sample and to know the differences
 
-   IMAGE TYPE: sketch
-   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]
+d. Z-score = (d̅ - o) / n = 64. 3 - o / √64 = 3 / 8 = -0.375
 
-   b. H₀ ≤ 64
-      H₁ > 64
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: 64, p-value
+IMAGE TYPE: diagram
+IMAGE CONTEXT: Normal distribution curve with a shaded area on the left side indicating the p-value for the z-score calculation in question 1e.
+]
+
+b. H₀ = 64
+H₁ = 764
+
 ---
+
+2.
+a. prior probability is P(A)
+The value of the prior probability is P(A) = 0.4
+
+b. posterior probability is P(A|B), the probability of spam given marked as spam.
+
+c. P(A) = 0.4
+   P(A|B) = 20%
+   P(A|B) = 0.08
+
+This is the formula: P(A|B) = P(B|A) · P(A) / [P(B|A) · P(A) + P(B|Aᶜ) · P(Aᶜ)]
+
+To find P(B) the formula is P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)
+
+d. I think so it will be lower than the prior because the p̂ is based on data that we can say in our data the prior is 0.4 and the posterior is 20% ie 0.2
+
 ---
-2. Q2
-   a. Prior probability is P(A)
-      The value of the prior probability is P(A) = 0.9
-   b. Posterior probability is P(A|B), the probability of spam given marked as spam.
-   c. P(A) = 0.9
-      P(A∩B) = 20%
-      P(A|B) = 0.05
+```
 
-      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]
+### PER-QUESTION CONFIDENCE SCORES
 
-      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')
+**QUESTION 1 CONFIDENCE: 88 / 100**
 
-   d. I think so it will be lower than the prior because it is based on data that we can say in our data
-      the prior is 0.9 and the posterior is 20%, i.e. 0.2
----
-QUESTION 1 CONFIDENCE: 90 / 100
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 36/40 - The handwriting is generally clear, with minor ambiguity in some words.
-- Visual Elements: 23/25 - The sketch of the bell curve is clear and well-described.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 13/15 - Some words are slightly unclear but mostly legible.
+- Text Accuracy: 36/40 - Some minor interpretation issues with handwriting, particularly in parts b and c.
+- Visual Elements: 22/25 - The diagram is well-described, but the exact z-score calculation had minor ambiguity.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 10/15 - Some words were unclear, particularly in hypothesis statements.
 
 ISSUES FOR QUESTION 1:
-- Minor ambiguity in the phrasing of the null and alternative hypotheses.
+- The handwriting for "6u" in part a and "d̅" in part d was slightly unclear.
+- The hypothesis statements in part b had some ambiguous phrasing.
+- The diagram's exact labels were not entirely clear but the overall structure was captured.
 
-QUESTION 2 CONFIDENCE: 85 / 100
+---
+
+**QUESTION 2 CONFIDENCE: 90 / 100**
+
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 34/40 - Some parts of the text are unclear, particularly in the formula and explanation.
-- Visual Elements: N/A - No images in this question.
-- Table Structure: N/A - No tables in this question.
-- Handwriting Legibility: 12/15 - Some words and symbols are difficult to decipher.
+- Text Accuracy: 37/40 - Mostly clear, but some probability values were slightly ambiguous.
+- Visual Elements: 25/25 - No images or diagrams present.
+- Table Structure: 20/20 - No tables present.
+- Handwriting Legibility: 13/15 - Some characters in formulas were unclear, particularly "P(A|B)".
 
 ISSUES FOR QUESTION 2:
-- Ambiguity in the formula and explanation of the posterior probability.
+- The probability values in part c were slightly unclear (e.g., "20%" vs "0.2").
+- The formula in part c had some ambiguous notation.
+- The phrasing in part d was slightly unclear but interpretable.
 
-TOTAL CONFIDENCE SCORE: 87.5 / 100
+---
+
+### TOTAL CONFIDENCE SCORE: 89 / 100
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 35/40 - Overall text is clear, with some minor ambiguities.
-- Visual Elements: 23/25 - The sketch in question 1 is clear and well-described.
-- Table Structure: N/A - No tables in the document.
-- Handwriting Legibility: 12.5/15 - Some parts of the handwriting are difficult to read.
+- Text Accuracy: 36.5/40 - Generally high accuracy, with minor issues in ambiguous handwriting.
+- Visual Elements: 23.5/25 - The diagram was well-described, but some minor details were unclear.
+- Table Structure: 20/20 - No tables were present in the document.
+- Handwriting Legibility: 11.5/15 - Some sections had unclear handwriting, particularly in formulas and hypothesis statements.
 
 KEY CHALLENGES:
-- Ambiguity in some parts of the text, particularly in mathematical formulas and explanations.
-- Some handwritten symbols and words are unclear.
+- Ambiguous notation in mathematical expressions, particularly in z-score and probability formulas.
+- Some words and phrases were unclear due to handwriting legibility.
+- The exact values in probability statements required careful interpretation.
 
 RELIABILITY NOTES:
-- The extraction is generally reliable, with some minor uncertainties in specific parts of the text. The overall quality is good, but some manual review may be needed for ambiguous sections.
+- The extraction is highly reliable for the overall content and structure.
+- Minor uncertainties in specific values and notation should be reviewed if precise accuracy is critical.
+- The diagram description is comprehensive and accurately reflects the visual content.
 
 
 ================================================================================
@@ -137,17 +152,17 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "Q1\n   a. New relaxation app reduces the average is the population mean. 64 regular users is the sample mean.\n   b. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users\n   alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.\n   c. standard error means to know the average of the sample and to the know the differences\n\n   d. Z-score = (x̄ - μ) / (σ / √n) = (64, 3-0) / √64\n     = 3 / 8\n     = 0.375\n\n   [IMAGE DESCRIPTION:\n   TEXT IN IMAGE:\n   - A hand-drawn bell curve with a vertical dashed line at 64, indicating the mean.\n   - The right tail of the curve is shaded, representing the p-value.\n\n   IMAGE TYPE: sketch\n   IMAGE CONTEXT: This image relates to the hypothesis testing in question 1.]\n\n   b. H₀ ≤ 64\n      H₁ > 64",
-      "confidence_score": "90"
+      "student_answer": "a. New relaxation app reduces the average is the population mean. 6u regular users is the sample mean.\n\nb. Null Hypothesis is the new relaxation app reduces are equal to the average resting heart rate its regular users alternative hypothesis is the new relaxation app is greater than the average resting heart rate its regular users.\n\nc. standard error means to know the average of the sample and to know the differences\n\nd. Z-score = (d̅ - o) / n = 64. 3 - o / √64 = 3 / 8 = -0.375\n\n[IMAGE DESCRIPTION:\nTEXT IN IMAGE: 64, p-value\nIMAGE TYPE: diagram\nIMAGE CONTEXT: Normal distribution curve with a shaded area on the left side indicating the p-value for the z-score calculation in question 1e.\n]\n\nb. H₀ = 64\nH₁ = 764",
+      "confidence_score": "88"
     },
     {
       "question_number": "2",
-      "student_answer": "Q2\n   a. Prior probability is P(A)\n      The value of the prior probability is P(A) = 0.9\n   b. Posterior probability is P(A|B), the probability of spam given marked as spam.\n   c. P(A) = 0.9\n      P(A∩B) = 20%\n      P(A|B) = 0.05\n\n      This is the formula: P(A|B) = [P(B|A) * P(A)] / [P(B|A) * P(A) + P(B|A') * P(A')]\n\n      To find P(B) the formula is P(B|A) * P(A) + P(B|A') * P(A')\n\n   d. I think so it will be lower than the prior because it is based on data that we can say in our data\n      the prior is 0.9 and the posterior is 20%, i.e. 0.2",
-      "confidence_score": "85"
+      "student_answer": "a. prior probability is P(A)\nThe value of the prior probability is P(A) = 0.4\n\nb. posterior probability is P(A|B), the probability of spam given marked as spam.\n\nc. P(A) = 0.4\n   P(A|B) = 20%\n   P(A|B) = 0.08\n\nThis is the formula: P(A|B) = P(B|A) · P(A) / [P(B|A) · P(A) + P(B|Aᶜ) · P(Aᶜ)]\n\nTo find P(B) the formula is P(B|A) P(A) + P(B|Aᶜ) P(Aᶜ)\n\nd. I think so it will be lower than the prior because the p̂ is based on data that we can say in our data the prior is 0.4 and the posterior is 20% ie 0.2",
+      "confidence_score": "90"
     }
   ],
   "confidence": {
-    "score": "87.5",
-    "details": "CONFIDENCE SCORE: 87.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 35/40 - Overall text is clear, with some minor ambiguities.\n- Visual Elements: 23/25 - The sketch in question 1 is clear and well-described.\n- Table Structure: N/A - No tables in the document.\n- Handwriting Legibility: 12.5/15 - Some parts of the handwriting are difficult to read.\n\nKEY CHALLENGES:\n- Ambiguity in some parts of the text, particularly in mathematical formulas and explanations.\n- Some handwritten symbols and words are unclear.\n\nRELIABILITY NOTES:\n- The extraction is generally reliable, with some minor uncertainties in specific parts of the text. The overall quality is good, but some manual review may be needed for ambiguous sections."
+    "score": "89",
+    "details": "CONFIDENCE SCORES\n\n**QUESTION 1 CONFIDENCE: 88 / 100**\n\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 36/40 - Some minor interpretation issues with handwriting, particularly in parts b and c.\n- Visual Elements: 22/25 - The diagram is well-described, but the exact z-score calculation had minor ambiguity.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 10/15 - Some words were unclear, particularly in hypothesis statements.\n\nISSUES FOR QUESTION 1:\n- The handwriting for \"6u\" in part a and \"d̅\" in part d was slightly unclear.\n- The hypothesis statements in part b had some ambiguous phrasing.\n- The diagram's exact labels were not entirely clear but the overall structure was captured.\n\n---\n\n**QUESTION 2 CONFIDENCE: 90 / 100**\n\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 37/40 - Mostly clear, but some probability values were slightly ambiguous.\n- Visual Elements: 25/25 - No images or diagrams present.\n- Table Structure: 20/20 - No tables present.\n- Handwriting Legibility: 13/15 - Some characters in formulas were unclear, particularly \"P(A|B)\".\n\nISSUES FOR QUESTION 2:\n- The probability values in part c were slightly unclear (e.g., \"20%\" vs \"0.2\").\n- The formula in part c had some ambiguous notation.\n- The phrasing in part d was slightly unclear but interpretable.\n\n---\n\n### TOTAL"
   }
 }

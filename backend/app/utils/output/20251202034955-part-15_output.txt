@@ -9,18 +9,48 @@ Total Questions Extracted: 2
 
 Question 1:
 ----------------------------------------
-(a) population mean = 64
-   sample mean = 69
+(a) population mean : 64
+    sample mean : 69
+
+(b) null = new app does not reduce resting heart rates
+    Alternative : new app reduces resting heart rates
+
+    H₀ : A_new > A_old
+    H₁ : A_new < A_old
+
+(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
+
+    it shows how far the sample mean is from the baseline
+
+(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5
+
+    z = (S_m - μ) / Se
+
+(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded, indicating the region of interest.
+
+TEXT IN IMAGE: 69, 72
+
+IMAGE TYPE: diagram
+
+IMAGE CONTEXT: Question 1(e) - z-score distribution showing population mean and sample mean]
 
 ================================================================================
 
 Question 2:
 ----------------------------------------
-P(S) = 20% = 0.2
-   P(M|S) = 0.9
-   P(M|¬S) = 0.05
+(a) prior probability → P(s)
+    P(s) = 0.2
 
-   p(S|M) = P(S) × P(M|S) / P(M)
+(b) posterior probability ⇒ P(s/m)
+    it is the probability that we are searching for which in this case is probability of spam given the message is spam.
+
+(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]
+    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]
+
+    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)
+    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans
+
+(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower
 
 ================================================================================
 
@@ -30,102 +60,94 @@ P(S) = 20% = 0.2
 RAW CHAT RESPONSE
 ================================================================================
 
----
-1. (a) population mean = 64
-   sample mean = 69
+```
+1.
+(a) population mean : 64
+    sample mean : 69
 
----
 (b) null = new app does not reduce resting heart rates
-Alternative : new app reduces resting heart rates
+    Alternative : new app reduces resting heart rates
 
-   H₀: A_new > A_old
-   H₁: A_new < A_old
+    H₀ : A_new > A_old
+    H₁ : A_new < A_old
 
----
-(c) SE = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
+(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4
 
-   it shows how far the sample mean is from the baseline
+    it shows how far the sample mean is from the baseline
 
----
-(d) Z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 10 = 2.4
+(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5
 
-   Z = (Sₘ - μ) / SE
+    z = (S_m - μ) / Se
 
----
-(e)
-[IMAGE DESCRIPTION:
-- The image is a hand-drawn normal distribution curve.
-- The curve is centered around a mean value, with a vertical line drawn at 69 and 72.
-- The area under the curve to the left of 69 is shaded, indicating the probability of the sample mean being less than 69.
+(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded, indicating the region of interest.
 
-TEXT IN IMAGE:
-- 69
-- 72
+TEXT IN IMAGE: 69, 72
 
-IMAGE TYPE: illustration
-IMAGE CONTEXT: This visual relates to question 1(e) and shows the distribution of sample means.]
+IMAGE TYPE: diagram
+
+IMAGE CONTEXT: Question 1(e) - z-score distribution showing population mean and sample mean]
 
 ---
-2. P(S) = 20% = 0.2
-   P(M|S) = 0.9
-   P(M|¬S) = 0.05
 
-   p(S|M) = P(S) × P(M|S) / P(M)
+2.
+(a) prior probability → P(s)
+    P(s) = 0.2
 
----
-(a) prior probability → P(S)
-   P(S) = 0.2
+(b) posterior probability ⇒ P(s/m)
+    it is the probability that we are searching for which in this case is probability of spam given the message is spam.
 
----
-(b) posterior probability ⇒ P(S|M)
-   it is the probability that we are searching for which in this case is probability of spam given the message is spam.
+(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]
+    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]
 
----
-(c) p(S|M) = 0.2 × 0.9 / (0.9 × 0.2) + (0.05 × 0.8)
+    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)
+    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans
 
-   P(M) = total probability
-   P(M) = P(M|S) × P(S) + P(M|¬S) × P(¬S)
-   = 0.9 × 0.2 + 0.05 × 0.8
+(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower
 
 ---
-(d) lower, since it is a conditional probability, we have a new world
-   Since world is smaller, posterior probability will also be lower
+```
 
----
 QUESTION 1 CONFIDENCE: 95 / 100
 BREAKDOWN FOR QUESTION 1:
-- Text Accuracy: 38/40 - Text is clear and legible, with minimal uncertainty.
-- Visual Elements: 24/25 - Image description is detailed and accurate.
-- Table Structure: 20/20 - No tables in this question.
-- Handwriting Legibility: 13/15 - Handwriting is generally clear but some symbols could be ambiguous.
+- Text Accuracy: 39/40 - Text is clear and well-written; minor ambiguity in mathematical notation formatting.
+- Visual Elements: 24/25 - Image description is comprehensive and accurate.
+- Table Structure: 20/20 - No tables present in this question.
+- Handwriting Legibility: 12/15 - Some minor uncertainty in distinguishing certain mathematical symbols.
 
 ISSUES FOR QUESTION 1:
-- None significant.
+- Slight ambiguity in the fraction formatting in part (c) and (d).
+- The image in part (e) is clear but requires careful description to ensure accuracy.
+
+---
 
 QUESTION 2 CONFIDENCE: 92 / 100
 BREAKDOWN FOR QUESTION 2:
-- Text Accuracy: 37/40 - Text is clear, but some symbols and fractions could be ambiguous.
-- Visual Elements: 25/25 - No images in this question.
-- Table Structure: 20/20 - No tables in this question.
-- Handwriting Legibility: 10/15 - Some parts of the handwriting are less clear.
+- Text Accuracy: 38/40 - Text is mostly clear; some minor uncertainty in notation and phrasing.
+- Visual Elements: 25/25 - No images or diagrams present.
+- Table Structure: 20/20 - No tables present in this question.
+- Handwriting Legibility: 9/15 - Some parts of the handwriting are slightly unclear, particularly in conditional probability notation.
 
 ISSUES FOR QUESTION 2:
-- Some fractions and symbols are a bit unclear.
+- Some uncertainty in interpreting conditional probability notation.
+- Phrasing in part (d) is slightly unclear but generally understandable.
+
+---
 
 TOTAL CONFIDENCE SCORE: 93.5 / 100
+
 OVERALL BREAKDOWN:
-- Text Accuracy: 75/80 - Text is generally clear and legible.
-- Visual Elements: 24/25 - Image description is detailed and accurate.
-- Table Structure: 20/20 - No tables in the document.
-- Handwriting Legibility: 23/30 - Handwriting is generally clear but some parts are less legible.
+- Text Accuracy: 38.5/40 - High accuracy in text extraction with minor ambiguities in mathematical notation.
+- Visual Elements: 24.5/25 - Comprehensive and accurate descriptions of visual elements.
+- Table Structure: 20/20 - No tables were present in the document.
+- Handwriting Legibility: 10.5/15 - Handwriting is generally clear but has some areas of uncertainty.
 
 KEY CHALLENGES:
-- Some symbols and fractions are ambiguous.
-- Handwriting clarity varies.
+- Minor ambiguity in mathematical notation and conditional probability phrasing.
+- Ensuring accurate interpretation of handwritten fractions and symbols.
 
 RELIABILITY NOTES:
-- The extraction is reliable for automated grading and digitization purposes.
-- Minimal manual review required due to high confidence scores.
+- The extraction is highly reliable for text and visual elements.
+- Some caution is advised in interpreting mathematical notation and conditional probability statements due to slight legibility issues.
 
 
 ================================================================================
@@ -136,17 +158,17 @@ JSON FORMAT
   "answers": [
     {
       "question_number": "1",
-      "student_answer": "(a) population mean = 64\n   sample mean = 69",
+      "student_answer": "(a) population mean : 64\n    sample mean : 69\n\n(b) null = new app does not reduce resting heart rates\n    Alternative : new app reduces resting heart rates\n\n    H₀ : A_new > A_old\n    H₁ : A_new < A_old\n\n(c) Se = σ / √n = 10 / √64 = 10 / 8 = 5 / 4\n\n    it shows how far the sample mean is from the baseline\n\n(d) z = (69 - 72) / (10/8) = (3 × 8) / 10 = 24 / 5\n\n    z = (S_m - μ) / Se\n\n(e) [IMAGE DESCRIPTION: Normal distribution curve with a peak at 72 and a vertical dashed line at 69. The area to the left of 69 is shaded, indicating the region of interest.\n\nTEXT IN IMAGE: 69, 72\n\nIMAGE TYPE: diagram\n\nIMAGE CONTEXT: Question 1(e) - z-score distribution showing population mean and sample mean]",
       "confidence_score": "95"
     },
     {
       "question_number": "2",
-      "student_answer": "P(S) = 20% = 0.2\n   P(M|S) = 0.9\n   P(M|¬S) = 0.05\n\n   p(S|M) = P(S) × P(M|S) / P(M)",
+      "student_answer": "(a) prior probability → P(s)\n    P(s) = 0.2\n\n(b) posterior probability ⇒ P(s/m)\n    it is the probability that we are searching for which in this case is probability of spam given the message is spam.\n\n(c) P(s/m) = (0.2 × 0.9) / [P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)]\n    = (0.2 × 0.9) / [(0.9 × 0.2) + (0.05 × 0.8)]\n\n    P(m) = P(m/s)⋅P(s) + P(m/¬s)⋅P(¬s)\n    = 0.9 × 0.2 + 0.05 × 0.8 ← Ans\n\n(d) lower, since it is a conditional probability, we have a new world. Since world is smaller, posterior probability will also be lower",
       "confidence_score": "92"
     }
   ],
   "confidence": {
     "score": "93.5",
-    "details": "CONFIDENCE SCORE: 93.5 / 100\nOVERALL BREAKDOWN:\n- Text Accuracy: 75/80 - Text is generally clear and legible.\n- Visual Elements: 24/25 - Image description is detailed and accurate.\n- Table Structure: 20/20 - No tables in the document.\n- Handwriting Legibility: 23/30 - Handwriting is generally clear but some parts are less legible.\n\nKEY CHALLENGES:\n- Some symbols and fractions are ambiguous.\n- Handwriting clarity varies.\n\nRELIABILITY NOTES:\n- The extraction is reliable for automated grading and digitization purposes.\n- Minimal manual review required due to high confidence scores."
+    "details": "CONFIDENCE SCORE: 93.5 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 38.5/40 - High accuracy in text extraction with minor ambiguities in mathematical notation.\n- Visual Elements: 24.5/25 - Comprehensive and accurate descriptions of visual elements.\n- Table Structure: 20/20 - No tables were present in the document.\n- Handwriting Legibility: 10.5/15 - Handwriting is generally clear but has some areas of uncertainty.\n\nKEY CHALLENGES:\n- Minor ambiguity in mathematical notation and conditional probability phrasing.\n- Ensuring accurate interpretation of handwritten fractions and symbols.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for text and visual elements.\n- Some caution is advised in interpreting mathematical notation and conditional probability statements due to slight legibility issues."
   }
 }

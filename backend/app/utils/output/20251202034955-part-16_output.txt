@@ -1,0 +1,116 @@
+================================================================================
+EXTRACTION RESULTS
+================================================================================
+
+Email: None
+Total Questions Extracted: 1
+
+================================================================================
+
+Question 1:
+----------------------------------------
+a)
+population mean : 72 bpm
+Sample mean : 69 bpm
+
+b)
+H₀ : Relaxation app reduces the average resting was greater/ equal to bpm sale than
+H₁ : Relaxation app was loss of bpm (Normal people Crate than Normal people)
+
+c) d = 72 - 69 = 3
+
+Mean (Standard) = σ / √n = 10 / √64 = 1.25
+
+d) z = d / se = 3 / 1.25
+
+e)
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: 69 72 bpm
+IMAGE TYPE: line_graph
+IMAGE CONTEXT: Normal distribution curve showing the population mean at 72 bpm and sample mean at 69 bpm with shaded area on the left side under the curve.
+]
+
+================================================================================
+
+
+
+================================================================================
+RAW CHAT RESPONSE
+================================================================================
+
+```
+1.
+a)
+population mean : 72 bpm
+Sample mean : 69 bpm
+
+b)
+H₀ : Relaxation app reduces the average resting was greater/ equal to bpm sale than
+H₁ : Relaxation app was loss of bpm (Normal people Crate than Normal people)
+
+c) d = 72 - 69 = 3
+
+Mean (Standard) = σ / √n = 10 / √64 = 1.25
+
+d) z = d / se = 3 / 1.25
+
+e)
+[IMAGE DESCRIPTION:
+TEXT IN IMAGE: 69 72 bpm
+IMAGE TYPE: line_graph
+IMAGE CONTEXT: Normal distribution curve showing the population mean at 72 bpm and sample mean at 69 bpm with shaded area on the left side under the curve.
+]
+
+---
+
+QUESTION 1 CONFIDENCE: 92 / 100
+
+BREAKDOWN FOR QUESTION 1:
+- Text Accuracy: 38/40 - Text is mostly clear with minor ambiguity in part (b) regarding phrasing.
+- Visual Elements: 23/25 - The image is well-described, though the exact shading extent is inferred.
+- Table Structure: 20/20 - No tables present in this question.
+- Handwriting Legibility: 11/15 - Some words in part (b) are slightly unclear, particularly "sale than" and "Crate."
+
+ISSUES FOR QUESTION 1:
+- Part (b) contains unclear phrasing and possible spelling errors ("greater/ equal to bpm sale than," "Crate").
+- The exact meaning of "loss of bpm" is ambiguous.
+- The diagram's shading is not explicitly described in the student's work but inferred from context.
+
+---
+
+TOTAL CONFIDENCE SCORE: 92 / 100
+
+OVERALL BREAKDOWN:
+- Text Accuracy: 38/40 - High accuracy with minor ambiguities in phrasing.
+- Visual Elements: 23/25 - Effective description of the diagram, though shading details are inferred.
+- Table Structure: 20/20 - No tables were present in the document.
+- Handwriting Legibility: 11/15 - Some parts of the handwriting, particularly in hypothesis statements, are unclear.
+
+KEY CHALLENGES:
+- Ambiguity in phrasing for hypothesis statements in part (b).
+- Interpretation of the diagram's shading without explicit student annotation.
+
+RELIABILITY NOTES:
+- The extraction is highly reliable for numerical and formulaic content.
+- Hypothesis statements may require manual review for precise interpretation.
+- Diagram description is based on standard statistical conventions.
+```
+
+
+================================================================================
+JSON FORMAT
+================================================================================
+{
+  "email": null,
+  "answers": [
+    {
+      "question_number": "1",
+      "student_answer": "a)\npopulation mean : 72 bpm\nSample mean : 69 bpm\n\nb)\nH₀ : Relaxation app reduces the average resting was greater/ equal to bpm sale than\nH₁ : Relaxation app was loss of bpm (Normal people Crate than Normal people)\n\nc) d = 72 - 69 = 3\n\nMean (Standard) = σ / √n = 10 / √64 = 1.25\n\nd) z = d / se = 3 / 1.25\n\ne)\n[IMAGE DESCRIPTION:\nTEXT IN IMAGE: 69 72 bpm\nIMAGE TYPE: line_graph\nIMAGE CONTEXT: Normal distribution curve showing the population mean at 72 bpm and sample mean at 69 bpm with shaded area on the left side under the curve.\n]",
+      "confidence_score": "92"
+    }
+  ],
+  "confidence": {
+    "score": "92",
+    "details": "CONFIDENCE SCORE: 92 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 38/40 - High accuracy with minor ambiguities in phrasing.\n- Visual Elements: 23/25 - Effective description of the diagram, though shading details are inferred.\n- Table Structure: 20/20 - No tables were present in the document.\n- Handwriting Legibility: 11/15 - Some parts of the handwriting, particularly in hypothesis statements, are unclear.\n\nKEY CHALLENGES:\n- Ambiguity in phrasing for hypothesis statements in part (b).\n- Interpretation of the diagram's shading without explicit student annotation.\n\nRELIABILITY NOTES:\n- The extraction is highly reliable for numerical and formulaic content.\n- Hypothesis statements may require manual review for precise interpretation.\n- Diagram description is based on standard statistical conventions.\n```"
+  }
+}
