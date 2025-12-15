@@ -293,6 +293,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             "evaluation_id": evaluation_id,
             "students": all_students
         }
+        
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
             answers = student.get("answers", [])
@@ -306,6 +307,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
         evaluation_result["total_score"] = overall_total
         evaluation_result["max_total_score"] = overall_max
+
         
         # Save evaluation result to MongoDB
         try:
