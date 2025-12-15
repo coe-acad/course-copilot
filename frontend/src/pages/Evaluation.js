@@ -24,6 +24,7 @@ export default function Evaluation() {
   const [answerSheetsUploaded, setAnswerSheetsUploaded] = useState(false);
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
+  const [evaluationError, setEvaluationError] = useState(null); // Surface failure reason to UI
   const [showResults, setShowResults] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
@@ -89,8 +90,16 @@ export default function Evaluation() {
           }
           if (status.status === 'completed' && status.evaluation_result) {
             setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
+            setEvaluationError(null);
+            setIsEvaluating(false);
+          } else if (status.status === 'failed') {
+            if (status.partial_result) {
+              setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.partial_result });
+            }
+            setEvaluationError(status.message || 'Evaluation failed. Showing any partial results available.');
             setIsEvaluating(false);
           } else {
+            setEvaluationError(null);
             setIsEvaluating(true);
           }
         } catch (e) {
@@ -591,8 +600,13 @@ export default function Evaluation() {
 
 
   const formatScore = (score, maxScore) => {
-    const percentage = Math.round((score / maxScore) * 100);
-    return `${score}/${maxScore} (${percentage}%)`;
+    const safeScore = typeof score === 'number' ? score : 0;
+    const safeMax = typeof maxScore === 'number' ? maxScore : 0;
+    if (!safeMax || safeMax <= 0) {
+      return `${safeScore}/— (N/A)`;
+    }
+    const percentage = Math.round((safeScore / safeMax) * 100);
+    return `${safeScore}/${safeMax} (${percentage}%)`;
   };
 
   const getStatusColor = (status) => {
@@ -1235,6 +1249,35 @@ export default function Evaluation() {
           <span style={{ color: '#888' }}>{'>'}</span>
           <span style={{ fontWeight: 700 }}>Evaluation</span>
         </div>
+
+        {/* Failure / partial results banner */}
+        {evaluationError && (
+          <div style={{
+            maxWidth: 1200,
+            margin: "0 auto 1rem auto",
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: 10,
+            border: '1px solid #f59e0b',
+            background: '#fff7ed',
+            color: '#92400e',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontWeight: 700 }}>Evaluation finished with issues</div>
+              <div style={{ fontSize: 14 }}>{evaluationError}</div>
+              {evaluationResult?.evaluation_result?.students && (
+                <div style={{ fontSize: 13, color: '#b45309' }}>
+                  Showing partial results: {evaluationResult.evaluation_result.students.length} of {answerSheetFiles.length || 0} students.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
 
         {/* Total Submissions Summary and Action Buttons */}

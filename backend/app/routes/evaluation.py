@@ -151,6 +151,7 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
 
 def _process_evaluation(evaluation_id: str, user_id: str):
     """Process evaluation in background using local file extraction with parallel workers"""
+    partial_result = None  # Store whatever we have so we can return partial output on failure
     try:
         # Check if evaluation is already completed
         evaluation = get_evaluation_by_evaluation_id(evaluation_id)
@@ -266,10 +267,24 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"ALL BATCHES COMPLETED: {sorted(batch_results.keys())} | Total students: {len(all_students)}")
         logger.info("=" * 60)
         
+        # Track what came back so we can surface partial results in case of failure
+        partial_result = {
+            "evaluation_id": evaluation_id,
+            "students": all_students
+        }
+        expected_file_ids = [sheet.get("file_id") for sheet in extracted_answer_sheets if sheet.get("file_id")]
+        returned_file_ids = [s.get("file_id") for s in all_students if s.get("file_id")]
+        missing_file_ids = [fid for fid in expected_file_ids if fid not in returned_file_ids]
+        duplicate_file_ids = [fid for fid in set(returned_file_ids) if returned_file_ids.count(fid) > 1]
+
         # Verify all students were evaluated
         if len(all_students) != len(extracted_answer_sheets):
             logger.error(f"Student count mismatch: expected {len(extracted_answer_sheets)}, got {len(all_students)}")
-            raise HTTPException(status_code=500, detail="Evaluation incomplete: student count mismatch")
+            if missing_file_ids:
+                logger.error(f"Missing file_ids: {missing_file_ids}")
+            if duplicate_file_ids:
+                logger.error(f"Duplicate file_ids in evaluation results: {duplicate_file_ids}")
+            raise HTTPException(status_code=500, detail=f"Evaluation incomplete: student count mismatch. Missing: {missing_file_ids or 'unknown'}")
         
         logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
         
@@ -373,6 +388,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             update_evaluation(evaluation_id, {"status": "failed"})
         except Exception as status_error:
             logger.error(f"Failed to update evaluation status: {str(status_error)}")
+        # Persist partial results so they can be surfaced via status API
+        try:
+            if partial_result:
+                update_evaluation(evaluation_id, {"partial_result": partial_result})
+        except Exception as partial_error:
+            logger.error(f"Failed to store partial_result for {evaluation_id}: {str(partial_error)}")
 
         # Clean up temporary files
         try:
@@ -382,9 +403,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         except Exception as cleanup_error:
             logger.error(f"Failed to cleanup temporary files: {str(cleanup_error)}")
         
-        return {
+        result_payload = {
             "error": str(e)
         }
+        if partial_result:
+            result_payload["partial_result"] = partial_result
+        return result_payload
 
 @router.get("/evaluation/evaluate-files")
 async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
@@ -480,7 +504,8 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             return {
                 "status": "failed",
                 "message": "Evaluation processing failed. Please try again or contact support.",
-                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
+                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", []),
+                "partial_result": evaluation.get("partial_result")
             }
         
         if "evaluation_result" in evaluation:
