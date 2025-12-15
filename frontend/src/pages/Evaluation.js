@@ -24,6 +24,7 @@ export default function Evaluation() {
   const [answerSheetsUploaded, setAnswerSheetsUploaded] = useState(false);
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
+  const [evaluationError, setEvaluationError] = useState(null); // Surface failure reason to UI
   const [showResults, setShowResults] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
@@ -89,8 +90,16 @@ export default function Evaluation() {
           }
           if (status.status === 'completed' && status.evaluation_result) {
             setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
+            setEvaluationError(null);
+            setIsEvaluating(false);
+          } else if (status.status === 'failed') {
+            if (status.partial_result) {
+              setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.partial_result });
+            }
+            setEvaluationError(status.message || 'Evaluation failed. Showing any partial results available.');
             setIsEvaluating(false);
           } else {
+            setEvaluationError(null);
             setIsEvaluating(true);
           }
         } catch (e) {
@@ -591,8 +600,13 @@ export default function Evaluation() {
 
 
   const formatScore = (score, maxScore) => {
-    const percentage = Math.round((score / maxScore) * 100);
-    return `${score}/${maxScore} (${percentage}%)`;
+    const safeScore = typeof score === 'number' ? score : 0;
+    const safeMax = typeof maxScore === 'number' ? maxScore : 0;
+    if (!safeMax || safeMax <= 0) {
+      return `${safeScore}/— (N/A)`;
+    }
+    const percentage = Math.round((safeScore / safeMax) * 100);
+    return `${safeScore}/${safeMax} (${percentage}%)`;
   };
 
   const getStatusColor = (status) => {
@@ -655,28 +669,6 @@ export default function Evaluation() {
     } catch (error) {
       console.error('Error fetching student report:', error);
       alert(error.message || 'Failed to load student report');
-      setShowReportModal(false);
-    } finally {
-      setIsLoadingReport(false);
-    }
-  };
-
-  const handleViewCombinedReport = async () => {
-    if (!evaluationId) {
-      alert('Evaluation ID not found');
-      return;
-    }
-
-    setIsLoadingReport(true);
-    setShowReportModal(true);
-    
-    try {
-      const reportData = await evaluationService.getCombinedReport(evaluationId);
-      setCurrentReport(reportData.report);
-      setReportTitle('Combined Evaluation Report');
-    } catch (error) {
-      console.error('Error fetching combined report:', error);
-      alert(error.message || 'Failed to load combined report');
       setShowReportModal(false);
     } finally {
       setIsLoadingReport(false);
@@ -831,9 +823,7 @@ export default function Evaluation() {
 
       // Generate filename based on report type
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = reportTitle.includes('Combined') 
-        ? `Combined_Evaluation_Report_${timestamp}.pdf`
-        : `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
+      const filename = `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
       
       // Save the PDF
       doc.save(filename);
@@ -1260,8 +1250,37 @@ export default function Evaluation() {
           <span style={{ fontWeight: 700 }}>Evaluation</span>
         </div>
 
+        {/* Failure / partial results banner */}
+        {evaluationError && (
+          <div style={{
+            maxWidth: 1200,
+            margin: "0 auto 1rem auto",
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: 10,
+            border: '1px solid #f59e0b',
+            background: '#fff7ed',
+            color: '#92400e',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontWeight: 700 }}>Evaluation finished with issues</div>
+              <div style={{ fontSize: 14 }}>{evaluationError}</div>
+              {evaluationResult?.evaluation_result?.students && (
+                <div style={{ fontSize: 13, color: '#b45309' }}>
+                  Showing partial results: {evaluationResult.evaluation_result.students.length} of {answerSheetFiles.length || 0} students.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-        {/* Total Submissions Summary and Combined Report Button */}
+
+        {/* Total Submissions Summary and Action Buttons */}
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ 
             display: 'inline-block',
@@ -1313,37 +1332,6 @@ export default function Evaluation() {
               >
                 <span style={{ fontSize: '18px' }}>📥</span>
                 {isLoadingReport ? 'Downloading...' : 'Download CSV'}
-              </button>
-              
-              {/* View Combined Report Button */}
-              <button
-                onClick={handleViewCombinedReport}
-                style={{
-                  padding: '14px 28px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: '#fff',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.transform = 'translateY(-2px)';
-                  e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-                }}
-              >
-                <span style={{ fontSize: '18px' }}>📊</span>
-                View Combined Report
               </button>
             </div>
           )}

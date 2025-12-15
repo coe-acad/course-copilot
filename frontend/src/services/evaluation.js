@@ -243,25 +243,6 @@ export const evaluationService = {
     }
   },
 
-  async getCombinedReport(evaluationId, { signal } = {}) {
-    try {
-      const res = await axiosInstance.get(`/evaluation/report/${evaluationId}`, {
-        timeout: 10000,
-        signal
-      });
-      return res.data; // { report: "markdown string" }
-    } catch (error) {
-      console.error('Get combined report error:', error);
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please try again.');
-      }
-      if (error.response?.status === 400) {
-        throw new Error('Evaluation not yet completed');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to get combined report');
-    }
-  },
-
   async getStudentReport(evaluationId, studentIndex, { signal } = {}) {
     try {
       const res = await axiosInstance.get(`/evaluation/report/${evaluationId}/student/${studentIndex}`, {
