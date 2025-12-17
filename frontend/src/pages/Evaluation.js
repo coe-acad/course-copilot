@@ -45,6 +45,7 @@ export default function Evaluation() {
   const [reportTitle, setReportTitle] = useState(''); // Report title
   const [isLoadingReport, setIsLoadingReport] = useState(false); // Loading report
   const [showDownloadSuccessModal, setShowDownloadSuccessModal] = useState(false); // Show download success popup
+  const [qaData, setQaData] = useState({ question_data: [], answer_data: [] }); // Store QA data from endpoint
   const pendingSavePromiseRef = React.useRef(null);
 
   const evaluationInProgressRef = React.useRef(false);
@@ -53,7 +54,7 @@ export default function Evaluation() {
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
   const openedFromCardRef = React.useRef(false);
 
-  
+
 
   const handleClose = () => {
     const maybeWaitForSave = async () => {
@@ -65,7 +66,7 @@ export default function Evaluation() {
             new Promise((resolve) => setTimeout(resolve, 1500))
           ]);
         }
-      } catch {}
+      } catch { }
       navigate('/dashboard');
     };
     maybeWaitForSave();
@@ -108,9 +109,9 @@ export default function Evaluation() {
         }
       })();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
-  
+
 
 
   // Force re-render when status changes
@@ -128,23 +129,23 @@ export default function Evaluation() {
     if (!fileToUpload) {
       return; // No need to show alert for auto-upload
     }
-    
+
     // Prevent duplicate uploads of the same file
     if (isUploadingMarkScheme) {
       return;
     }
-    
+
     try {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
         courseId,
         markSchemeFile: fileToUpload
       });
-      
+
       // Backend now returns the format check result
       setEvaluationId(res.evaluation_id);
       setMarkSchemeUploaded(true);
-      
+
       // No popup for successful format - just proceed silently
       // The UI will show "✓ Mark Scheme Uploaded" status
     } catch (error) {
@@ -183,20 +184,20 @@ export default function Evaluation() {
     if (!filesToUpload || filesToUpload.length === 0) {
       return; // No need to show alert for auto-upload
     }
-    
+
     // Prevent duplicate uploads
     if (isUploadingAnswerSheets) {
       return;
     }
-    
+
     try {
       setIsUploadingAnswerSheets(true);
-      
+
       await evaluationService.uploadAnswerSheets({
         evaluationId,
         answerSheetFiles: filesToUpload
       });
-      
+
       setAnswerSheetsUploaded(true);
       // No success popup - just proceed silently
       // The UI will show "✓ Answer Sheets Uploaded" status
@@ -212,12 +213,12 @@ export default function Evaluation() {
       alert('Please upload both mark scheme and answer sheets first.');
       return;
     }
-    
+
     // Prevent duplicate evaluation calls
     if (evaluationInProgressRef.current || isEvaluating) {
       return;
     }
-    
+
     // Show name input screen
     setShowNameInputScreen(true);
   };
@@ -237,13 +238,13 @@ export default function Evaluation() {
     setShowProcessStartedPopup(true);
 
     // Save the evaluation with the provided name
-    const fileName = answerSheetFiles.length > 0 
+    const fileName = answerSheetFiles.length > 0
       ? `${answerSheetFiles.length}_students_evaluation_report`
       : 'evaluation_report';
 
     // Fire-and-forget save call
-    try { localStorage.setItem('pendingEvaluationAssetName', assetName.trim()); } catch {}
-    
+    try { localStorage.setItem('pendingEvaluationAssetName', assetName.trim()); } catch { }
+
     const savePromise = evaluationService.saveEvaluation(evaluationId, assetName.trim(), fileName)
       .then(() => {
         try {
@@ -259,32 +260,32 @@ export default function Evaluation() {
           el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
           el.style.zIndex = '2000';
           document.body.appendChild(el);
-          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
-        } catch {}
+          setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 2200);
+        } catch { }
       })
       .catch((error) => {
         console.error('Error saving evaluation:', error);
         alert('Failed to save evaluation: ' + (error?.message || 'Unknown error'));
       })
       .finally(() => {
-        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch { }
       });
     pendingSavePromiseRef.current = savePromise;
 
     // Clear any previous evaluation tracking state
     evaluationService.clearCompletedEvaluations();
-    
+
     evaluationInProgressRef.current = true;
-    
+
     try {
       setIsEvaluating(true);
 
       // Start the evaluation in the background
       await evaluationService.evaluateFiles(evaluationId);
-      
+
       // Evaluation started successfully
       evaluationInProgressRef.current = false;
-       
+
     } catch (err) {
       console.error('Evaluation error:', err);
       evaluationInProgressRef.current = false;
@@ -297,28 +298,28 @@ export default function Evaluation() {
 
 
   const handleStudentClick = async (studentIndex) => {
-    
-    
+
+
     // Validate that we have the required data
     if (!evaluationResult || !evaluationResult.evaluation_result || !evaluationResult.evaluation_result.students) {
       alert('Evaluation data is not yet available. Please wait for the evaluation to complete.');
       return;
     }
-    
+
     if (studentIndex >= evaluationResult.evaluation_result.students.length) {
       alert('Student data not found. Please try again.');
       return;
     }
-    
+
     // Add additional validation
     try {
       const student = evaluationResult.evaluation_result.students[studentIndex];
-      
+
       if (!student) {
         alert('Student data is missing. Please try again.');
         return;
       }
-      
+
       // Check if we have the required data structure for the review page
       // Backend provides 'answers' array with scores, not 'question_scores'
       // We need either question_scores OR answers array with scores
@@ -326,32 +327,44 @@ export default function Evaluation() {
         (student.question_scores && Array.isArray(student.question_scores) && student.question_scores.length > 0) ||
         (student.answers && Array.isArray(student.answers) && student.answers.length > 0)
       );
-      
+
       if (!hasRequiredData) {
         alert('The evaluation data structure is incomplete. Please contact support.');
         return;
       }
-      
+
       // Update status to "opened" if it's currently "unopened"
       if (student.status === "unopened") {
-        
+
         // Update status locally
         setEvaluationResult(prevState => {
           const updatedState = JSON.parse(JSON.stringify(prevState));
           updatedState.evaluation_result.students[studentIndex].status = "opened";
           return updatedState;
         });
-        
+
         // Force a re-render by updating a separate state variable
         setForceUpdate(prev => prev + 1);
       }
-      
+
       setSelectedStudentIndex(studentIndex);
       setShowReview(true);
       setSelectedQuestionIndex(0);
       setIsEditing(false);
       setEditedQuestionScores([]);
+
       setEditedFeedback([]);
+
+      // Fetch QA data for the review UI
+      try {
+        const data = await evaluationService.getQAs(evaluationId, studentIndex);
+        if (data) {
+          setQaData(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch QA data:", err);
+        // Fallback or handle error silently as we have fallback data in student object
+      }
     } catch (error) {
       console.error('Error accessing student data:', error);
       alert('Error accessing student data. Please try again.');
@@ -372,31 +385,31 @@ export default function Evaluation() {
   const handleEdit = () => {
     if (evaluationResult && selectedStudentIndex !== null) {
       const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-      
-             // Initialize with current values - use helper function to extract scores
-       const currentScores = extractQuestionScores(student);
-       if (currentScores.length > 0) {
-         // Ensure 0 values are properly handled by converting to strings
-         const scoresForEditing = currentScores.map(score => {
-           if (score === 0) return '0';
-           if (score === null || score === undefined) return '';
-           return score.toString();
-         });
-         setEditedQuestionScores(scoresForEditing);
-       } else {
-         console.warn('No question scores available, initializing with empty array');
-         setEditedQuestionScores([]);
-       }
-       
-                      // Get feedback for each question individually
-        const currentFeedbackArray = [];
-        if (student.answers && Array.isArray(student.answers)) {
-          student.answers.forEach(answer => {
-            currentFeedbackArray.push(answer.feedback || '');
-          });
-        }
-        setEditedFeedback(currentFeedbackArray);
-      
+
+      // Initialize with current values - use helper function to extract scores
+      const currentScores = extractQuestionScores(student);
+      if (currentScores.length > 0) {
+        // Ensure 0 values are properly handled by converting to strings
+        const scoresForEditing = currentScores.map(score => {
+          if (score === 0) return '0';
+          if (score === null || score === undefined) return '';
+          return score.toString();
+        });
+        setEditedQuestionScores(scoresForEditing);
+      } else {
+        console.warn('No question scores available, initializing with empty array');
+        setEditedQuestionScores([]);
+      }
+
+      // Get feedback for each question individually
+      const currentFeedbackArray = [];
+      if (student.answers && Array.isArray(student.answers)) {
+        student.answers.forEach(answer => {
+          currentFeedbackArray.push(answer.feedback || '');
+        });
+      }
+      setEditedFeedback(currentFeedbackArray);
+
       setIsEditing(true);
     } else {
     }
@@ -406,113 +419,113 @@ export default function Evaluation() {
     if (!evaluationId || selectedStudentIndex === null) {
       return;
     }
-    
+
     setIsSaving(true); // Start loading state
-    
+
     try {
       // Validate question scores
       if (!Array.isArray(editedQuestionScores) || editedQuestionScores.length === 0) {
         alert('Question scores are required and must be an array');
         return;
       }
-      
-      
+
+
       // Ensure all scores are valid numbers and don't exceed max scores
       const validScores = editedQuestionScores.map((score, index) => {
         // Handle empty string or undefined values
         if (score === '' || score === undefined || score === null) {
           throw new Error(`Score at question ${index + 1} is required`);
         }
-        
+
         const numScore = parseFloat(score);
         if (isNaN(numScore) || numScore < 0) {
           throw new Error(`Invalid score at question ${index + 1}: ${score}`);
         }
-        
+
         // Check if score exceeds max score for this question
         const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
         const maxScore = extractMaxScores(student)[index] || 10;
         if (numScore > maxScore) {
           throw new Error(`Score at question ${index + 1} (${numScore}) exceeds maximum score (${maxScore})`);
         }
-        
+
         return numScore;
       });
-      
+
       const totalScore = validScores.reduce((sum, score) => sum + score, 0);
-      
-              // Validate and clean the feedback for each question
-        const cleanFeedbackArray = [];
-        if (Array.isArray(editedFeedback)) {
-          editedFeedback.forEach((feedback, index) => {
-            const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
-            cleanFeedbackArray.push(cleanFeedback);
+
+      // Validate and clean the feedback for each question
+      const cleanFeedbackArray = [];
+      if (Array.isArray(editedFeedback)) {
+        editedFeedback.forEach((feedback, index) => {
+          const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
+          cleanFeedbackArray.push(cleanFeedback);
+        });
+      }
+
+      // Call the backend to update each question result individually
+      // Backend expects individual question updates, not bulk updates
+      const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
+      const fileId = student.file_id;
+
+
+      if (!fileId) {
+        throw new Error('Student file ID not found. Cannot update results.');
+      }
+
+      // Update each question score and feedback
+      for (let i = 0; i < validScores.length; i++) {
+        const questionFeedback = cleanFeedbackArray[i] || '';
+
+        try {
+          // Ensure feedback is not undefined or null
+          const feedbackToSend = questionFeedback || '';
+
+          await evaluationService.editQuestionResult({
+            evaluationId,
+            fileId,
+            questionNumber: (i + 1).toString(),
+            score: parseFloat(validScores[i]), // Convert to float as backend expects
+            feedback: feedbackToSend
           });
+        } catch (error) {
+          console.error(`Failed to update question ${i + 1}:`, error);
+          throw error; // Re-throw to stop the process
         }
-      
-                     // Call the backend to update each question result individually
-        // Backend expects individual question updates, not bulk updates
-        const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-        const fileId = student.file_id;
-        
-        
-        if (!fileId) {
-          throw new Error('Student file ID not found. Cannot update results.');
-        }
-       
-               // Update each question score and feedback
-        for (let i = 0; i < validScores.length; i++) {
-          const questionFeedback = cleanFeedbackArray[i] || '';
-          
-          try {
-            // Ensure feedback is not undefined or null
-            const feedbackToSend = questionFeedback || '';
-            
-            await evaluationService.editQuestionResult({
-              evaluationId,
-              fileId,
-              questionNumber: (i + 1).toString(),
-              score: parseFloat(validScores[i]), // Convert to float as backend expects
-              feedback: feedbackToSend
-            });
-          } catch (error) {
-            console.error(`Failed to update question ${i + 1}:`, error);
-            throw error; // Re-throw to stop the process
-          }
-        }
-      
-      
-             // Update local state for immediate feedback
-       const updatedEvaluationResult = { ...evaluationResult };
-       const studentIndex = selectedStudentIndex;
-       
-       // Update the answers array with new scores and feedback
-       updatedEvaluationResult.evaluation_result.students[studentIndex].answers = 
-         updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
-           ...answer,
-           score: validScores[index], // Use the validated scores directly
-           feedback: cleanFeedbackArray[index] || answer.feedback
-         }));
-       
-               // Also update question_scores if it exists for backward compatibility
-        if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
-          updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
-        }
-       
-       // Update the student object
-       updatedEvaluationResult.evaluation_result.students[studentIndex] = {
-         ...updatedEvaluationResult.evaluation_result.students[studentIndex],
-         total_score: totalScore,
-         status: "modified"
-       };
-     
-     // Force a re-render by creating a new object reference
-     setEvaluationResult({...updatedEvaluationResult});
-     setIsEditing(false);
-     
-     
-     // Changes saved successfully - no popup needed
-      
+      }
+
+
+      // Update local state for immediate feedback
+      const updatedEvaluationResult = { ...evaluationResult };
+      const studentIndex = selectedStudentIndex;
+
+      // Update the answers array with new scores and feedback
+      updatedEvaluationResult.evaluation_result.students[studentIndex].answers =
+        updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
+          ...answer,
+          score: validScores[index], // Use the validated scores directly
+          feedback: cleanFeedbackArray[index] || answer.feedback
+        }));
+
+      // Also update question_scores if it exists for backward compatibility
+      if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
+        updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
+      }
+
+      // Update the student object
+      updatedEvaluationResult.evaluation_result.students[studentIndex] = {
+        ...updatedEvaluationResult.evaluation_result.students[studentIndex],
+        total_score: totalScore,
+        status: "modified"
+      };
+
+      // Force a re-render by creating a new object reference
+      setEvaluationResult({ ...updatedEvaluationResult });
+      setIsEditing(false);
+
+
+      // Changes saved successfully - no popup needed
+
     } catch (error) {
       console.error('Error saving changes:', error);
       console.error('Error details:', {
@@ -539,7 +552,7 @@ export default function Evaluation() {
     }
 
     // Create a combined filename for the evaluation report
-    const fileName = answerSheetFiles.length > 0 
+    const fileName = answerSheetFiles.length > 0
       ? `${answerSheetFiles.length}_students_evaluation_report`
       : 'evaluation_report';
 
@@ -561,12 +574,12 @@ export default function Evaluation() {
       el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
       el.style.zIndex = '2000';
       document.body.appendChild(el);
-      setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 1800);
-    } catch {}
+      setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 1800);
+    } catch { }
 
     // Fire-and-forget save call; do not block UI
     // Mark a pending indicator for Dashboard to aggressively refresh assets
-    try { localStorage.setItem('pendingEvaluationAssetName', nameToSave); } catch {}
+    try { localStorage.setItem('pendingEvaluationAssetName', nameToSave); } catch { }
 
     const savePromise = evaluationService.saveEvaluation(evaluationId, nameToSave, fileName)
       .then(() => {
@@ -583,8 +596,8 @@ export default function Evaluation() {
           el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
           el.style.zIndex = '2000';
           document.body.appendChild(el);
-          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
-        } catch {}
+          setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 2200);
+        } catch { }
       })
       .catch((error) => {
         console.error('Error saving evaluation:', error);
@@ -592,7 +605,7 @@ export default function Evaluation() {
       })
       .finally(() => {
         setIsSaving(false);
-        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch { }
       });
     pendingSavePromiseRef.current = savePromise;
   };
@@ -629,12 +642,12 @@ export default function Evaluation() {
     if (student.question_scores && Array.isArray(student.question_scores)) {
       return student.question_scores;
     }
-    
+
     if (student.answers && Array.isArray(student.answers)) {
       // Backend provides answers array with scores, extract them
       return student.answers.map(answer => answer.score || 0);
     }
-    
+
     return [];
   };
 
@@ -643,12 +656,12 @@ export default function Evaluation() {
     if (student.max_scores && Array.isArray(student.max_scores)) {
       return student.max_scores;
     }
-    
+
     if (student.answers && Array.isArray(student.answers)) {
       // Backend provides max_score in each answer
       return student.answers.map(answer => answer.max_score || 0);
     }
-    
+
     return [];
   };
 
@@ -660,7 +673,7 @@ export default function Evaluation() {
 
     setIsLoadingReport(true);
     setShowReportModal(true);
-    
+
     try {
       const reportData = await evaluationService.getStudentReport(evaluationId, studentIndex);
       setCurrentReport(reportData.report);
@@ -696,69 +709,69 @@ export default function Evaluation() {
         let currentX = xPos;
         let currentY = yPos;
         const lineHeight = fontSize * 0.5;
-        
+
         // Split text by bold markers
         const parts = text.split(/(\*\*.*?\*\*)/g);
-        
+
         parts.forEach(part => {
           if (part.startsWith('**') && part.endsWith('**')) {
             // Bold text
             const boldText = part.replace(/\*\*/g, '');
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(31, 41, 55);
-            
+
             // Check if text fits on current line
             const textWidth = doc.getTextWidth(boldText);
             if (currentX + textWidth > xPos + maxW && currentX > xPos) {
               // Move to next line
               currentY += lineHeight;
               currentX = xPos;
-              
+
               // Check if new page needed
               if (currentY > pageHeight - margin) {
                 doc.addPage();
                 currentY = margin;
               }
             }
-            
+
             doc.text(boldText, currentX, currentY);
             currentX += textWidth;
           } else if (part) {
             // Normal text
             doc.setFont('helvetica', 'normal');
             doc.setTextColor(51, 51, 51);
-            
+
             // Split by spaces to wrap words
             const words = part.split(' ');
             words.forEach((word, idx) => {
               const wordText = idx === 0 ? word : ' ' + word;
               const wordWidth = doc.getTextWidth(wordText);
-              
+
               // Check if word fits on current line
               if (currentX + wordWidth > xPos + maxW && currentX > xPos) {
                 // Move to next line
                 currentY += lineHeight;
                 currentX = xPos;
-                
+
                 // Check if new page needed
                 if (currentY > pageHeight - margin) {
                   doc.addPage();
                   currentY = margin;
                 }
               }
-              
+
               doc.text(wordText.trim(), currentX, currentY);
               currentX += wordWidth;
             });
           }
         });
-        
+
         return currentY;
       };
 
       // Parse markdown and convert to PDF
       const lines = currentReport.split('\n');
-      
+
       lines.forEach((line, index) => {
         // Check if we need a new page
         if (yPosition > pageHeight - margin - 20) {
@@ -824,7 +837,7 @@ export default function Evaluation() {
       // Generate filename based on report type
       const timestamp = new Date().toISOString().split('T')[0];
       const filename = `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
-      
+
       // Save the PDF
       doc.save(filename);
     } catch (error) {
@@ -889,9 +902,9 @@ export default function Evaluation() {
         </div>
       );
     }
-    
+
     const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-    
+
     if (!student) {
       console.error('Student data not found for index:', selectedStudentIndex);
       return (
@@ -923,7 +936,7 @@ export default function Evaluation() {
         </div>
       );
     }
-    
+
     const fileName = answerSheetFiles[selectedStudentIndex]?.name || `Student ${selectedStudentIndex + 1}`;
 
     return (
@@ -957,37 +970,37 @@ export default function Evaluation() {
           <div style={{ flex: 1, maxWidth: 300, overflowY: 'auto', padding: '24px 0' }}>
             <div style={{ background: '#fff', borderRadius: 18, padding: '24px', boxShadow: '0 2px 7px #0002' }}>
               <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: '#1e40af' }}>Questions</h3>
-                             {(() => {
-                 const questionScores = extractQuestionScores(student);
-                 const maxScores = extractMaxScores(student);
-                 
-                 if (questionScores.length > 0) {
-                   return questionScores.map((score, index) => (
-                     <div
-                       key={index}
-                       style={{
-                         padding: '12px 16px',
-                         marginBottom: '8px',
-                         borderRadius: '8px',
-                         background: selectedQuestionIndex === index ? '#e0f2fe' : '#f8f9fa',
-                         border: selectedQuestionIndex === index ? '2px solid #0288d1' : '1px solid #e9ecef',
-                         cursor: 'pointer',
-                         transition: 'all 0.2s'
-                       }}
-                       onClick={() => setSelectedQuestionIndex(index)}
-                     >
-                       <div style={{ fontWeight: 600, marginBottom: '4px' }}>Question {index + 1}</div>
-                       <div style={{ fontSize: '14px', color: '#666' }}>{score}/{maxScores[index] || (score > 0 ? score : '?')}</div>
-                     </div>
-                   ));
-                 } else {
-                   return (
-                     <div style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
-                       No question scores available
-                     </div>
-                   );
-                 }
-               })()}
+              {(() => {
+                const questionScores = extractQuestionScores(student);
+                const maxScores = extractMaxScores(student);
+
+                if (questionScores.length > 0) {
+                  return questionScores.map((score, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '12px 16px',
+                        marginBottom: '8px',
+                        borderRadius: '8px',
+                        background: selectedQuestionIndex === index ? '#e0f2fe' : '#f8f9fa',
+                        border: selectedQuestionIndex === index ? '2px solid #0288d1' : '1px solid #e9ecef',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onClick={() => setSelectedQuestionIndex(index)}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: '4px' }}>Question {index + 1}</div>
+                      <div style={{ fontSize: '14px', color: '#666' }}>{score}/{maxScores[index] || (score > 0 ? score : '?')}</div>
+                    </div>
+                  ));
+                } else {
+                  return (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
+                      No question scores available
+                    </div>
+                  );
+                }
+              })()}
             </div>
           </div>
 
@@ -997,25 +1010,25 @@ export default function Evaluation() {
               <h3 style={{ margin: '0 0 20px 0', fontSize: 22, fontWeight: 600, color: '#1e40af' }}>
                 Question {selectedQuestionIndex + 1}
               </h3>
-              
+
               <div style={{ marginBottom: '24px' }}>
                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
                 <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', lineHeight: '1.6' }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkBreaks]}
                     components={{
-                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                      code: ({node, inline, ...props}) => 
-                        inline ? 
+                      p: ({ node, ...props }) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({ node, ...props }) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({ node, ...props }) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({ node, inline, ...props }) =>
+                        inline ?
                           <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
                           <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                     }}
                   >
-                    {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
+                    {qaData?.question_data?.[selectedQuestionIndex] || student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -1026,18 +1039,18 @@ export default function Evaluation() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkBreaks]}
                     components={{
-                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                      code: ({node, inline, ...props}) => 
-                        inline ? 
+                      p: ({ node, ...props }) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                      strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                      ul: ({ node, ...props }) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      ol: ({ node, ...props }) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                      li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
+                      code: ({ node, inline, ...props }) =>
+                        inline ?
                           <code style={{ background: '#dbeafe', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
                           <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                     }}
                   >
-                    {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
+                    {qaData?.answer_data?.[selectedQuestionIndex] || student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -1117,28 +1130,28 @@ export default function Evaluation() {
                       onChange={(e) => {
                         const inputValue = e.target.value;
                         const maxScore = extractMaxScores(student)[selectedQuestionIndex] || 10;
-                        
+
                         // Always allow the input to be updated first
                         const newScores = [...editedQuestionScores];
                         newScores[selectedQuestionIndex] = inputValue;
                         setEditedQuestionScores(newScores);
-                        
+
                         // Then validate and show any errors (but don't block the input)
                         if (inputValue === '') {
                           return; // Allow empty input
                         }
-                        
+
                         // Check for more than one decimal place
                         if (inputValue.includes('.') && inputValue.split('.')[1]?.length > 1) {
                           return; // Don't allow more than one decimal place
                         }
-                        
+
                         // Validate the number
                         const numValue = parseFloat(inputValue);
                         if (isNaN(numValue) || numValue < 0) {
                           return; // Don't allow negative numbers or invalid input
                         }
-                        
+
                         if (numValue > maxScore) {
                           return; // Don't allow score higher than max
                         }
@@ -1196,13 +1209,13 @@ export default function Evaluation() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkBreaks]}
                       components={{
-                        p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                        strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                        code: ({node, inline, ...props}) => 
-                          inline ? 
+                        p: ({ node, ...props }) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
+                        strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+                        ul: ({ node, ...props }) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        ol: ({ node, ...props }) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
+                        li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
+                        code: ({ node, inline, ...props }) =>
+                          inline ?
                             <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
                             <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                       }}
@@ -1282,10 +1295,10 @@ export default function Evaluation() {
 
         {/* Total Submissions Summary and Action Buttons */}
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ 
+          <div style={{
             display: 'inline-block',
-            background: '#e3f2fd', 
-            borderRadius: '12px', 
+            background: '#e3f2fd',
+            borderRadius: '12px',
             padding: '20px 32px',
             border: '1px solid #bbdefb'
           }}>
@@ -1294,7 +1307,7 @@ export default function Evaluation() {
               {answerSheetFiles.length || 0}
             </div>
           </div>
-          
+
           {/* Action Buttons */}
           {evaluationResult && (
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -1341,8 +1354,8 @@ export default function Evaluation() {
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', flex: 1, overflow: 'auto' }}>
           <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
             {/* Table Header */}
-            <div style={{ 
-              display: 'grid', 
+            <div style={{
+              display: 'grid',
               gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
               background: '#f8f9fa',
               borderBottom: '1px solid #dee2e6',
@@ -1375,10 +1388,10 @@ export default function Evaluation() {
                 onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? '#fff' : '#fafbfc'}
               >
                 {/* Filename - Now Clickable */}
-                <div 
-                  style={{ 
-                    color: evaluationResult ? '#2563eb' : '#6c757d', 
-                    textDecoration: evaluationResult ? 'underline' : 'none', 
+                <div
+                  style={{
+                    color: evaluationResult ? '#2563eb' : '#6c757d',
+                    textDecoration: evaluationResult ? 'underline' : 'none',
                     cursor: evaluationResult ? 'pointer' : 'default',
                     fontWeight: 500,
                     padding: '4px 8px',
@@ -1420,32 +1433,32 @@ export default function Evaluation() {
                     </div>
                   )}
                 </div>
-                
+
                 {/* Marks */}
-                <div style={{ 
+                <div style={{
                   fontWeight: 600,
                   color: isEvaluating ? '#6c757d' : '#28a745'
                 }}>
-                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ? 
-                    formatScore(evaluationResult.evaluation_result.students[index].total_score, evaluationResult.evaluation_result.students[index].max_total_score) : 
+                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
+                    formatScore(evaluationResult.evaluation_result.students[index].total_score, evaluationResult.evaluation_result.students[index].max_total_score) :
                     'Pending'
                   }
                 </div>
-                
+
                 {/* Result */}
-                <div style={{ 
+                <div style={{
                   fontWeight: 600,
                   color: isEvaluating ? '#6c757d' : '#28a745'
                 }}>
-                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ? 
-                    ((evaluationResult.evaluation_result.students[index].total_score / evaluationResult.evaluation_result.students[index].max_total_score) >= 0.6 ? 'Passed' : 'Failed') : 
+                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
+                    ((evaluationResult.evaluation_result.students[index].total_score / evaluationResult.evaluation_result.students[index].max_total_score) >= 0.6 ? 'Passed' : 'Failed') :
                     'Pending'
                   }
                 </div>
-                
+
                 {/* Status - Show modified or unmodified */}
-                <div style={{ 
-                  fontSize: '13px', 
+                <div style={{
+                  fontSize: '13px',
                   color: getStatusColor(evaluationResult?.evaluation_result?.students?.[index]?.status || 'unopened'),
                   fontWeight: 500
                 }}>
@@ -1498,7 +1511,7 @@ export default function Evaluation() {
 
 
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-        
+
         {/* Save Modal */}
         {showSaveModal && (
           <div style={{
@@ -1524,7 +1537,7 @@ export default function Evaluation() {
               <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600 }}>
                 Save Evaluation
               </h3>
-              
+
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>
                   Evaluation Name:
@@ -1611,9 +1624,9 @@ export default function Evaluation() {
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
             }}>
               {/* Modal Header */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 marginBottom: 24,
                 paddingBottom: 16,
@@ -1644,22 +1657,22 @@ export default function Evaluation() {
               </div>
 
               {/* Modal Content */}
-              <div style={{ 
-                flex: 1, 
+              <div style={{
+                flex: 1,
                 overflowY: 'auto',
                 marginBottom: 24,
                 padding: '0 20px 0 4px'
               }}>
                 {isLoadingReport ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     height: '300px'
                   }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ 
-                        fontSize: 48, 
+                      <div style={{
+                        fontSize: 48,
                         marginBottom: 16,
                         animation: 'spin 1s linear infinite'
                       }}>⏳</div>
@@ -1677,31 +1690,31 @@ export default function Evaluation() {
                       remarkPlugins={[remarkGfm, remarkBreaks]}
                       components={{
                         // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h1: ({node, ...props}) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
+                        h1: ({ node, ...props }) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
                         // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h2: ({node, ...props}) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
+                        h2: ({ node, ...props }) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
                         // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h3: ({node, ...props}) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
+                        h3: ({ node, ...props }) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
                         // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h4: ({node, ...props}) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
-                        p: ({node, ...props}) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
-                        strong: ({node, ...props}) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: 8 }} {...props} />,
-                        code: ({node, inline, ...props}) => 
-                          inline ? 
+                        h4: ({ node, ...props }) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
+                        p: ({ node, ...props }) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
+                        strong: ({ node, ...props }) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
+                        ul: ({ node, ...props }) => <ul style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
+                        ol: ({ node, ...props }) => <ol style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
+                        li: ({ node, ...props }) => <li style={{ marginBottom: 8 }} {...props} />,
+                        code: ({ node, inline, ...props }) =>
+                          inline ?
                             <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: 14, fontFamily: 'monospace', color: '#dc2626' }} {...props} /> :
                             <code style={{ background: '#1f2937', color: '#f3f4f6', padding: 16, borderRadius: 8, display: 'block', overflow: 'auto', fontSize: 14, fontFamily: 'monospace' }} {...props} />,
-                        pre: ({node, ...props}) => <pre style={{ background: '#1f2937', borderRadius: 8, padding: 16, marginBottom: 16, overflow: 'auto' }} {...props} />,
-                        blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #2563eb', paddingLeft: 16, margin: '16px 0', color: '#4b5563', fontStyle: 'italic', background: '#f8f9fa', padding: '12px 16px', borderRadius: '0 8px 8px 0' }} {...props} />,
-                        hr: ({node, ...props}) => <hr style={{ border: 'none', borderTop: '2px solid #e9ecef', margin: '24px 0' }} {...props} />,
-                        table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, border: '1px solid #dee2e6' }} {...props} />,
-                        thead: ({node, ...props}) => <thead style={{ background: '#f8f9fa' }} {...props} />,
-                        th: ({node, ...props}) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
-                        td: ({node, ...props}) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
+                        pre: ({ node, ...props }) => <pre style={{ background: '#1f2937', borderRadius: 8, padding: 16, marginBottom: 16, overflow: 'auto' }} {...props} />,
+                        blockquote: ({ node, ...props }) => <blockquote style={{ borderLeft: '4px solid #2563eb', paddingLeft: 16, margin: '16px 0', color: '#4b5563', fontStyle: 'italic', background: '#f8f9fa', padding: '12px 16px', borderRadius: '0 8px 8px 0' }} {...props} />,
+                        hr: ({ node, ...props }) => <hr style={{ border: 'none', borderTop: '2px solid #e9ecef', margin: '24px 0' }} {...props} />,
+                        table: ({ node, ...props }) => <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, border: '1px solid #dee2e6' }} {...props} />,
+                        thead: ({ node, ...props }) => <thead style={{ background: '#f8f9fa' }} {...props} />,
+                        th: ({ node, ...props }) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
+                        td: ({ node, ...props }) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
                         // eslint-disable-next-line jsx-a11y/anchor-has-content
-                        a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
+                        a: ({ node, ...props }) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
                       }}
                     >
                       {currentReport}
@@ -1711,9 +1724,9 @@ export default function Evaluation() {
               </div>
 
               {/* Modal Footer */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'flex-end', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
                 gap: 12,
                 paddingTop: 16,
                 borderTop: '2px solid #e9ecef'
@@ -1811,10 +1824,10 @@ export default function Evaluation() {
 
         {/* Name Input Content */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5vw' }}>
-          <div style={{ 
-            background: '#fff', 
-            borderRadius: 18, 
-            padding: '48px', 
+          <div style={{
+            background: '#fff',
+            borderRadius: 18,
+            padding: '48px',
             boxShadow: '0 2px 7px #0002',
             maxWidth: 500,
             width: '100%'
@@ -1825,7 +1838,7 @@ export default function Evaluation() {
             <p style={{ margin: '0 0 32px 0', color: '#666', textAlign: 'center', fontSize: 16 }}>
               Enter a name for this evaluation. It will be saved to Assets on the Evaluation Card.
             </p>
-            
+
             <div style={{ marginBottom: '32px' }}>
               <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, fontSize: 16 }}>
                 Evaluation Name:
@@ -1872,7 +1885,7 @@ export default function Evaluation() {
         </div>
 
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-        
+
         {/* Process Started Popup */}
         {showProcessStartedPopup && (
           <div style={{
@@ -1973,7 +1986,7 @@ export default function Evaluation() {
         <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
           <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: 'fit-content', margin: '1em' }}>            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Mark Scheme</h2>
             <p style={{ marginTop: 8, color: '#444', marginBottom: 20 }}>Upload your evaluation mark scheme first</p>
-            
+
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: '8px' }}>Mark Scheme File</label>
               <input
@@ -2044,7 +2057,7 @@ export default function Evaluation() {
         <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
           <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: '80%', margin: '1em' }}>
             <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Answer Sheets</h2>
-            
+
             {markSchemeUploaded ? (
               <div style={{ marginTop: 20 }}>
                 <div style={{ padding: '16px', background: '#f0f8ff', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
@@ -2133,7 +2146,7 @@ export default function Evaluation() {
       </div>
 
       <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-      
+
       {/* Format Error Modal */}
       {showFormatError && (
         <div style={{
@@ -2176,7 +2189,7 @@ export default function Evaluation() {
                 {formatErrorMessage}
               </p>
             </div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
               <button
                 onClick={handleReuploadMarkScheme}
@@ -2220,8 +2233,8 @@ export default function Evaluation() {
       )}
 
       {/* Download Success Modal */}
-      <Modal 
-        open={showDownloadSuccessModal} 
+      <Modal
+        open={showDownloadSuccessModal}
         onClose={() => setShowDownloadSuccessModal(false)}
         modalStyle={{
           minWidth: 400,
@@ -2231,13 +2244,13 @@ export default function Evaluation() {
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-          <div style={{ 
-            width: '60px', 
-            height: '60px', 
-            borderRadius: '50%', 
-            background: '#10b981', 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: '#10b981',
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
             fontSize: '24px',
             color: 'white'

@@ -287,6 +287,13 @@ def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     update_in_collection("evaluations", {"evaluation_id": evaluation_id}, update_data)
     logger.info(f"Successfully updated evaluation {evaluation_id} in MongoDB")
 
+#Todo: make a new collection to save question and answer data
+def create_qa_data(evaluation_id: str, qa_data: dict):
+    add_to_collection("qa_data", {"evaluation_id": evaluation_id, "qa_data": qa_data})
+
+def get_qa_data_by_evaluation_id(evaluation_id: str):
+    return get_one_from_collection("qa_data", {"evaluation_id": evaluation_id})
+
 # Minimal helper: update one question's score and feedback
 
 def update_question_score_feedback(evaluation_id: str, file_id: str, question_number: str, score, feedback):
