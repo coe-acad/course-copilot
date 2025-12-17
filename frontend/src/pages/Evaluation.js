@@ -357,7 +357,7 @@ export default function Evaluation() {
 
       // Fetch QA data for the review UI
       try {
-        const data = await evaluationService.getQAs(evaluationId);
+        const data = await evaluationService.getQAs(evaluationId, studentIndex);
         if (data) {
           setQaData(data);
         }

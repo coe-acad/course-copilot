@@ -176,6 +176,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         # Extract answer sheets
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
+        all_qas_data = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
                 pages = extract_text_tables(answer_sheet_path)
@@ -185,9 +186,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                 qas_list = extraction_result.get("answers", [])                
                 qas_data = extraction_result.get("full_data", [])
 
-                create_qa_data(evaluation_id, qas_data)
-                logger.info(f"QAs created for evaluation {qas_data}")
-                
+                # Collect QA data to save in bulk later
+                all_qas_data.append({
+                    "student_index": i,
+                    "qa_data": qas_data
+                })
+
                 answer_sheet_data = {
                     "file_id": f"answer_sheet_{i+1}",
                     "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
@@ -202,6 +206,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                 continue
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
+
+        # Save all QA data at once
+        if all_qas_data:
+            create_qa_data(evaluation_id, all_qas_data)
+            logger.info(f"QAs created for evaluation {evaluation_id} with {len(all_qas_data)} entries")
 
         # Determine batch size based on question count
         total_sheets = len(extracted_answer_sheets)
@@ -461,16 +470,36 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
         raise HTTPException(status_code=500, detail=f"Error starting evaluation: {str(e)}")
 
 @router.get("/evaluation/get-qas")
-def get_qas(evaluation_id: str, user_id: str):
+def get_qas(evaluation_id: str, user_id: str, student_index: int = 0):
     try:
         qas_doc = get_qa_data_by_evaluation_id(evaluation_id)
+        if not qas_doc:
+            return {
+                "question_data": [],
+                "answer_data": []
+            }
 
-        qa_data = qas_doc.get("qa_data", [])
+        stored_data = qas_doc.get("qa_data", [])
+        
+        target_data = []
 
+        # Check if stored_data is our new wrapper structure (list of dicts with student_index)
+        if isinstance(stored_data, list) and len(stored_data) > 0:
+            first_item = stored_data[0]
+            if isinstance(first_item, dict) and "student_index" in first_item and "qa_data" in first_item:
+                 # It's the new structure
+                 found = next((item for item in stored_data if item.get("student_index") == int(student_index)), None)
+                 if found:
+                     target_data = found.get("qa_data", [])
+            else:
+                 # It's likely the old structure (directly the QA list for one student)
+                 # In this case we just return it, ignoring student_index as we likely only have one
+                 target_data = stored_data
+        
         question_data = []
         answer_data = []
 
-        for item in qa_data:
+        for item in target_data:
             question_data.append(item.get("question", ""))
 
             answer_list = item.get("answer", [])

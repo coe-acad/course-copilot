@@ -178,7 +178,7 @@ export const evaluationService = {
     }
   },
 
-  async getQAs(evaluationId) {
+  async getQAs(evaluationId, studentIndex = 0) {
     try {
       const user = getCurrentUser();
       if (!user?.id) {
@@ -188,7 +188,8 @@ export const evaluationService = {
       const res = await axiosInstance.get('/evaluation/get-qas', {
         params: {
           evaluation_id: evaluationId,
-          user_id: user.id
+          user_id: user.id,
+          student_index: studentIndex
         }
       });
       return res.data; // { question_data: [], answer_data: [] }
