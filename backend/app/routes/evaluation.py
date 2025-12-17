@@ -15,7 +15,7 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name, create_qa_data, update_evaluation, get_qa_data_by_evaluation_id
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
@@ -182,7 +182,11 @@ def _process_evaluation(evaluation_id: str, user_id: str):
                 extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)
                 
                 extracted_email = extraction_result.get("email", None)
-                qas_list = extraction_result.get("answers", [])
+                qas_list = extraction_result.get("answers", [])                
+                qas_data = extraction_result.get("full_data", [])
+
+                create_qa_data(evaluation_id, qas_data)
+                logger.info(f"QAs created for evaluation {qas_data}")
                 
                 answer_sheet_data = {
                     "file_id": f"answer_sheet_{i+1}",
@@ -293,7 +297,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             "evaluation_id": evaluation_id,
             "students": all_students
         }
-        
+        logger.info(f"Final evaluation result: {evaluation_result}")
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
             answers = student.get("answers", [])
@@ -455,6 +459,37 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
     except Exception as e:
         logger.error(f"Error starting evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error starting evaluation: {str(e)}")
+
+@router.get("/evaluation/get-qas")
+def get_qas(evaluation_id: str, user_id: str):
+    try:
+        qas_doc = get_qa_data_by_evaluation_id(evaluation_id)
+
+        qa_data = qas_doc.get("qa_data", [])
+
+        question_data = []
+        answer_data = []
+
+        for item in qa_data:
+            question_data.append(item.get("question", ""))
+
+            answer_list = item.get("answer", [])
+            if answer_list:
+                answer_data.append(answer_list[0].get("content", ""))
+            else:
+                answer_data.append("")
+
+        return {
+            "question_data": question_data,
+            "answer_data": answer_data
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting qas data for evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting qas data: {str(e)}"
+        )
 
 @router.put("/evaluation/edit-results")
 def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token)):

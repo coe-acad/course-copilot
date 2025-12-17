@@ -344,7 +344,6 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                                                 "question_number": {"type": "string"},
                                                 "question_text": {"type": "string"},
                                                 "student_answer": {"type": ["string", "null"]},
-                                                "correct_answer": {"type": ["string", "null"]},
                                                 "score": {"type": "number"},
                                                 "max_score": {"type": "number"},
                                                 "feedback": {"type": "string"}
@@ -353,7 +352,6 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                                                 "question_number",
                                                 "question_text",
                                                 "student_answer",
-                                                "correct_answer",
                                                 "score",
                                                 "max_score",
                                                 "feedback"
