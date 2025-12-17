@@ -359,7 +359,16 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
 
         # Get complete response from thread messages
         messages = client.beta.threads.messages.list(thread_id=thread_id)
-        latest_message = messages.data[0]
+
+        assistant_messages = [
+            m for m in messages.data
+            if m.role == "assistant" and m.content
+        ]
+
+        if not assistant_messages:
+            raise Exception("No assistant response found")
+
+        latest_message = assistant_messages[0]
         complete_response = latest_message.content[0].text.value
         
         # Mark task as completed with result

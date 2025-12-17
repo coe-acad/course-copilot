@@ -470,7 +470,7 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
         raise HTTPException(status_code=500, detail=f"Error starting evaluation: {str(e)}")
 
 @router.get("/evaluation/get-qas")
-def get_qas(evaluation_id: str, user_id: str, student_index: int = 0):
+def get_qas(evaluation_id: str, user_id: str=Depends(verify_token), student_index: int = 0):
     try:
         qas_doc = get_qa_data_by_evaluation_id(evaluation_id)
         if not qas_doc:
