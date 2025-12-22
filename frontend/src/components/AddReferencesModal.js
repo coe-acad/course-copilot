@@ -9,7 +9,7 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
   const [errors, setErrors] = useState([]); // file validation errors
   const fileInputRef = useRef();
 
-  // Supported file types for OpenAI Assistants API
+  // Supported file types for OpenAI API
   const SUPPORTED_FILE_TYPES = [
     // Documents
     '.pdf', '.txt', '.md', '.docx',
@@ -45,11 +45,11 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
     const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
     const isValidExtension = SUPPORTED_FILE_TYPES.includes(fileExtension);
     const isValidMimeType = SUPPORTED_MIME_TYPES.includes(file.type);
-    
+
     return {
       isValid: isValidExtension && isValidMimeType,
-      error: !isValidExtension ? `File type ${fileExtension} is not supported` : 
-             !isValidMimeType ? `File MIME type ${file.type} is not supported` : null
+      error: !isValidExtension ? `File type ${fileExtension} is not supported` :
+        !isValidMimeType ? `File MIME type ${file.type} is not supported` : null
     };
   };
 
@@ -207,7 +207,7 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
               <button onClick={() => handleDelete(idx)} style={{ background: 'none', border: 'none', color: '#d32f2f', cursor: 'pointer', marginLeft: 8 }}><FiTrash2 size={18} /></button>
             </div>
           ))}
-          
+
           {errors.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 15, color: '#d32f2f' }}>Unsupported files ({errors.length})</div>

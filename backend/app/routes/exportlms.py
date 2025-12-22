@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Depends, APIRouter
 from pydantic import BaseModel
 from ..services.mongo import get_course, get_asset_by_course_id_and_asset_name
-from ..utils.data_formating import format_quiz_content, format_activity_content, format_lecture_content
+from ..utils.data_formatting import format_quiz_content, format_activity_content, format_lecture_content
 from ..utils.verify_token import verify_token
 from ..utils.lms_curl import login_to_lms, get_lms_courses, get_all_modules, post_quiz_data_to_lms, post_activity_data_to_lms, post_lecture_data_to_lms, link_activity_to_course, create_lms_module
 from ..config.settings import settings

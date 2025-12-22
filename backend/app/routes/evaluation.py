@@ -16,7 +16,7 @@ import csv
 import io
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
-from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
+from app.services.openai_service import evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
@@ -59,17 +59,10 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         
         logger.info(f"Saved mark scheme to {mark_scheme_path}")
         
-        # Create evaluation assistant for LLM evaluation later
-        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
-        evaluation_assistant_id = eval_info[0]
-        vector_store_id = eval_info[1]
-        
         # Create evaluation record
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
-            evaluation_assistant_id=evaluation_assistant_id,
-            vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
             answer_sheet_filenames=[]
@@ -364,7 +357,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
 
         # Send error email to user
         try:
-            send_eval_error_email(evaluation_id, user_id, str(e))
+            send_eval_error_email(evaluation_id, user_id)
         except Exception as email_error:
             logger.error(f"Failed to send error email: {str(email_error)}")
 

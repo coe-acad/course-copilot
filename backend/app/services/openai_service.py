@@ -13,21 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-def create_assistant():
-    try:
-        assistant_prompt = PromptParser().render_prompt("app/prompts/system/overall_context.json" , {})
-        assistant = client.beta.assistants.create(
-            name="Course Design Assistant",
-            instructions=assistant_prompt,
-            model=settings.OPENAI_MODEL,
-            tools=[{"type": "file_search"}]
-        )
-        logger.info(f"Created Course Design Assistant {assistant.id}")
-        return assistant.id
-    except Exception as e:
-        logger.error(f"Error creating Course Design Assistant: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 def create_file(file_obj):
     try:
         openai_file = client.files.create(file=file_obj, purpose="assistants")
@@ -38,13 +23,13 @@ def create_file(file_obj):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def create_vector_store(assistant_id: str):
+def create_vector_store(name: str):
     try:
-        vector_store = client.vector_stores.create(name=f"Course_{assistant_id}_files")
-        logger.info(f"Created vector store {vector_store.id} for assistant {assistant_id}")
+        vector_store = client.vector_stores.create(name=f"Course_{name}_files")
+        logger.info(f"Created vector store {vector_store.id} for course {name}")
         return vector_store.id
     except Exception as e:
-        logger.error(f"Error creating vector store for assistant {assistant_id}: {str(e)}")
+        logger.error(f"Error creating vector store for course {name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def connect_file_to_vector_store(vector_store_id: str, file_id: str):
@@ -161,28 +146,6 @@ def clean_text(text: str):
         logger.error(f"Error cleaning text: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def create_evaluation_assistant_and_vector_store(evaluation_id: str):
-    try:
-        # Create vector store first
-        vector_store = client.vector_stores.create(name=f"Evaluation_{evaluation_id}_files")
-        logger.info(f"Created vector store {vector_store.id}")
-        prompt = PromptParser().render_prompt("app/prompts/system/evaluation-assistant.json", {})
-        logger.info(f"Prompt: {prompt}")
-        # Create assistant without default vector store access (files will be attached at thread level)
-        assistant = client.beta.assistants.create(
-            name="Evaluation Assistant",
-            instructions=prompt,
-            model=settings.OPENAI_MODEL,
-            tools=[{"type": "file_search"}]
-            # Note: No tool_resources here - vector stores will be attached at thread level
-        )
-        logger.info(f"Created Evaluation Assistant {assistant.id}")
-        
-        return assistant.id, vector_store.id
-    except Exception as e:
-        logger.error(f"Error creating Evaluation Assistant: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 def upload_file_to_vector_store(upload_file: UploadFile, vector_store_id: str) -> str:
     """Upload a single file to OpenAI and connect to vector store"""
     upload_file.file.seek(0)
@@ -198,64 +161,6 @@ def upload_file_to_vector_store(upload_file: UploadFile, vector_store_id: str) -
     connect_file_to_vector_store(vector_store_id, openai_file_id)
     
     return openai_file_id
-
-def upload_mark_scheme_file(mark_scheme: UploadFile, vector_store_id: str) -> str:
-    """Upload mark scheme file"""
-    return upload_file_to_vector_store(mark_scheme, vector_store_id)
-
-def upload_answer_sheet_files(answer_sheets: List[UploadFile]) -> tuple[List[str], List[str]]:
-    """Upload multiple answer sheet files and return both file IDs and filenames"""
-    answer_sheet_ids = []
-    answer_sheet_filenames = []
-    
-    for answer_sheet in answer_sheets:
-        try:
-            file_content = answer_sheet.file.read()
-            file_obj = io.BytesIO(file_content)
-            file_obj.name = answer_sheet.filename
-
-            file_id = create_file(file_obj)
-            answer_sheet_ids.append(file_id)
-            answer_sheet_filenames.append(answer_sheet.filename)
-        except Exception as e:
-            logger.error(f"Failed to upload {answer_sheet.filename}: {str(e)}")
-            continue
-    
-    if not answer_sheet_ids:
-        raise HTTPException(status_code=400, detail="No answer sheet files were uploaded successfully")
-    
-    return answer_sheet_ids, answer_sheet_filenames
-
-def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_file_id: str) -> dict:
-    thread = client.beta.threads.create(
-        messages=[{"role": "user", "content": "Check if the mark scheme follows the correct format where each question has a Question, an Answer/Correct Answer/Answer Template (wording may vary), and a Marking Scheme/Mark Scheme (wording may vary); There might and might not have notes and deductions, either is excepted; if correct return only 'The format is correct, you can move forward', if not return only 'Mark scheme is not in the correct format'."}]
-    )
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=evaluation_assistant_id
-    )
-
-    while run.status in ["queued", "in_progress"]:
-        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
-    if run.status == "failed":
-        logger.error(f"Mark scheme check failed: {run.last_error}")
-        raise HTTPException(status_code=500, detail=f"Mark scheme check failed: {run.last_error}")
-
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    assistant_message = None
-    for m in messages.data:
-        if m.role != "assistant":
-            continue
-        # Ensure content is present and has text
-        if getattr(m, "content", None) and len(m.content) > 0:
-            first = m.content[0]
-            if getattr(first, "text", None) and getattr(first.text, "value", None):
-                assistant_message = m
-                break
-    if not assistant_message:
-        raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
-    return assistant_message.content[0].text.value
 
 def course_description(description: str, course_name: str) -> str:
     try:
@@ -289,7 +194,7 @@ Course description: {description}
     
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """
-    Evaluate a batch of answer sheets using OpenAI Assistants API.
+    Evaluate a batch of answer sheets using OpenAI API.
     
     This function evaluates the answer sheets it receives without internal batching.
     Batching logic should be handled by the caller (routes layer).
@@ -316,15 +221,10 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         if file_id and email:
             email_mapping[file_id] = email
 
-    # Get evaluation assistant
+    # Get evaluation
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
     if not evaluation:
         raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
-    
-    evaluation_assistant_id = evaluation.get("evaluation_assistant_id")
-    if not evaluation_assistant_id:
-        raise HTTPException(status_code=500, detail="Evaluation assistant not found")
-
     # Prepare evaluation payload
     payload = {
         "mark_scheme": json.dumps(extracted_mark_scheme),
@@ -335,15 +235,15 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
 
     # Create thread and run evaluation
-    thread = client.beta.threads.create(messages=[{"role": "user", "content": evaluation_prompt}])
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
+    run = client.responses.create(
+        model=settings.OPENAI_MODEL,
+        input=[{"role": "user", "content": evaluation_prompt}],
         temperature=0.3,
-        assistant_id=evaluation_assistant_id,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
+        text={
+            "format": {
+                "type": "json_schema",
                 "name": "evaluation_schema",
+                "strict": True,
                 "schema": {
                     "type": "object",
                     "properties": {
@@ -375,17 +275,20 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
                                                 "score",
                                                 "max_score",
                                                 "feedback"
-                                            ]
+                                            ],
+                                            "additionalProperties": False
                                         }
                                     },
                                     "total_score": {"type": "number"},
                                     "max_total_score": {"type": "number"}
                                 },
-                                "required": ["file_id", "answers", "total_score", "max_total_score"]
+                                "required": ["file_id", "answers", "total_score", "max_total_score"],
+                                "additionalProperties": False
                             }
                         }
                     },
-                    "required": ["evaluation_id", "students"]
+                    "required": ["evaluation_id", "students"],
+                    "additionalProperties": False
                 }
             }
         }
@@ -393,33 +296,15 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
 
     # Poll until run completes
     while run.status in ("queued", "in_progress"):
-        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        time.sleep(1) # Add a small sleep to avoid tight loop
+        run = client.responses.retrieve(run.id)
 
     if run.status == "failed":
         logger.error(f"OpenAI evaluation failed: {run.last_error}")
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {run.last_error}")
 
     # Extract structured output from response
-    structured_output = None
-
-    # Try to get output from run.output first (newer API format)
-    if hasattr(run, "output") and run.output and hasattr(run.output, "data"):
-        try:
-            structured_output = run.output.data[0].content[0].text.value
-        except Exception:
-            pass
-
-    # Fallback: Parse messages from thread
-    if not structured_output:
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
-        for msg in messages.data:
-            if msg.role == "assistant" and msg.content:
-                for content in msg.content:
-                    if hasattr(content, "text") and content.text.value:
-                        structured_output = content.text.value
-                        break
-            if structured_output:
-                break
+    structured_output = run.output_text.strip() if run.output_text else None
 
     if not structured_output:
         raise HTTPException(

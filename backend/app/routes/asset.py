@@ -282,6 +282,7 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for continue asset '{asset_name}'")
+        logger.info(f"Previous response ID: {previous_response_id}")
         
         course = get_course(course_id)
         if not course:
