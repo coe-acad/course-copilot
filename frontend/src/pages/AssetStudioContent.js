@@ -843,6 +843,15 @@ export default function AssetStudioContent() {
         open={showAddResourceModal}
         onClose={() => setShowAddResourceModal(false)}
         onAdd={handleAddResources}
+        onRefresh={async () => {
+          const courseId = localStorage.getItem('currentCourseId');
+          if (courseId) {
+            try {
+              const resourcesData = await getAllResources(courseId);
+              setResources(resourcesData.resources);
+            } catch (e) { console.error(e); }
+          }
+        }}
       />
     </AssetStudioLayout>
   );

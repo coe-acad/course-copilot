@@ -350,3 +350,65 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         "evaluation_id": evaluation_id,
         "students": students
     }
+
+#use the web search to discover resources for the input typed on the UI
+def discover_resources(query):
+    system_prompt = """You are a resource discovery assistant specialized in finding high-quality, authoritative, and up-to-date web resources.
+
+Your task:
+1. Search the web to find the most relevant and trustworthy resources for the user's query
+2. Prioritize sources in this order:
+   - Official documentation or official websites
+   - Reputable organizations, standards bodies, or well-known platforms
+   - High-quality educational resources from established publishers
+3. Avoid low-quality blogs, SEO-driven content, forums, or opinion pieces unless no authoritative source exists
+4. Only include sources that are currently accessible and actively maintained
+5. Always include working, direct URLs
+
+CRITICAL: You must respond with ONLY a valid JSON array. No preamble, no markdown code blocks, no explanation text.
+
+Response format (JSON only):
+[
+  {
+    "title": "Resource title",
+    "url": "https://example.com",
+    "description": "Brief 1-2 sentence description of what this resource provides and why it's authoritative"
+  }
+]
+
+Additional guidelines:
+- Return 5-10 resources maximum
+- Prefer primary sources over summaries or secondary explanations
+- Do not repeat the same platform or website excessively unless clearly justified
+- Each resource must have all three fields: title, url, and description
+- Ensure all URLs are complete and valid (starting with https://)
+
+Focus on accuracy, credibility, and usefulness over quantity."""
+
+    run = client.responses.create(
+        model=settings.OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
+        ],
+        tools=[{"type": "web_search"}],
+        temperature=0.2
+    )
+
+    # Get the output
+    output = run.output_text.strip()
+    
+    # Parse JSON (with error handling)
+    try:
+        # Remove markdown code blocks if present
+        if output.startswith("```json"):
+            output = output.replace("```json", "").replace("```", "").strip()
+        elif output.startswith("```"):
+            output = output.replace("```", "").strip()
+        
+        resources_json = json.loads(output)
+        return resources_json
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON response: {output}")
+        # Fallback: return empty list or raise exception
+        raise ValueError(f"Invalid JSON response from API: {str(e)}")

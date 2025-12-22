@@ -10,7 +10,7 @@ export async function getAllResources(courseId = null) {
       throw new Error('No course ID provided and none found in localStorage');
     }
   }
-  
+
   const res = await axiosInstance.get(`/courses/${courseId}/resources`);
   return res.data;
 }
@@ -39,14 +39,14 @@ function handleAxiosError(error) {
 
 export async function uploadCourseResources(courseId, files) {
   console.log('uploadCourseResources called with:', { courseId, filesCount: files?.length, files });
-  
+
   if (!files || files.length === 0) {
     throw new Error('No files provided for upload');
   }
-  
+
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
-  
+
   try {
     const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData);
     return res.data;
@@ -69,6 +69,30 @@ export async function viewResource(courseId, resourceName) {
   const res = await axiosInstance.get(url);
   console.log('Response received:', res.data);
   return res.data;
+}
+
+export async function discoverResources(courseId, query) {
+  console.log('discoverResources called with:', { courseId, query });
+  try {
+    const res = await axiosInstance.post(`/courses/${courseId}/resources/discover`, { query });
+    console.log('Discover resources response:', res.data);
+    return res.data;
+  } catch (error) {
+    console.error('Discover resources error:', error);
+    handleAxiosError(error);
+  }
+}
+
+export async function addDiscoveredResources(courseId, resources) {
+  console.log('addDiscoveredResources called with:', { courseId, resourceCount: resources.length });
+  try {
+    const res = await axiosInstance.post(`/courses/${courseId}/resources/add-discovered`, { resources });
+    console.log('Add discovered resources response:', res.data);
+    return res.data;
+  } catch (error) {
+    console.error('Add discovered resources error:', error);
+    handleAxiosError(error);
+  }
 }
 
 /*

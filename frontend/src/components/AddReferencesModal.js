@@ -2,12 +2,19 @@ import React, { useState, useRef } from 'react';
 import { FiUploadCloud, FiSearch, FiTrash2, FiAlertCircle } from 'react-icons/fi';
 import Modal from './Modal';
 
-export default function AddResourceModal({ open, onClose, onAdd }) {
+export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { // Added onRefresh prop
   const [step, setStep] = useState(1); // 1: choose, 2: upload, 3: discover
   const [files, setFiles] = useState([]); // uploaded files
   const [discovered, setDiscovered] = useState([]); // discovered files (placeholder)
   const [errors, setErrors] = useState([]); // file validation errors
   const fileInputRef = useRef();
+
+  // Discover step state (must be at top level due to React Hooks rules)
+  const [query, setQuery] = useState("");
+  const [resources, setResources] = useState([]);  // Changed from string to array
+  const [loading, setLoading] = useState(false);
+  const [discoverError, setDiscoverError] = useState(null);
+  const [selectedResources, setSelectedResources] = useState([]);  // Track selected resource URLs
 
   // Supported file types for OpenAI API
   const SUPPORTED_FILE_TYPES = [
@@ -102,6 +109,12 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
     setFiles([]);
     setDiscovered([]);
     setErrors([]);
+    // Reset discover state
+    setQuery("");
+    setResources([]);  // Reset to empty array
+    setDiscoverError(null);
+    setLoading(false);
+    setSelectedResources([]);  // Reset selected resources
     onClose();
   };
 
@@ -232,18 +245,279 @@ export default function AddResourceModal({ open, onClose, onAdd }) {
     );
   }
 
-  // Step 3: Discover (placeholder)
+  // Step 3: Discover
   if (step === 3) {
+    const handleDiscover = async () => {
+      if (!query.trim()) {
+        setDiscoverError("Please enter a topic to search for resources");
+        return;
+      }
+
+      setLoading(true);
+      setDiscoverError(null);
+      setResources([]);  // Reset to empty array
+
+      try {
+        const { discoverResources } = await import('../services/resources');
+        const courseId = localStorage.getItem('currentCourseId');
+        const result = await discoverResources(courseId, query);
+        setResources(result.resources || []);  // Set as array
+      } catch (err) {
+        console.error("Error discovering resources:", err);
+        setDiscoverError(err.message || "Failed to discover resources");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleKeyPress = (e) => {
+      if (e.key === "Enter" && !loading) {
+        handleDiscover();
+      }
+    };
+
     return (
       <Modal open={open} onClose={handleClose}>
-        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Discover</h3>
-        <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 15 }}>
-          Discover feature coming soon.
+        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Discover Resources</h3>
+        <p style={{ color: '#555', fontSize: 14, marginBottom: 16 }}>
+          Search the web for high-quality educational resources
+        </p>
+
+        {/* Search Input */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Enter a topic (e.g., Machine Learning, Python Programming)"
+              style={{
+                width: '100%',
+                padding: '12px 100px 12px 12px',
+                fontSize: '14px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleDiscover}
+              disabled={loading || !query.trim()}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: loading || !query.trim() ? '#e5e7eb' : '#2563eb',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                color: 'white',
+                fontWeight: 500,
+              }}
+            >
+              {loading ? 'Searching...' : 'Search'}
+            </button>
+          </div>
         </div>
+
+        {/* Error Message */}
+        {discoverError && (
+          <div style={{
+            padding: '12px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '8px',
+            color: '#dc2626',
+            fontSize: '14px',
+            marginBottom: '16px',
+          }}>
+            {discoverError}
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px',
+            color: '#6b7280',
+          }}>
+            <div style={{
+              width: '24px',
+              height: '24px',
+              border: '3px solid #e5e7eb',
+              borderTop: '3px solid #2563eb',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              marginRight: '12px',
+            }} />
+            Discovering resources...
+          </div>
+        )}
+
+        {/* Resources Display */}
+        {!loading && resources && resources.length > 0 && (
+          <div style={{
+            maxHeight: '400px',
+            overflowY: 'auto',
+            marginBottom: '16px',
+          }}>
+            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 15, color: '#1f2937' }}>
+              Found {resources.length} resource{resources.length > 1 ? 's' : ''}
+            </div>
+            {resources.map((resource, idx) => (
+              <div key={idx} style={{
+                background: '#fff',
+                border: selectedResources.includes(resource.url) ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                transition: 'all 0.2s ease',
+              }}>
+                <label style={{
+                  display: 'flex',
+                  gap: '12px',
+                  cursor: 'pointer',
+                  alignItems: 'flex-start',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedResources.includes(resource.url)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedResources(prev => [...prev, resource.url]);
+                      } else {
+                        setSelectedResources(prev => prev.filter(url => url !== resource.url));
+                      }
+                    }}
+                    style={{
+                      marginTop: '4px',
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontWeight: 600,
+                      fontSize: '15px',
+                      color: '#1f2937',
+                      marginBottom: '6px',
+                    }}>
+                      {resource.title}
+                    </div>
+                    <a
+                      href={resource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        color: '#2563eb',
+                        fontSize: '13px',
+                        textDecoration: 'none',
+                        display: 'block',
+                        marginBottom: '6px',
+                        wordBreak: 'break-all',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                      onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                    >
+                      {resource.url}
+                    </a>
+                    <div style={{
+                      fontSize: '14px',
+                      color: '#6b7280',
+                      lineHeight: '1.5',
+                    }}>
+                      {resource.description}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && resources.length === 0 && !discoverError && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px',
+            color: '#6b7280',
+            textAlign: 'center',
+          }}>
+            <FiSearch size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+            <p style={{ fontSize: '14px', margin: 0 }}>
+              Enter a topic to discover resources
+            </p>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
           <button onClick={() => setStep(1)} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Back to Add Resources</button>
-          <button onClick={handleClose} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#e0e7ef', color: '#888', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {selectedResources.length > 0 && (
+              <button
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    const { addDiscoveredResources } = await import('../services/resources');
+                    const courseId = localStorage.getItem('currentCourseId');
+
+                    // Get full resource objects for selected URLs
+                    const selectedResourceObjects = resources.filter(r => selectedResources.includes(r.url));
+
+                    await addDiscoveredResources(courseId, selectedResourceObjects);
+
+                    // Show success and close
+                    alert(`Successfully added ${selectedResourceObjects.length} resource(s) to knowledge base!`);
+
+                    if (onRefresh) {
+                      onRefresh();
+                    }
+
+                    handleClose();
+                  } catch (error) {
+                    console.error('Error adding resources:', error);
+                    alert('Failed to add resources. Please try again.');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 15,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: loading ? '#9ca3af' : '#10b981',
+                  color: '#fff',
+                  fontWeight: 600,
+                  cursor: loading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {loading ? 'Adding...' : `Add Selected (${selectedResources.length})`}
+              </button>
+            )}
+            <button onClick={handleClose} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Done</button>
+          </div>
         </div>
+
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </Modal>
     );
   }
