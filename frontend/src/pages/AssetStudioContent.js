@@ -50,7 +50,7 @@ const formatMarkSchemeResponse = (rawText = "") => {
     const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
     if (!lines.length) return text.trim();
     return lines.map(line => {
-      const cleaned = line.replace(/^[-*•\d\)\(]+\s*/, "").trim();
+      const cleaned = line.replace(/^[-*•\d)(]+\s*/, "").trim();
       return cleaned ? `- ${cleaned}` : "";
     }).filter(Boolean).join("\n");
   };
@@ -116,7 +116,7 @@ export default function AssetStudioContent() {
   const selectedFiles = location.state?.selectedFiles || [];
   const initialSelectedIds = selectedFiles.map(file => file.id || file.fileName || file.name);
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
-  
+
   // Debug logging for file selection
   console.log('Selected files from Dashboard:', selectedFiles);
   console.log('Initial selected IDs:', initialSelectedIds);
@@ -127,7 +127,7 @@ export default function AssetStudioContent() {
   const [resources, setResources] = useState([]);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [isUploadingResources, setIsUploadingResources] = useState(false);
-  const [threadId, setThreadId] = useState(null);
+  const [lastResponseId, setLastResponseId] = useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState("");
   const [assetName, setAssetName] = useState("");
@@ -157,7 +157,7 @@ export default function AssetStudioContent() {
           setResources([]);
           return;
         }
-        
+
         const resourcesData = await getAllResources(courseId);
         setResources(resourcesData.resources);
       } catch (error) {
@@ -192,13 +192,13 @@ export default function AssetStudioContent() {
         const resolveId = (r) => r.id || r.resourceName || r.fileName;
         const chosen = resources.filter(r => selectedIds.includes(resolveId(r)));
         const fileNames = chosen.map(file => file.resourceName || file.fileName || resolveId(file));
-        
+
         // Debug logging
         console.log('Selected IDs:', selectedIds);
         console.log('Available resources:', resources.map(r => ({ id: resolveId(r), name: r.resourceName || r.fileName })));
         console.log('Chosen files:', chosen);
         console.log('File names being sent:', fileNames);
-        
+
         const response = await assetService.createAssetChat(courseId, option, fileNames);
         if (response && response.response) {
           const normalizedResponse = normalizeEscapes(response.response);
@@ -206,7 +206,7 @@ export default function AssetStudioContent() {
             ? formatMarkSchemeResponse(normalizedResponse)
             : normalizedResponse;
           setChatMessages(prev => [...prev, { type: "bot", text: formattedResponse }]);
-          setThreadId(response.thread_id);
+          setLastResponseId(response.response_id);
         }
       } catch (error) {
         console.error("Error creating initial message:", error);
@@ -245,8 +245,8 @@ export default function AssetStudioContent() {
     setIsLoading(true);
 
     try {
-      if (!threadId) {
-        throw new Error("No active chat thread");
+      if (!lastResponseId) {
+        throw new Error("No active chat history");
       }
 
       const courseId = localStorage.getItem('currentCourseId');
@@ -255,10 +255,11 @@ export default function AssetStudioContent() {
       }
 
       // Continue the conversation with the backend
-      const response = await assetService.continueAssetChat(courseId, option, threadId, inputMessage);
-      
-      
+      const response = await assetService.continueAssetChat(courseId, option, lastResponseId, inputMessage);
+
+
       if (response && response.response) {
+        setLastResponseId(response.response_id);
         const normalizedResponse = normalizeEscapes(response.response);
         const formattedResponse = option === 'mark-scheme'
           ? formatMarkSchemeResponse(normalizedResponse)
@@ -320,7 +321,7 @@ export default function AssetStudioContent() {
 
       // Resolve name conflict
       const finalAssetName = resolveNameConflict(assetName.trim(), existingAssetNames);
-      
+
       // Update the asset name in the input if it was changed
       if (finalAssetName !== assetName.trim()) {
         setAssetName(finalAssetName);
@@ -329,7 +330,7 @@ export default function AssetStudioContent() {
       const assetType = option;
 
       await assetService.saveAsset(courseId, finalAssetName, assetType, saveModalMessage);
-      
+
       // Close modal and reset
       setShowSaveModal(false);
       setSaveModalMessage("");
@@ -361,30 +362,30 @@ export default function AssetStudioContent() {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) return;
-      
+
       // Get existing resource names to check for conflicts
       const existingResourceNames = getAllResourceNames(resources);
-      
+
       // Resolve name conflict
       const baseResourceName = (resourceFileName || '').trim() || 'document';
       const finalResourceName = resolveNameConflict(baseResourceName, existingResourceNames);
-      
+
       // Update the resource name in the input if it was changed
       if (finalResourceName !== baseResourceName) {
         setResourceFileName(finalResourceName);
       }
-      
+
       console.log('Saving chat message as resource:', finalResourceName);
       console.log('Content length:', resourceSaveMessage?.length || 0);
-      
+
       // Use the same endpoint as AssetSubCard - save content as text resource
       const result = await assetService.saveAssetAsResource(courseId, finalResourceName, resourceSaveMessage || '');
       console.log('Save as resource result:', result);
-      
+
       // Refresh resources list
       const resourcesData = await getAllResources(courseId);
       setResources(resourcesData.resources);
-      
+
       setShowSaveResourceModal(false);
       setResourceFileName("");
       setResourceSaveMessage("");
@@ -500,8 +501,8 @@ export default function AssetStudioContent() {
                   wordBreak: "break-word"
                 }}
               >
-                <div 
-                  style={{ 
+                <div
+                  style={{
                     marginBottom: 6,
                     lineHeight: "1.5"
                   }}
@@ -509,7 +510,7 @@ export default function AssetStudioContent() {
                   {msg.type === 'bot-image' ? (
                     <img src={msg.url} alt="Asset preview" style={{ maxWidth: '100%', borderRadius: 8 }} />
                   ) : msg.type === "bot" ? (
-                    <div style={{ 
+                    <div style={{
                       fontSize: "15px",
                       lineHeight: "1.6",
                       color: "#222"
@@ -517,25 +518,25 @@ export default function AssetStudioContent() {
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkBreaks]}
                         components={{
-                          h1: ({children}) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
-                          h2: ({children}) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
-                          h3: ({children}) => <h3 style={{fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222"}}>{children}</h3>,
-                          p: ({children}) => <p style={{ margin: "8px 0", color: "#222" }}>{children}</p>,
-                          li: ({children}) => <li style={{ margin: "4px 0", color: "#222" }}>{children}</li>,
-                          ul: ({children}) => <ul style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}}>{children}</ul>,
-                          ol: ({children}) => <ol style={{margin: "8px 0", paddingLeft: "20px", color: "#222"}}>{children}</ol>,
-                          strong: ({children}) => <strong style={{fontWeight: "bold", color: "#222"}}>{children}</strong>,
-                          em: ({children}) => <em style={{fontStyle: "italic", color: "#222"}}>{children}</em>,
-                          code: ({children}) => <code style={{backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222"}}>{children}</code>,
-                          pre: ({children}) => <pre style={{backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222"}}>{children}</pre>,
-                          blockquote: ({children}) => <blockquote style={{borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666"}}>{children}</blockquote>,
-                          table: ({children}) => <table style={{borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed"}}>{children}</table>,
-                          thead: ({children}) => <thead style={{backgroundColor: "#f5f5f5"}}>{children}</thead>,
-                          tbody: ({children}) => <tbody>{children}</tbody>,
-                          tr: ({children}) => <tr style={{borderBottom: "1px solid #ddd"}}>{children}</tr>,
-                          th: ({children}) => <th style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word"}}>{children}</th>,
-                          td: ({children}) => <td style={{padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4"}}>{children}</td>,
-                          a: ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
+                          h1: ({ children }) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
+                          h2: ({ children }) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
+                          h3: ({ children }) => <h3 style={{ fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h3>,
+                          p: ({ children }) => <p style={{ margin: "8px 0", color: "#222" }}>{children}</p>,
+                          li: ({ children }) => <li style={{ margin: "4px 0", color: "#222" }}>{children}</li>,
+                          ul: ({ children }) => <ul style={{ margin: "8px 0", paddingLeft: "20px", color: "#222" }}>{children}</ul>,
+                          ol: ({ children }) => <ol style={{ margin: "8px 0", paddingLeft: "20px", color: "#222" }}>{children}</ol>,
+                          strong: ({ children }) => <strong style={{ fontWeight: "bold", color: "#222" }}>{children}</strong>,
+                          em: ({ children }) => <em style={{ fontStyle: "italic", color: "#222" }}>{children}</em>,
+                          code: ({ children }) => <code style={{ backgroundColor: "#f0f0f0", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace", fontSize: "14px", color: "#222" }}>{children}</code>,
+                          pre: ({ children }) => <pre style={{ backgroundColor: "#f0f0f0", padding: "8px", borderRadius: "4px", overflow: "auto", margin: "8px 0", fontSize: "14px", color: "#222" }}>{children}</pre>,
+                          blockquote: ({ children }) => <blockquote style={{ borderLeft: "4px solid #ddd", paddingLeft: "12px", margin: "8px 0", color: "#666" }}>{children}</blockquote>,
+                          table: ({ children }) => <table style={{ borderCollapse: "collapse", width: "100%", margin: "8px 0", border: "1px solid #ddd", tableLayout: "fixed" }}>{children}</table>,
+                          thead: ({ children }) => <thead style={{ backgroundColor: "#f5f5f5" }}>{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr style={{ borderBottom: "1px solid #ddd" }}>{children}</tr>,
+                          th: ({ children }) => <th style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word" }}>{children}</th>,
+                          td: ({ children }) => <td style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4" }}>{children}</td>,
+                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
                         }}
                       >
                         {msg.text}
@@ -546,34 +547,34 @@ export default function AssetStudioContent() {
                   )}
                 </div>
                 {msg.type !== "user" && msg.type !== 'bot-image' && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 6,
-                  left: 12,
-                  display: "flex",
-                  gap: 10,
-                  fontSize: 15,
-                  color: "#888"
-                }}
-              >
-                <FaDownload
-                  title="Download"
-                  style={{ cursor: "pointer", opacity: 0.8 }}
-                  onClick={() => handleDownload(msg.text)}
-                />
-                <FaFolderPlus
-                  title="Save to Asset"
-                  style={{ cursor: "pointer", opacity: 0.8 }}
-                  onClick={() => handleSaveToAsset(msg.text)}
-                />
-                <FaSave
-                  title="Save to Resource"
-                  style={{ cursor: "pointer", opacity: 0.8 }}
-                  onClick={() => handleSaveToResource(msg.text)}
-                />
-              </div>
-            )}
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 6,
+                      left: 12,
+                      display: "flex",
+                      gap: 10,
+                      fontSize: 15,
+                      color: "#888"
+                    }}
+                  >
+                    <FaDownload
+                      title="Download"
+                      style={{ cursor: "pointer", opacity: 0.8 }}
+                      onClick={() => handleDownload(msg.text)}
+                    />
+                    <FaFolderPlus
+                      title="Save to Asset"
+                      style={{ cursor: "pointer", opacity: 0.8 }}
+                      onClick={() => handleSaveToAsset(msg.text)}
+                    />
+                    <FaSave
+                      title="Save to Resource"
+                      style={{ cursor: "pointer", opacity: 0.8 }}
+                      onClick={() => handleSaveToResource(msg.text)}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -700,7 +701,7 @@ export default function AssetStudioContent() {
             <h3 style={{ margin: "0 0 16px 0", fontSize: 18, fontWeight: 600 }}>
               Save Asset
             </h3>
-            
+
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
                 Asset Name:

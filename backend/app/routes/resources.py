@@ -75,12 +75,6 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
             file_obj.name = resource_name  # ✅ Required for OpenAI
             openai_file_id = create_file(file_obj)
         
-        # Get vector store for the course
-        assistant_id = course.get('assistant_id')
-        if not assistant_id:
-            logger.error(f"No assistant ID found for course {course_id}")
-            return None
-        
         # Check if vector store exists, if not create one
         vector_store_id = course.get('vector_store_id')
         if not vector_store_id:
@@ -103,13 +97,17 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         logger.error(f"Error creating course description file for {course_id}: {str(e)}")
         return None
 
-# Keep this route, we add the file to the vector store attached to the Assistant
+# Keep this route, we add the file to the vector store attached 
 @router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
 def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
-        # if course exists, get the assistant id and vector store id from the course
+        # if course exists, get the vector store id from the course
         course = get_course(course_id)
+        vector_store_id = course.get('vector_store_id')
+        if not vector_store_id:
+            logger.error(f"No vector_store_id found for course {course_id}")
+            return None
 
         # Build a set of existing resource names for collision handling
         existing_resources = get_resources_by_course_id(course_id) or []
@@ -132,7 +130,7 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
             f.filename = ensure_unique_name(f.filename, existing_names)
 
         # Upload files to vector store (this uses f.filename for the OpenAI file name)
-        openai_service.upload_resources(user_id, course_id, course["vector_store_id"], files)
+        openai_service.upload_resources(user_id, course_id, vector_store_id, files)
 
         # Create resource records with the possibly renamed filenames
         for file in files:

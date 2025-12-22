@@ -145,9 +145,9 @@ def upload_resources(user_id: str, course_id: str, vector_store_id: str, files: 
 
 def clean_text(text: str):
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=settings.OPENAI_MODEL,
-            messages=[
+            input=[
                 {
                     "role": "system",
                     "content": "You are a helpful assistant that cleans AI-generated messages. Your job is to remove any irrelevant or excessive introductory or concluding text — such as apologies, disclaimers, or requests for confirmation — that do not contribute to the core output.\n\nFocus on keeping only the core meaningful content such as course outcomes, summaries, tables, or actual suggestions.\n\nIf there is any core component or content to be saved, preserve that fully.\n\nIf no meaningful content is found (e.g., just a warning or error message), return it as-is without adding any explanation or comment."
@@ -156,7 +156,7 @@ def clean_text(text: str):
             ]
         )
 
-        return response.choices[0].message.content
+        return response.output_text.strip()
     except Exception as e:
         logger.error(f"Error cleaning text: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -257,17 +257,35 @@ def mark_scheme_check(evaluation_assistant_id: str, user_id: str, mark_scheme_fi
         raise HTTPException(status_code=500, detail="Assistant returned no text content for evaluation")
     return assistant_message.content[0].text.value
 
-def course_description(description: str, course_name: str):
-    #take the description and clean and improve it using chat completion
-    chat_completion = client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that rewrites rough course descriptions into clear, realistic, and professional course descriptions written in the style a teacher would use when describing a course. Use the course name and provided description as context. The description should focus only on what the course covers and what students will learn, without marketing language, exaggeration, or phrases like 'join us' or 'your journey'. Only return the improved description as plain text, with no labels or extra commentary."},
-            {"role": "user", "content": f"Course name: {course_name}\nCourse description: {description}"}
-        ]
-    )
-    description = chat_completion.choices[0].message.content
-    return description
+def course_description(description: str, course_name: str) -> str:
+    try:
+        # Clean and improve the course description using the Responses API
+        response = client.responses.create(
+            model=settings.OPENAI_MODEL,
+            input=f"""You are a helpful assistant that rewrites rough course descriptions into clear,
+realistic, and professional course descriptions written in the style a teacher would use
+when describing a course.
+
+Use the course name and provided description as context.
+Focus only on what the course covers and what students will learn.
+Do not use marketing language, exaggeration, or phrases like "join us" or "your journey".
+
+Only return the improved description as plain text, with no labels or extra commentary.
+
+Course name: {course_name}
+Course description: {description}
+"""
+        )
+
+        if not response.output_text:
+            raise ValueError("Empty response from OpenAI")
+
+        return response.output_text.strip()
+        
+    except Exception as e:
+        logger.error(f"Error generating course description: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate course description")
+
     
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """

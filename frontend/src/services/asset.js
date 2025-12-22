@@ -24,11 +24,11 @@ export const assetService = {
   createAssetChat: async (courseId, assetTypeName, fileNames) => {
     try {
       // Start the background task
-      const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, 
+      const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`,
         { file_names: fileNames }
       );
       const taskData = res.data; // { task_id, status, message }
-      
+
       // Poll for completion
       return await assetService.pollTaskUntilComplete(taskData.task_id);
     } catch (error) {
@@ -37,14 +37,14 @@ export const assetService = {
   },
 
   // Continue asset chat conversation (async with polling)
-  continueAssetChat: async (courseId, assetName, threadId, userPrompt) => {
+  continueAssetChat: async (courseId, assetName, responseId, userPrompt) => {
     try {
       // Start the background task
-      const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?thread_id=${threadId}`, 
+      const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?response_id=${responseId}`,
         { user_prompt: userPrompt }
       );
       const taskData = res.data; // { task_id, status, message }
-      
+
       // Poll for completion
       return await assetService.pollTaskUntilComplete(taskData.task_id);
     } catch (error) {
@@ -55,12 +55,12 @@ export const assetService = {
   // Poll task status until completion
   pollTaskUntilComplete: async (taskId, maxAttempts = 180, intervalMs = 1000) => {
     let attempts = 0;
-    
+
     while (attempts < maxAttempts) {
       try {
         const statusRes = await axiosInstance.get(`/tasks/${taskId}`);
         const taskStatus = statusRes.data; // { task_id, status, result, error }
-        
+
         if (taskStatus.status === 'completed') {
           // Return result in the same format as before
           return taskStatus.result; // { response, thread_id }
@@ -69,7 +69,7 @@ export const assetService = {
         } else if (taskStatus.status === 'cancelled') {
           throw new Error('Task was cancelled');
         }
-        
+
         // Status is 'pending' or 'processing', wait and retry
         await new Promise(resolve => setTimeout(resolve, intervalMs));
         attempts++;
@@ -80,7 +80,7 @@ export const assetService = {
         throw error;
       }
     }
-    
+
     // Timeout after maxAttempts
     throw new Error('Task polling timeout - operation is taking longer than expected');
   },
@@ -108,8 +108,8 @@ export const assetService = {
   // Save asset to database
   saveAsset: async (courseId, assetName, assetType, content) => {
     try {
-      const res = await axiosInstance.post(`/courses/${courseId}/assets`, 
-        { content: content }, 
+      const res = await axiosInstance.post(`/courses/${courseId}/assets`,
+        { content: content },
         {
           params: {
             asset_name: assetName,
@@ -322,7 +322,7 @@ export const assetService = {
         renderTable(tableLines) {
           try {
             if (!tableLines || tableLines.length < 2) return;
-            const validLines = tableLines.filter(line => 
+            const validLines = tableLines.filter(line =>
               line.trim() &&
               line.includes('|') &&
               !line.match(/^\s*\|?[\s\-:]+\|?\s*$/)
@@ -612,7 +612,7 @@ export const assetService = {
             pdf.text(`Page ${pageNum} of ${pageCount}`, 150, 285);
           }
         }
-      } catch {}
+      } catch { }
 
       const sanitizedName = (title || 'document').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
       pdf.save(`${sanitizedName}.pdf`);
@@ -757,7 +757,7 @@ export const assetService = {
         renderTable(tableLines) {
           try {
             if (!tableLines || tableLines.length < 2) return;
-            const validLines = tableLines.filter(line => 
+            const validLines = tableLines.filter(line =>
               line.trim() &&
               line.includes('|') &&
               !line.match(/^\s*\|?[\s\-:]+\|?\s*$/)
@@ -1047,7 +1047,7 @@ export const assetService = {
             pdf.text(`Page ${pageNum} of ${pageCount}`, 150, 285);
           }
         }
-      } catch {}
+      } catch { }
 
       const blob = pdf.output('blob');
       return blob;
@@ -1085,8 +1085,8 @@ export const assetService = {
   // Save asset as resource
   saveAssetAsResource: async (courseId, assetName, content) => {
     try {
-      const res = await axiosInstance.post(`/courses/${courseId}/assets/${assetName}/save-as-resource`, 
-        { 
+      const res = await axiosInstance.post(`/courses/${courseId}/assets/${assetName}/save-as-resource`,
+        {
           content: content,
           asset_name: assetName
         }
