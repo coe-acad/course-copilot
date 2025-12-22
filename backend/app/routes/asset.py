@@ -4,8 +4,6 @@ import time
 from io import BytesIO
 from typing import Optional
 from ..config.settings import settings
-from openai import AssistantEventHandler
-from typing_extensions import override
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -79,17 +77,21 @@ class TextToPdfRequest(BaseModel):
     content: str
     filename: Optional[str] = None
 
-class AssetChatStreamHandler(AssistantEventHandler):
+class AssetChatStreamHandler:
+    """Custom event handler for OpenAI Responses API streaming.
+    
+    Processes streaming events from the Responses API and accumulates
+    the response text and response ID for later use.
+    """
     def __init__(self, label: str = ""):
-        super().__init__()
         self.response_text = ""
         self.response_id = None
         self.label = label
         if self.label:
             print(f"\n--- Starting stream: {self.label} ---")
 
-    @override
     def on_text_delta(self, delta, snapshot):
+        """Legacy method kept for compatibility (not actively used)."""
         print(delta.value, end="", flush=True)
         self.response_text += delta.value
 
