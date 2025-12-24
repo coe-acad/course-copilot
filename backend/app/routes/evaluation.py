@@ -18,8 +18,8 @@ import traceback
 from ..config.settings import settings
 from ..utils.verify_token import verify_token
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
-from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
-from concurrent.futures import ThreadPoolExecutor
+from app.services.openai_service import evaluate_files_all_in_one
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_markscheme import extract_text_from_mark_scheme
 from app.utils.extraction_answersheet import split_into_qas, extract_images_from_pdf, extract_text_tables
@@ -63,17 +63,10 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         
         logger.info(f"Saved mark scheme to {mark_scheme_path}")
         
-        # Create evaluation assistant for LLM evaluation later
-        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
-        evaluation_assistant_id = eval_info[0]
-        vector_store_id = eval_info[1]
-        
         # Create evaluation record with type "digital" (default)
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
-            evaluation_assistant_id=evaluation_assistant_id,
-            vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
             answer_sheet_filenames=[],
@@ -86,15 +79,15 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
             logger.error(f"Failed to create evaluation {evaluation_id}")
             raise HTTPException(status_code=500, detail="Failed to create evaluation record")
         
-        logger.info(f"Successfully created evaluation {evaluation_id}")
+        logger.info(f"Successfully created handwritten evaluation {evaluation_id}")
         
         return {
             "evaluation_id": evaluation_id,
-            "message": "Mark scheme uploaded successfully"
+            "message": "Mark scheme uploaded successfully for handwritten evaluation"
         }
         
     except Exception as e:
-        logger.error(f"Error uploading mark scheme: {str(e)}")
+        logger.error(f"Error uploading mark scheme for handwritten evaluation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
 
 @router.post("/evaluation/upload-mark-scheme-handwritten")
@@ -120,18 +113,11 @@ def upload_mark_scheme_handwritten(course_id: str = Form(...), user_id: str = De
         
         logger.info(f"Saved mark scheme (handwritten evaluation) to {mark_scheme_path}")
         
-        # Create evaluation assistant for LLM evaluation later
-        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
-        evaluation_assistant_id = eval_info[0]
-        vector_store_id = eval_info[1]
-        
         # Create evaluation record with type "handwritten"
         # Mark scheme will be extracted when answer sheets are processed (not stored in MongoDB)
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
-            evaluation_assistant_id=evaluation_assistant_id,
-            vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
             answer_sheet_filenames=[],
@@ -286,26 +272,25 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             logger.error(f"Evaluation {evaluation_id} not found")
             return
         
-        # If evaluation is already completed, don't process again
-        if evaluation.get("status") == "completed" and "evaluation_result" in evaluation:
-            logger.info(f"Evaluation {evaluation_id} is already completed, skipping processing")
-            return
-        
-        logger.info(f"Starting evaluation processing for {evaluation_id}")
-        
         mark_scheme_path = evaluation.get("mark_scheme_path")
-        answer_sheet_paths = evaluation.get("answer_sheet_paths", [])
-        answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
+        answer_sheet_paths = evaluation.get("answer_sheet_paths")
+        answer_sheet_filenames = evaluation.get("answer_sheet_filenames")
         evaluation_type = evaluation.get("evaluation_type", "digital")  # Get evaluation type, default to digital
         
         if not mark_scheme_path or not answer_sheet_paths:
             logger.error(f"Missing file paths for evaluation {evaluation_id}")
             return
         
+        # Extract mark scheme
         # Extract mark scheme - returns {"mark_scheme": [...]}
         # Always extract fresh (don't store in MongoDB, just keep in variable)
         logger.info(f"Extracting mark scheme from {mark_scheme_path}")
         extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        question_count = len(extracted_mark_scheme.get('mark_scheme', []))
+        logger.info(f"Mark scheme extracted: {extracted_mark_scheme}")
+        
+        # Extract answer sheets
+        logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         logger.info(f"Extracted mark scheme with {len(extracted_mark_scheme.get('mark_scheme', []))} questions (in memory only, not stored in DB)")
         
         mark_scheme_questions = extracted_mark_scheme.get('mark_scheme', [])
@@ -314,6 +299,25 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets using {evaluation_type} extraction")
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
+            try:
+                pages = extract_text_tables(answer_sheet_path)
+                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)
+                
+                extracted_email = extraction_result.get("email", None)
+                qas_list = extraction_result.get("answers", [])
+                
+                answer_sheet_data = {
+                    "file_id": f"answer_sheet_{i+1}",
+                    "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
+                    "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
+                    "email": extracted_email,
+                    "answers": qas_list
+                }
+                extracted_answer_sheets.append(answer_sheet_data)
+                logger.info(f"Answer sheet {i+1} extracted: {answer_sheet_data}")
+            except Exception as extraction_error:
+                logger.error(f"Failed to extract answer sheet {i+1}: {str(extraction_error)}")
+                continue
             # Use appropriate extraction method based on evaluation type
             if evaluation_type == "handwritten":
                 # For handwritten: use Mistral OCR extraction with mark scheme context
@@ -348,6 +352,9 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             extracted_answer_sheets.append(answer_sheet_data)
             logger.info(f"Completed {evaluation_type} extraction for answer sheet {i+1}")
         
+        logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
+
+        # Determine batch size based on question count
         # Log for debugging
         logger.info(f"Extracted {len(extracted_answer_sheets)} answer sheets")
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
@@ -359,143 +366,211 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         
         # Dynamic batching logic based on number of questions
         total_sheets = len(extracted_answer_sheets)
-        logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
-
-        # Determine batch size based on question count
-        if question_count < 15:
-            BATCH_SIZE = 10
-            logger.info(f"Using batch size 10 for {question_count} questions (< 15)")
-        else:
-            BATCH_SIZE = 6
-            logger.info(f"Using batch size 6 for {question_count} questions (>= 15)")
+        BATCH_SIZE = 5 if question_count < 15 else 3
+        total_batches = (total_sheets + BATCH_SIZE - 1) // BATCH_SIZE
         
-        all_students = []
+        logger.info(f"Starting evaluation: {total_sheets} answer sheets, {total_batches} batches (size: {BATCH_SIZE})")
         
-        # Process in batches
+        # Helper function to process a single batch
+        def process_batch(batch_num: int, batch_sheets: list):
+            """Process a single batch and return results"""
+            filenames = [sheet.get('filename', 'Unknown') for sheet in batch_sheets]
+            logger.info(f"→ Batch {batch_num} of {total_batches} started: {filenames}")
+            
+            batch_data = {"answer_sheets": batch_sheets}
+            batch_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, batch_data)
+            
+            logger.info(f"✓ Batch {batch_num} of{total_batches} completed")
+            
+            return batch_num, batch_result.get("students", [])
+        
+        # Process answer sheets in batches in parallel
+        batch_results = {}  # Store results by batch number to preserve order
+        
+        # First, log which files go to which batch
+        logger.info("=" * 60)
+        logger.info("BATCH ASSIGNMENT:")
         for batch_start in range(0, total_sheets, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, total_sheets)
             batch_sheets = extracted_answer_sheets[batch_start:batch_end]
             batch_num = (batch_start // BATCH_SIZE) + 1
-            
-            logger.info(f"Processing batch {batch_num}: sheets {batch_start + 1} to {batch_end}")
-            
-            if BATCH_SIZE == 10:
-                # For batch size 5, process in rounds of 10 sheets max (2 workers * 5 sheets)
-                max_sheets_per_round = 10
-                logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 10")
-                round_num = 1
-                for round_start in range(0, len(batch_sheets), max_sheets_per_round):
-                    round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
-                    round_sheets = batch_sheets[round_start:round_end]
-                    
-                    logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
-                    
-                    if len(round_sheets) <= 5:
-                        # If 5 or fewer sheets, use single worker
-                        logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
-                        round_data = {"answer_sheets": round_sheets}
-                        round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
-                        all_students.extend(round_result.get("students", []))
-                    else:
-                        # If more than 5 sheets, split between 2 workers, max 5 sheets each
-                        mid_point = len(round_sheets) // 2
-                        worker1_sheets = round_sheets[:mid_point]
-                        worker2_sheets = round_sheets[mid_point:]
-                        
-                        # Ensure no worker gets more than 5 sheets
-                        if len(worker1_sheets) > 5:
-                            worker1_sheets = round_sheets[:5]
-                            worker2_sheets = round_sheets[5:]
-                        
-                        logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
-                        
-                        def evaluate_worker_batch(sheets, worker_num):
-                            """Helper function to evaluate sheets in a worker"""
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
-                            if not sheets:
-                                logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
-                                return {"students": []}
-                            worker_data = {"answer_sheets": sheets}
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
-                            result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
-                            return result
-                        
-                        # Use ThreadPoolExecutor with 2 workers for this round
-                        with ThreadPoolExecutor(max_workers=2) as executor:
-                            future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
-                            future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
-                            
-                            # Get results from both workers
-                            result1 = future1.result()
-                            result2 = future2.result()
-                        
-                        # Merge results from both workers in this round
-                        round_students = result1.get("students", []) + result2.get("students", [])
-                        all_students.extend(round_students)
-                        logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
-                    round_num += 1
-            else:
-                # For batch size 6, process in rounds of 6 sheets max (2 workers * 3 sheets)
-                max_sheets_per_round = 6
-                logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 6")
-                round_num = 1
-                for round_start in range(0, len(batch_sheets), max_sheets_per_round):
-                    round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
-                    round_sheets = batch_sheets[round_start:round_end]
-                    
-                    logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
-                    
-                    # If 3 or fewer sheets, use single worker
-                    if len(round_sheets) <= 3:
-                        logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
-                        round_data = {"answer_sheets": round_sheets}
-                        round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
-                        all_students.extend(round_result.get("students", []))
-                    else:
-                        # Split between 2 workers for more than 3 sheets
-                        mid_point = len(round_sheets) // 2
-                        worker1_sheets = round_sheets[:mid_point]
-                        worker2_sheets = round_sheets[mid_point:]
-                        
-                        logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
-                        
-                        def evaluate_worker_batch(sheets, worker_num):
-                            """Helper function to evaluate sheets in a worker"""
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
-                            if not sheets:
-                                logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
-                                return {"students": []}
-                            worker_data = {"answer_sheets": sheets}
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
-                            result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
-                            logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
-                            return result
-                        
-                        # Use ThreadPoolExecutor with 2 workers for this round
-                        with ThreadPoolExecutor(max_workers=2) as executor:
-                            future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
-                            future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
-                            
-                            # Get results from both workers
-                            result1 = future1.result()
-                            result2 = future2.result()
-                        
-                        # Merge results from both workers in this round
-                        round_students = result1.get("students", []) + result2.get("students", [])
-                        all_students.extend(round_students)
-                        logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
-                    round_num += 1
+            filenames = [sheet.get('filename', 'Unknown') for sheet in batch_sheets]
+            logger.info(f"  Batch {batch_num}: {filenames}")
+        logger.info("=" * 60)
         
-        # Create final evaluation result with all students
+        # Limit workers based on batch size to control concurrency
+        max_workers = 2 if BATCH_SIZE == 5 else 3
+        logger.info(f"Using {max_workers} workers for parallel processing")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all batch jobs
+            futures = {}
+            for batch_start in range(0, total_sheets, BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, total_sheets)
+                batch_sheets = extracted_answer_sheets[batch_start:batch_end]
+                batch_num = (batch_start // BATCH_SIZE) + 1
+                
+                future = executor.submit(process_batch, batch_num, batch_sheets)
+                futures[future] = batch_num
+            
+            # Collect results as they complete (may be out of order)
+            for future in as_completed(futures):
+                batch_num = futures[future]
+                try:
+                    result_batch_num, batch_students = future.result()
+                    batch_results[result_batch_num] = batch_students  # Store by batch number
+                except Exception as e:
+                    logger.error(f"✗ Batch {batch_num} FAILED: {str(e)}")
+                    raise HTTPException(status_code=500, detail=f"Batch {batch_num} evaluation failed: {str(e)}")
+        
+        # Reconstruct students in correct order by batch number
+        all_students = []
+        for batch_num in sorted(batch_results.keys()):
+            all_students.extend(batch_results[batch_num])
+        
+        logger.info("=" * 60)
+        logger.info(f"ALL BATCHES COMPLETED: {sorted(batch_results.keys())} | Total students: {len(all_students)}")
+        logger.info("=" * 60)
+        
+        # Verify all students were evaluated
+        if len(all_students) != len(extracted_answer_sheets):
+            logger.error(f"Student count mismatch: expected {len(extracted_answer_sheets)}, got {len(all_students)}")
+            raise HTTPException(status_code=500, detail="Evaluation incomplete: student count mismatch")
+        
+        logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
+        logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
+
+        # # Determine batch size based on question count
+        # if question_count < 15:
+        #     BATCH_SIZE = 10
+        #     logger.info(f"Using batch size 10 for {question_count} questions (< 15)")
+        # else:
+        #     BATCH_SIZE = 6
+        #     logger.info(f"Using batch size 6 for {question_count} questions (>= 15)")
+        
+        # all_students = []
+        
+        # # Process in batches
+        # for batch_start in range(0, total_sheets, BATCH_SIZE):
+        #     batch_end = min(batch_start + BATCH_SIZE, total_sheets)
+        #     batch_sheets = extracted_answer_sheets[batch_start:batch_end]
+        #     batch_num = (batch_start // BATCH_SIZE) + 1
+            
+        #     logger.info(f"Processing batch {batch_num}: sheets {batch_start + 1} to {batch_end}")
+            
+        #     if BATCH_SIZE == 10:
+        #         # For batch size 5, process in rounds of 10 sheets max (2 workers * 5 sheets)
+        #         max_sheets_per_round = 10
+        #         logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 10")
+        #         round_num = 1
+        #         for round_start in range(0, len(batch_sheets), max_sheets_per_round):
+        #             round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
+        #             round_sheets = batch_sheets[round_start:round_end]
+                    
+        #             logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
+                    
+        #             if len(round_sheets) <= 5:
+        #                 # If 5 or fewer sheets, use single worker
+        #                 logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
+        #                 round_data = {"answer_sheets": round_sheets}
+        #                 round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
+        #                 all_students.extend(round_result.get("students", []))
+        #             else:
+        #                 # If more than 5 sheets, split between 2 workers, max 5 sheets each
+        #                 mid_point = len(round_sheets) // 2
+        #                 worker1_sheets = round_sheets[:mid_point]
+        #                 worker2_sheets = round_sheets[mid_point:]
+                        
+        #                 # Ensure no worker gets more than 5 sheets
+        #                 if len(worker1_sheets) > 5:
+        #                     worker1_sheets = round_sheets[:5]
+        #                     worker2_sheets = round_sheets[5:]
+                        
+        #                 logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
+                        
+        #                 def evaluate_worker_batch(sheets, worker_num):
+        #                     """Helper function to evaluate sheets in a worker"""
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
+        #                     if not sheets:
+        #                         logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
+        #                         return {"students": []}
+        #                     worker_data = {"answer_sheets": sheets}
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
+        #                     result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
+        #                     return result
+                        
+        #                 # Use ThreadPoolExecutor with 2 workers for this round
+        #                 with ThreadPoolExecutor(max_workers=2) as executor:
+        #                     future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
+        #                     future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
+                            
+        #                     # Get results from both workers
+        #                     result1 = future1.result()
+        #                     result2 = future2.result()
+                        
+        #                 # Merge results from both workers in this round
+        #                 round_students = result1.get("students", []) + result2.get("students", [])
+        #                 all_students.extend(round_students)
+        #                 logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
+        #             round_num += 1
+        #     else:
+        #         # For batch size 6, process in rounds of 6 sheets max (2 workers * 3 sheets)
+        #         max_sheets_per_round = 6
+        #         logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 6")
+        #         round_num = 1
+        #         for round_start in range(0, len(batch_sheets), max_sheets_per_round):
+        #             round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
+        #             round_sheets = batch_sheets[round_start:round_end]
+                    
+        #             logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
+                    
+        #             # If 3 or fewer sheets, use single worker
+        #             if len(round_sheets) <= 3:
+        #                 logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
+        #                 round_data = {"answer_sheets": round_sheets}
+        #                 round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
+        #                 all_students.extend(round_result.get("students", []))
+        #             else:
+        #                 # Split between 2 workers for more than 3 sheets
+        #                 mid_point = len(round_sheets) // 2
+        #                 worker1_sheets = round_sheets[:mid_point]
+        #                 worker2_sheets = round_sheets[mid_point:]
+                        
+        #                 logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
+                        
+        #                 def evaluate_worker_batch(sheets, worker_num):
+        #                     """Helper function to evaluate sheets in a worker"""
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
+        #                     if not sheets:
+        #                         logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
+        #                         return {"students": []}
+        #                     worker_data = {"answer_sheets": sheets}
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
+        #                     result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
+        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
+        #                     return result
+                        
+        #                 # Use ThreadPoolExecutor with 2 workers for this round
+        #                 with ThreadPoolExecutor(max_workers=2) as executor:
+        #                     future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
+        #                     future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
+                            
+        #                     # Get results from both workers
+        #                     result1 = future1.result()
+        #                     result2 = future2.result()
+                        
+        #                 # Merge results from both workers in this round
+        #                 round_students = result1.get("students", []) + result2.get("students", [])
+        #                 all_students.extend(round_students)
+        #                 logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
+        #             round_num += 1
+        
+        # Create final evaluation result
         evaluation_result = {
             "evaluation_id": evaluation_id,
             "students": all_students
         }
-        logger.info(f"All batches completed: {len(all_students)} total students processed")
-        logger.info(f"Evaluation result: {evaluation_result}")
-        logger.info(f"Extracted mark scheme: {extracted_mark_scheme}")
-        logger.info(f"Extracted answer sheets: {extracted_answer_sheets}")
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
             answers = student.get("answers", [])
@@ -510,14 +585,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         evaluation_result["total_score"] = overall_total
         evaluation_result["max_total_score"] = overall_max
         
-        logger.info(f"Evaluation completed - {len(evaluation_result.get('students', []))} students")
-        
         # Save evaluation result to MongoDB
         try:
             update_evaluation_with_result(evaluation_id, evaluation_result)
-            logger.info(f"Successfully saved evaluation result for {evaluation_id}")
+            logger.info(f"Evaluation result saved to database")
         except Exception as save_error:
-            logger.error(f"Failed to save evaluation result for {evaluation_id}: {str(save_error)}")
+            logger.error(f"Failed to save evaluation result: {str(save_error)}")
             raise save_error
         
         # Extract all feedback from students' answers
@@ -560,61 +633,52 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         # Save AI feedback to MongoDB
         if all_feedback:
             create_ai_feedback(evaluation_id, {"feedback": all_feedback})
-        logger.info(f"AI feedback saved to ai_feedback collection for evaluation {evaluation_id}")
+            
         # Send completion email
         try:
             send_eval_completion_email(evaluation_id, user_id)
             update_evaluation(evaluation_id, {"email_sent": True})
-            logger.info(f"Completion email sent for evaluation {evaluation_id}")
+            logger.info(f"Completion email sent")
         except Exception as email_error:
-            logger.error(f"Failed to send completion email for {evaluation_id}: {str(email_error)}")
-            # Don't raise - evaluation was successful, email is just notification
+            logger.error(f"Failed to send completion email: {str(email_error)}")
         
-        # Clean up: Delete temporary files after successful evaluation
+        # Clean up temporary files
         try:
             eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
             if eval_dir.exists():
                 shutil.rmtree(eval_dir)
-                logger.info(f"Successfully deleted temporary files for evaluation {evaluation_id}")
-            else:
-                logger.warning(f"Temporary directory not found for evaluation {evaluation_id}")
+                logger.info(f"Temporary files cleaned up")
         except Exception as cleanup_error:
-            logger.error(f"Failed to delete temporary files for evaluation {evaluation_id}: {str(cleanup_error)}")
-            # Don't raise the error - evaluation was successful, cleanup is just housekeeping
+            logger.error(f"Failed to cleanup temporary files: {str(cleanup_error)}")
         
         return evaluation_result
     except Exception as e:
+        logger.error(f"Evaluation failed: {str(e)}", exc_info=True)
         logger.error(f"Error in _process_evaluation for {evaluation_id}: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Send error email to user
         try:
-            send_eval_error_email(evaluation_id, user_id, str(e))
-            logger.info(f"Error email sent for evaluation {evaluation_id}")
+            send_eval_error_email(evaluation_id, user_id)
         except Exception as email_error:
-            logger.error(f"Failed to send error email for {evaluation_id}: {str(email_error)}")
-            # Don't raise - we still want to clean up files
+            logger.error(f"Failed to send error email: {str(email_error)}")
 
         # Update evaluation status to failed
         try:
             update_evaluation(evaluation_id, {"status": "failed"})
-            logger.info(f"Updated evaluation {evaluation_id} status to failed")
         except Exception as status_error:
-            logger.error(f"Failed to update evaluation status for {evaluation_id}: {str(status_error)}")
-            # Don't raise - we still want to clean up files
+            logger.error(f"Failed to update evaluation status: {str(status_error)}")
 
-        # Clean up temporary files even on error
+        # Clean up temporary files
         try:
             eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
             if eval_dir.exists():
                 shutil.rmtree(eval_dir)
-                logger.info(f"Deleted temporary files after error for evaluation {evaluation_id}")
         except Exception as cleanup_error:
-            logger.error(f"Failed to delete temporary files after error: {str(cleanup_error)}")
+            logger.error(f"Failed to cleanup temporary files: {str(cleanup_error)}")
         
         return {
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }
 
 @router.get("/evaluation/evaluate-files")
@@ -774,43 +838,6 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         logger.error(f"Error saving evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error saving evaluation: {str(e)}")
 
-def format_evaluation_report(evaluation):
-    """Format evaluation data into a readable combined report for all students"""
-    result = evaluation["evaluation_result"]
-    students = result.get("students", [])
-    stored_filenames = evaluation.get("answer_sheet_filenames", [])
-    logger.info(f"Stored filenames: {stored_filenames}")
-    report = f"# Evaluation Report\n\n"
-    report += f"**Total Students:** {len(students)}\n"
-    report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
-    
-    for i, student in enumerate(students, 1):
-        # Use stored filename if available, otherwise fall back to student_name or file_id
-        original_filename = "Unknown"
-        if i <= len(stored_filenames):
-            original_filename = stored_filenames[i-1]
-        elif student.get('student_name'):
-            original_filename = student.get('student_name')
-        elif student.get('file_id'):
-            original_filename = f"File_{student.get('file_id')}"
-            
-        report += f"## Student {i}\n"
-        report += f"**File:** {original_filename}\n"
-        report += f"**Total Score:** {student.get('total_score', 0)}/{student.get('max_total_score', 0)}\n"
-        report += f"**Status:** {student.get('status', 'completed')}\n\n"
-        
-        answers = student.get('answers', [])
-        for j, answer in enumerate(answers, 1):
-            report += f"### Question {j}\n"
-            report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
-            report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
-            report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
-            report += f"**Feedback:** {answer.get('feedback', 'N/A')}\n\n"
-        
-        report += "---\n\n"
-    
-    return report
-
 def format_student_report(evaluation, student_index: int):
     """Format evaluation data into a readable report for a single student"""
     result = evaluation["evaluation_result"]
@@ -913,23 +940,6 @@ def format_evaluation_csv(evaluation):
     writer.writerows(rows)
     
     return output.getvalue()
-
-@router.get("/evaluation/report/{evaluation_id}")
-def get_evaluation_report(evaluation_id: str, user_id: str = Depends(verify_token)):
-    """Get combined evaluation report for all students"""
-    try:
-        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-        if not evaluation:
-            raise HTTPException(status_code=404, detail="Evaluation not found")
-        if not evaluation.get("evaluation_result"):
-            raise HTTPException(status_code=400, detail="Evaluation not yet completed")
-        report = format_evaluation_report(evaluation)
-        return {"report": report}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting evaluation report for {evaluation_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting evaluation report: {str(e)}")
 
 @router.get("/evaluation/report/{evaluation_id}/student/{student_index}")
 def get_student_report(evaluation_id: str, student_index: int, user_id: str = Depends(verify_token)):

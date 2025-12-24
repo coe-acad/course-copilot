@@ -18,7 +18,6 @@ export default function SettingsModal({ open, onClose, onSave }) {
   const [selectedLevels, setSelectedLevels] = useState([]);
   const [selectedStudyAreas, setSelectedStudyAreas] = useState([]);
   const [selectedPedagogical, setSelectedPedagogical] = useState([]);
-  const [askClarifyingQuestions, setAskClarifyingQuestions] = useState(false);
   const [, setLoading] = useState(false);
 
   // Get courseId from localStorage
@@ -36,7 +35,6 @@ export default function SettingsModal({ open, onClose, onSave }) {
         setSelectedLevels(savedSettings.course_level || []);
         setSelectedStudyAreas(savedSettings.study_area || []);
         setSelectedPedagogical(savedSettings.pedagogical_components || []);
-        setAskClarifyingQuestions(savedSettings.ask_clarifying_questions || false);
       }
     } catch (error) {
       console.error("Error loading saved settings:", error);
@@ -68,8 +66,7 @@ export default function SettingsModal({ open, onClose, onSave }) {
     const payload = {
       course_level: selectedLevels,
       study_area: selectedStudyAreas,
-      pedagogical_components: selectedPedagogical,
-      ask_clarifying_questions: askClarifyingQuestions
+      pedagogical_components: selectedPedagogical
     };
     try {
       await saveCourseSettings(courseId, payload);
@@ -150,20 +147,6 @@ export default function SettingsModal({ open, onClose, onSave }) {
               {comp}
             </button>
           ))}
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 24 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={askClarifyingQuestions}
-            onChange={() => setAskClarifyingQuestions(prev => !prev)}
-          />
-          Ask clarifying questions
-        </label>
-        <div style={{ color: "#666", fontSize: 13, marginLeft: 22 }}>
-          Allows AI to ask targeted questions and gather necessary context before generating content.
         </div>
       </div>
 

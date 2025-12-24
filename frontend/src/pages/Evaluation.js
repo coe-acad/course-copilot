@@ -669,28 +669,6 @@ export default function Evaluation() {
     }
   };
 
-  const handleViewCombinedReport = async () => {
-    if (!evaluationId) {
-      alert('Evaluation ID not found');
-      return;
-    }
-
-    setIsLoadingReport(true);
-    setShowReportModal(true);
-    
-    try {
-      const reportData = await evaluationService.getCombinedReport(evaluationId);
-      setCurrentReport(reportData.report);
-      setReportTitle('Combined Evaluation Report');
-    } catch (error) {
-      console.error('Error fetching combined report:', error);
-      alert(error.message || 'Failed to load combined report');
-      setShowReportModal(false);
-    } finally {
-      setIsLoadingReport(false);
-    }
-  };
-
   const handleDownloadReport = () => {
     if (!currentReport) {
       alert('No report to download');
@@ -839,9 +817,7 @@ export default function Evaluation() {
 
       // Generate filename based on report type
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = reportTitle.includes('Combined') 
-        ? `Combined_Evaluation_Report_${timestamp}.pdf`
-        : `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
+      const filename = `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
       
       // Save the PDF
       doc.save(filename);
@@ -1286,7 +1262,7 @@ export default function Evaluation() {
         </div>
 
 
-        {/* Total Submissions Summary and Combined Report Button */}
+        {/* Total Submissions Summary and Action Buttons */}
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ 
             display: 'inline-block',
@@ -1338,37 +1314,6 @@ export default function Evaluation() {
               >
                 <span style={{ fontSize: '18px' }}>📥</span>
                 {isLoadingReport ? 'Downloading...' : 'Download CSV'}
-              </button>
-              
-              {/* View Combined Report Button */}
-              <button
-                onClick={handleViewCombinedReport}
-                style={{
-                  padding: '14px 28px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: '#fff',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.transform = 'translateY(-2px)';
-                  e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-                }}
-              >
-                <span style={{ fontSize: '18px' }}>📊</span>
-                View Combined Report
               </button>
             </div>
           )}

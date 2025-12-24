@@ -236,7 +236,7 @@ def delete_asset_from_db(course_id: str, asset_name: str):
     delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
 
 # Evaluation    
-def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_id: str, vector_store_id: str, 
+def create_evaluation(evaluation_id: str, course_id: str,
                      mark_scheme_path: str = None, mark_scheme_file_id: str = None,
                      answer_sheet_paths: list[str] = None, answer_sheet_file_ids: list[str] = None, 
                      answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital"):
@@ -257,8 +257,6 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
     evaluation = {
         "evaluation_id": evaluation_id, 
         "course_id": course_id,
-        "evaluation_assistant_id": evaluation_assistant_id, 
-        "vector_store_id": vector_store_id,
         "mark_scheme_path": mark_scheme_path,
         "mark_scheme_file_id": mark_scheme_file_id,
         "answer_sheet_paths": answer_sheet_paths or [],

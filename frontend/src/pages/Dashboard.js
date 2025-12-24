@@ -54,7 +54,7 @@ export default function Dashboard() {
   const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const [showEvaluationTypeModal, setShowEvaluationTypeModal] = useState(false);
   const navigate = useNavigate();
-  
+
   // Get current user for display name logic
   const currentUser = getCurrentUser();
   // Helper to view asset
@@ -91,7 +91,7 @@ export default function Dashboard() {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) return;
-      
+
       const data = await getAllResources(courseId);
       const transformedResources = (data.resources || []).map(resource => ({
         id: resource.resourceName,
@@ -110,30 +110,30 @@ export default function Dashboard() {
       // Immediately remove the asset from local state for instant UI update
       setAssets(prevAssets => {
         const updatedAssets = { ...prevAssets };
-        
+
         // Remove the asset from all categories
         Object.keys(updatedAssets).forEach(category => {
           updatedAssets[category] = updatedAssets[category].filter(asset => asset.name !== assetName);
         });
-        
+
         return updatedAssets;
       });
-      
+
       // Optionally refresh from server in background to ensure consistency
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) return;
-      
+
       try {
         const data = await assetService.getAssets(courseId);
         const assetsList = data.assets || [];
-        
+
         // Group assets by category
         const groupedAssets = {
           curriculum: [],
           assessments: [],
           evaluation: []
         };
-        
+
         assetsList.forEach(asset => {
           const category = asset.asset_category;
           if (groupedAssets.hasOwnProperty(category)) {
@@ -147,7 +147,7 @@ export default function Dashboard() {
             });
           }
         });
-        
+
         // Update with server data to ensure consistency
         setAssets(groupedAssets);
       } catch (refreshError) {
@@ -171,7 +171,7 @@ export default function Dashboard() {
           setResources([]);
           return;
         }
-        
+
         const data = await getAllResources(courseId);
         // Transform the resources to match the expected format
         const transformedResources = (data.resources || []).map(resource => ({
@@ -202,17 +202,17 @@ export default function Dashboard() {
           console.error('No current course ID found');
           return;
         }
-        
+
         const data = await assetService.getAssets(courseId);
         const assetsList = data.assets || [];
-        
+
         // Group assets by category
         const groupedAssets = {
           curriculum: [],
           assessments: [],
           evaluation: []
         };
-        
+
         assetsList.forEach(asset => {
           const category = asset.asset_category;
           if (groupedAssets.hasOwnProperty(category)) {
@@ -226,7 +226,7 @@ export default function Dashboard() {
             });
           }
         });
-        
+
         setAssets(groupedAssets);
       } catch (error) {
         console.error('Error fetching assets:', error);
@@ -295,13 +295,12 @@ export default function Dashboard() {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) return false;
-      
+
       const settings = await getCourseSettings(courseId);
       return settings && (
         (settings.course_level && settings.course_level.length > 0) ||
         (settings.study_area && settings.study_area.length > 0) ||
-        (settings.pedagogical_components && settings.pedagogical_components.length > 0) ||
-        settings.ask_clarifying_questions !== undefined
+        (settings.pedagogical_components && settings.pedagogical_components.length > 0)
       );
     } catch (error) {
       console.error('Error checking settings:', error);
@@ -339,7 +338,7 @@ export default function Dashboard() {
     setShowAddResourceModal(false);
     const courseId = localStorage.getItem('currentCourseId');
     if (!courseId || !files.length) return;
-    
+
     setIsUploadingResources(true);
     try {
       await uploadCourseResources(courseId, files); // upload to backend
@@ -444,9 +443,9 @@ export default function Dashboard() {
           <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
             {/* ...existing grid view code... */}
             <div className="dashboard-scroll-area" style={{ flex: 2, maxWidth: 900, width: '100%', margin: '0 auto', overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 28 }}>
-              <SectionCard 
-                title="Curriculum" 
-                buttonLabel="Create" 
+              <SectionCard
+                title="Curriculum"
+                buttonLabel="Create"
                 onButtonClick={handleCurriculumCreate}
                 assets={assets.curriculum}
                 courseId={localStorage.getItem('currentCourseId')}
@@ -454,9 +453,9 @@ export default function Dashboard() {
                 onResourceAdded={handleResourceAdded}
                 existingResources={resources}
               />
-              <SectionCard 
-                title="Assessments" 
-                buttonLabel="Create" 
+              <SectionCard
+                title="Assessments"
+                buttonLabel="Create"
                 onButtonClick={handleAssessmentCreate}
                 assets={assets.assessments}
                 courseId={localStorage.getItem('currentCourseId')}
@@ -464,8 +463,8 @@ export default function Dashboard() {
                 onResourceAdded={handleResourceAdded}
                 existingResources={resources}
               />
-              <SectionCard 
-                title="Evaluation" 
+              <SectionCard
+                title="Evaluation"
                 buttonLabel="Start Evaluation"
                 onButtonClick={handleEvaluationCreate}
                 assets={assets.evaluation}
@@ -480,10 +479,10 @@ export default function Dashboard() {
               <KnowledgeBase
                 resources={loadingResources ? [] : resources}
                 fileInputRef={{ current: null }}
-                onFileChange={() => {}}
+                onFileChange={() => { }}
                 showCheckboxes={false}
                 selected={[]}
-                onSelect={() => {}}
+                onSelect={() => { }}
                 onAddResource={() => setShowAddResourceModal(true)}
                 onDelete={handleDeleteResource}
                 courseId={localStorage.getItem('currentCourseId')}
@@ -667,6 +666,7 @@ export default function Dashboard() {
           open={showAddResourceModal}
           onClose={() => setShowAddResourceModal(false)}
           onAdd={handleAddResources}
+          onRefresh={handleResourceAdded}
         />
         <SettingsPromptModal
           open={showSettingsPrompt}
@@ -694,7 +694,7 @@ export default function Dashboard() {
           onClose={() => setShowLMSLoginModal(false)}
           onLoginSuccess={(data) => {
             console.log("✅ LMS login successful:", data);
-            
+
             // Check if a course was selected directly
             if (data.courses && data.courses.length === 1 && data.courses[0]) {
               console.log("📚 Course selected directly:", data.courses[0]);
@@ -709,7 +709,7 @@ export default function Dashboard() {
               } else {
                 console.log("⚠️ No courses found or courses couldn't be loaded");
               }
-              
+
               setShowLMSLoginModal(false);
               // Show LMS Courses modal to select a course
               setShowLMSCoursesModal(true);
