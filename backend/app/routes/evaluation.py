@@ -15,8 +15,10 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
+
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name, create_qa_data, update_evaluation, get_qa_data_by_evaluation_id
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
@@ -59,17 +61,10 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         
         logger.info(f"Saved mark scheme to {mark_scheme_path}")
         
-        # Create evaluation assistant for LLM evaluation later
-        eval_info = create_evaluation_assistant_and_vector_store(evaluation_id)
-        evaluation_assistant_id = eval_info[0]
-        vector_store_id = eval_info[1]
-        
         # Create evaluation record
         create_evaluation(
             evaluation_id=evaluation_id,
             course_id=course_id,
-            evaluation_assistant_id=evaluation_assistant_id,
-            vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
             answer_sheet_filenames=[]
@@ -149,12 +144,12 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
-def _process_evaluation(evaluation_id: str, user_id: str):
+async def _process_evaluation(evaluation_id: str, user_id: str):
     """Process evaluation in background using local file extraction with parallel workers"""
     partial_result = None  # Store whatever we have so we can return partial output on failure
     try:
         # Check if evaluation is already completed
-        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        evaluation = await asyncio.to_thread(get_evaluation_by_evaluation_id, evaluation_id)
         if not evaluation:
             logger.error(f"Evaluation {evaluation_id} not found")
             return
@@ -169,7 +164,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         
         # Extract mark scheme
         logger.info(f"Extracting mark scheme from {mark_scheme_path}")
-        extracted_mark_scheme = extract_text_from_mark_scheme(mark_scheme_path)
+        extracted_mark_scheme = await asyncio.to_thread(extract_text_from_mark_scheme, mark_scheme_path)
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
         logger.info(f"Mark scheme extracted: {extracted_mark_scheme}")
         
@@ -179,8 +174,8 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         all_qas_data = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
-                pages = extract_text_tables(answer_sheet_path)
-                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)
+                pages = await asyncio.to_thread(extract_text_tables, answer_sheet_path)
+                extraction_result = await asyncio.to_thread(split_into_qas, pages, pdf_path=answer_sheet_path)
                 
                 extracted_email = extraction_result.get("email", None)
                 qas_list = extraction_result.get("answers", [])                
@@ -226,50 +221,50 @@ def _process_evaluation(evaluation_id: str, user_id: str):
             logger.info(f"→ Batch {batch_num} of {total_batches} started: {filenames}")
             
             batch_data = {"answer_sheets": batch_sheets}
+            # Note: evaluate_files_all_in_one is synchronous, so it fits in this threaded function
             batch_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, batch_data)
             
-            logger.info(f"✓ Batch {batch_num} of{total_batches} completed")
+            logger.info(f"✓ Batch {batch_num} of {total_batches} completed")
             
             return batch_num, batch_result.get("students", [])
         
-        # Process answer sheets in batches in parallel
-        batch_results = {}  # Store results by batch number to preserve order
+        # Process batches asynchronously using asyncio.gather + to_thread
+        # This replaces the ThreadPoolExecutor while still running purely synchronous separate tasks in threads
+        batch_tasks = []
         
-        # First, log which files go to which batch
+        # Log batch assignment
         logger.info("=" * 60)
         logger.info("BATCH ASSIGNMENT:")
         for batch_start in range(0, total_sheets, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, total_sheets)
             batch_sheets = extracted_answer_sheets[batch_start:batch_end]
             batch_num = (batch_start // BATCH_SIZE) + 1
+            
             filenames = [sheet.get('filename', 'Unknown') for sheet in batch_sheets]
             logger.info(f"  Batch {batch_num}: {filenames}")
-        logger.info("=" * 60)
-        
-        # Limit workers based on batch size to control concurrency
-        max_workers = 2 if BATCH_SIZE == 5 else 3
-        logger.info(f"Using {max_workers} workers for parallel processing")
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all batch jobs
-            futures = {}
-            for batch_start in range(0, total_sheets, BATCH_SIZE):
-                batch_end = min(batch_start + BATCH_SIZE, total_sheets)
-                batch_sheets = extracted_answer_sheets[batch_start:batch_end]
-                batch_num = (batch_start // BATCH_SIZE) + 1
-                
-                future = executor.submit(process_batch, batch_num, batch_sheets)
-                futures[future] = batch_num
             
-            # Collect results as they complete (may be out of order)
-            for future in as_completed(futures):
-                batch_num = futures[future]
-                try:
-                    result_batch_num, batch_students = future.result()
-                    batch_results[result_batch_num] = batch_students  # Store by batch number
-                except Exception as e:
-                    logger.error(f"✗ Batch {batch_num} FAILED: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Batch {batch_num} evaluation failed: {str(e)}")
+            # Create a task for this batch
+            # We use asyncio.to_thread to run the synchronous process_batch in a separate thread
+            # This is non-blocking to the event loop
+            task = asyncio.to_thread(process_batch, batch_num, batch_sheets)
+            batch_tasks.append(task)
+            
+        logger.info("=" * 60)
+        logger.info(f"Launching {len(batch_tasks)} parallel batch tasks")
+        
+        # Wait for all batches to complete
+        batch_results_list = await asyncio.gather(*batch_tasks, return_exceptions=True)
+        
+        # Process results
+        batch_results = {}
+        for result in batch_results_list:
+            if isinstance(result, Exception):
+                logger.error(f"Batch execution failed with error: {str(result)}")
+                # We can choose to raise or continue. Raising seems safer to flag failure.
+                raise result
+            else:
+                b_num, b_students = result
+                batch_results[b_num] = b_students
         
         # Reconstruct students in correct order by batch number
         all_students = []
@@ -324,7 +319,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         
         # Save evaluation result to MongoDB
         try:
-            update_evaluation_with_result(evaluation_id, evaluation_result)
+            await asyncio.to_thread(update_evaluation_with_result, evaluation_id, evaluation_result)
             logger.info(f"Evaluation result saved to database")
         except Exception as save_error:
             logger.error(f"Failed to save evaluation result: {str(save_error)}")
@@ -334,8 +329,7 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         all_feedback = []
         
         # Get answer sheet filenames from evaluation record
-        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
-        answer_sheet_filenames = evaluation.get("answer_sheet_filenames", [])
+        # Note: 'evaluation' variable from earlier might be stale if updated elsewhere, but filenames shouldn't change
         
         for i, student in enumerate(evaluation_result.get("students", [])):
             # Extract student name from filename
@@ -369,12 +363,12 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         
         # Save AI feedback to MongoDB
         if all_feedback:
-            create_ai_feedback(evaluation_id, {"feedback": all_feedback})
+            await asyncio.to_thread(create_ai_feedback, evaluation_id, {"feedback": all_feedback})
             
         # Send completion email
         try:
-            send_eval_completion_email(evaluation_id, user_id)
-            update_evaluation(evaluation_id, {"email_sent": True})
+            await asyncio.to_thread(send_eval_completion_email, evaluation_id, user_id)
+            await asyncio.to_thread(update_evaluation, evaluation_id, {"email_sent": True})
             logger.info(f"Completion email sent")
         except Exception as email_error:
             logger.error(f"Failed to send completion email: {str(email_error)}")
@@ -394,13 +388,13 @@ def _process_evaluation(evaluation_id: str, user_id: str):
 
         # Send error email to user
         try:
-            send_eval_error_email(evaluation_id, user_id, str(e))
+            await asyncio.to_thread(send_eval_error_email, evaluation_id, user_id)
         except Exception as email_error:
             logger.error(f"Failed to send error email: {str(email_error)}")
 
         # Update evaluation status to failed
         try:
-            update_evaluation(evaluation_id, {"status": "failed"})
+            await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed"})
         except Exception as status_error:
             logger.error(f"Failed to update evaluation status: {str(status_error)}")
         # Persist partial results so they can be surfaced via status API
@@ -455,7 +449,9 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
 
         # Mark as processing and start evaluation in background
         update_evaluation(evaluation_id, {"status": "processing"})
-        asyncio.create_task(asyncio.to_thread(_process_evaluation, evaluation_id, user_id))
+        
+        # Start the async background task
+        asyncio.create_task(_process_evaluation(evaluation_id, user_id))
         
         return {
             "evaluation_id": evaluation_id,

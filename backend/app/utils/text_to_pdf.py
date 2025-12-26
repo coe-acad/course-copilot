@@ -261,34 +261,7 @@ def _decorate_page(canvas, doc, title: str):
     canvas.saveState()
     width, height = doc.pagesize
 
-    # Header
-    canvas.setFont("Helvetica-Bold", 9)
-    canvas.setFillColor(colors.HexColor("#374151"))
-    canvas.drawString(_H_MARGIN, height - 0.6 * inch, title or _DEFAULT_TITLE)
-
-    # Header line
-    canvas.setStrokeColor(colors.HexColor("#d1d5db"))
-    canvas.setLineWidth(0.8)
-    canvas.line(_H_MARGIN, height - 0.65 * inch, width - _H_MARGIN, height - 0.65 * inch)
-
-    # Footer
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(colors.HexColor("#6b7280"))
-    canvas.drawString(
-        _H_MARGIN,
-        0.55 * inch,
-        datetime.utcnow().strftime("Generated on %B %d, %Y at %H:%M UTC"),
-    )
-    canvas.drawRightString(
-        width - _H_MARGIN,
-        0.55 * inch,
-        f"Page {doc.page}",
-    )
-    
-    # Footer line
-    canvas.setStrokeColor(colors.HexColor("#e5e7eb"))
-    canvas.setLineWidth(0.5)
-    canvas.line(_H_MARGIN, 0.75 * inch, width - _H_MARGIN, 0.75 * inch)
+    # Header and Footer removed as per request
     
     canvas.restoreState()
 

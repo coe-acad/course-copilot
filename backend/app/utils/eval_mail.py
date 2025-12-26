@@ -58,7 +58,7 @@ ACAD
 """
     send_email(user_email, subject, body)
 
-def send_eval_error_email(evaluation_id: str, user_id: str, error_message: str = ""):
+def send_eval_error_email(evaluation_id: str, user_id: str):
     """Send an error email to the user when evaluation processing fails"""
     user_email = get_email_by_user_id(user_id)
     if not user_email:
@@ -76,8 +76,6 @@ Dear User,
 We encountered an error while processing your evaluation "{asset_name}".
 
 Please try uploading your files again. If the problem persists, please contact our support team for assistance.
-
-Error Details: {error_message}
 
 Regards,
 ACAD Support Team

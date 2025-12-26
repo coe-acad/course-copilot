@@ -147,13 +147,6 @@ def format_quiz_content(course_id: str, asset_name: str):
     
     asset_content = asset.get("asset_content", "")
     
-    # Get the assistant from mongo 
-    course = get_course(course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail=f"Course '{course_id}' not found")
-    
-    assistant_id = course.get("assistant_id", "")
-    
     # Prepare the prompt
     system_prompt = """You are a quiz formatting assistant. Your task is to take quiz content (which may be in various formats) and convert it into a well-structured JSON format.
 
@@ -175,75 +168,75 @@ Guidelines:
         user_prompt = f"Quiz: {asset_name}\n\n" + user_prompt
     
     # Use chat completions with structured output
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=settings.OPENAI_MODEL,
-        messages=[
+        input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
+        text={
+            "format":{
+                "type": "json_schema",
                 "name": "quiz_schema",
                 "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "The title of the quiz"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "A brief description of what the quiz covers"
-                        },
-                        "contentHours": {
-                            "type": "number",
-                            "description": "Estimated time in hours to complete the quiz"
-                        },
-                        "questions": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question": {
-                                        "type": "string",
-                                        "description": "The question text"
-                                    },
-                                    "options": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "description": "The title of the quiz"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "A brief description of what the quiz covers"
+                            },
+                            "contentHours": {
+                                "type": "number",
+                                "description": "Estimated time in hours to complete the quiz"
+                            },
+                            "questions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "question": {
+                                            "type": "string",
+                                            "description": "The question text"
                                         },
-                                        "description": "Array of answer options"
+                                        "options": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Array of answer options"
+                                        },
+                                        "correctOptionIndex": {
+                                            "type": "integer",
+                                            "description": "0-based index of the correct answer"
+                                        },
+                                        "marks": {
+                                            "type": "number",
+                                            "description": "Points for this question"
+                                        },
+                                        "explanation": {
+                                            "type": "string",
+                                            "description": "Explanation of the correct answer"
+                                        }
                                     },
-                                    "correctOptionIndex": {
-                                        "type": "integer",
-                                        "description": "0-based index of the correct answer"
-                                    },
-                                    "marks": {
-                                        "type": "number",
-                                        "description": "Points for this question"
-                                    },
-                                    "explanation": {
-                                        "type": "string",
-                                        "description": "Explanation of the correct answer"
-                                    }
-                                },
-                                "required": ["question", "options", "correctOptionIndex", "marks", "explanation"],
-                                "additionalProperties": False
+                                    "required": ["question", "options", "correctOptionIndex", "marks", "explanation"],
+                                    "additionalProperties": False
+                                }
                             }
-                        }
-                    },
-                    "required": ["title", "description", "contentHours", "questions"],
-                    "additionalProperties": False
+                        },
+                        "required": ["title", "description", "contentHours", "questions"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
-    )
+        )
     
     # Parse the response
-    structured_output = response.choices[0].message.content
+    structured_output = response.output_text
     
     if not structured_output:
         raise HTTPException(status_code=500, detail="No content returned from OpenAI")
@@ -298,13 +291,6 @@ def format_activity_content(course_id: str, asset_name: str):
     
     asset_content = asset.get("asset_content", "")
     
-    # Get the assistant from mongo 
-    course = get_course(course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail=f"Course '{course_id}' not found")
-    
-    assistant_id = course.get("assistant_id", "")
-    
     # Prepare the prompt    
     system_prompt = """You are an activity formatting assistant. Your task is to take activity content (which may be in various formats) and convert it into a well-structured JSON format compatible with the LMS assignment payload.
 
@@ -334,15 +320,15 @@ Ensure all keys and structure match the schema above exactly.
         user_prompt = f"Activity: {asset_name}\n\n" + user_prompt
     
     # Use chat completions with structured output
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=settings.OPENAI_MODEL,
-        messages=[
+        input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
+        text={
+            "format": {
+                "type": "json_schema",
                 "name": "activity_schema",
                 "strict": True,
                 "schema": {
@@ -452,7 +438,7 @@ Ensure all keys and structure match the schema above exactly.
     )
     
     # Parse the response
-    structured_output = response.choices[0].message.content
+    structured_output = response.output_text
     
     if not structured_output:
         raise HTTPException(status_code=500, detail="No content returned from OpenAI")
@@ -653,13 +639,6 @@ def format_lecture_content(course_id: str, asset_name: str):
     
     asset_content = asset.get("asset_content", "")
     
-    # Get the assistant from mongo 
-    course = get_course(course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail=f"Course '{course_id}' not found")
-    
-    assistant_id = course.get("assistant_id", "")
-    
     # Prepare the prompt    
     system_prompt = """You are a lecture formatting assistant. Your task is to take lecture content (which may be in various formats) and convert it into a well-structured JSON format compatible with the LMS lecture payload.
 
@@ -688,100 +667,100 @@ Extract any mentioned resources or reference materials as links.
         user_prompt = f"Lecture: {asset_name}\n\n" + user_prompt
     
     # Use chat completions with structured output
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model=settings.OPENAI_MODEL,
-        messages=[
+        input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
+        text={
+            "format":{
                 "name": "lecture_schema",
+                "type": "json_schema",
                 "strict": True,
                 "schema": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string",
-                            "description": "The type of activity - always 'lecture'"
-                        },
-                        "payload": {
-                            "type": "object",
-                            "properties": {
-                                "title": {
-                                    "type": "string",
-                                    "description": "The title of the lecture"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "A brief description of the lecture"
-                                },
-                                "videoUrl": {
-                                    "type": "string",
-                                    "description": "URL to the video if available, empty string otherwise"
-                                },
-                                "durationSeconds": {
-                                    "type": "number",
-                                    "description": "Duration of the lecture in seconds"
-                                },
-                                "transcript": {
-                                    "type": "string",
-                                    "description": "The lecture transcript or content"
-                                },
-                                "links": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "url": {
-                                                "type": "string",
-                                                "description": "URL of the resource"
-                                            },
-                                            "description": {
-                                                "type": "string",
-                                                "description": "Description of the resource"
-                                            }
-                                        },
-                                        "required": ["url", "description"],
-                                        "additionalProperties": False
-                                    },
-                                    "description": "Array of reference links and resources"
-                                },
-                                "contentHours": {
-                                    "type": "number",
-                                    "description": "Estimated lecture duration in hours"
-                                }
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "description": "The type of activity - always 'lecture'"
                             },
-                            "required": [
-                                "title",
-                                "description",
-                                "videoUrl",
-                                "durationSeconds",
-                                "transcript",
-                                "links",
-                                "contentHours"
-                            ],
-                            "additionalProperties": False
+                            "payload": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "description": "The title of the lecture"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "description": "A brief description of the lecture"
+                                    },
+                                    "videoUrl": {
+                                        "type": "string",
+                                        "description": "URL to the video if available, empty string otherwise"
+                                    },
+                                    "durationSeconds": {
+                                        "type": "number",
+                                        "description": "Duration of the lecture in seconds"
+                                    },
+                                    "transcript": {
+                                        "type": "string",
+                                        "description": "The lecture transcript or content"
+                                    },
+                                    "links": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "url": {
+                                                    "type": "string",
+                                                    "description": "URL of the resource"
+                                                },
+                                                "description": {
+                                                    "type": "string",
+                                                    "description": "Description of the resource"
+                                                }
+                                            },
+                                            "required": ["url", "description"],
+                                            "additionalProperties": False
+                                        },
+                                        "description": "Array of reference links and resources"
+                                    },
+                                    "contentHours": {
+                                        "type": "number",
+                                        "description": "Estimated lecture duration in hours"
+                                    }
+                                },
+                                "required": [
+                                    "title",
+                                    "description",
+                                    "videoUrl",
+                                    "durationSeconds",
+                                    "transcript",
+                                    "links",
+                                    "contentHours"
+                                ],
+                                "additionalProperties": False
+                            },
+                            "isLocked": {
+                                "type": "boolean",
+                                "description": "Indicates whether the lecture is locked for editing (default: false)"
+                            },
+                            "isGraded": {
+                                "type": "boolean",
+                                "description": "Indicates whether the lecture is graded (default: false for lectures)"
+                            }
                         },
-                        "isLocked": {
-                            "type": "boolean",
-                            "description": "Indicates whether the lecture is locked for editing (default: false)"
-                        },
-                        "isGraded": {
-                            "type": "boolean",
-                            "description": "Indicates whether the lecture is graded (default: false for lectures)"
-                        }
-                    },
-                    "required": ["type", "payload", "isLocked", "isGraded"],
-                    "additionalProperties": False
+                        "required": ["type", "payload", "isLocked", "isGraded"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
-    )
+        )
     
     # Parse the response
-    structured_output = response.choices[0].message.content
+    structured_output = response.output_text
     
     if not structured_output:
         raise HTTPException(status_code=500, detail="No content returned from OpenAI")

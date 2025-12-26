@@ -3,8 +3,7 @@ import asyncio
 import time
 from io import BytesIO
 from typing import Optional
-from openai import AssistantEventHandler
-from typing_extensions import override
+from ..config.settings import settings
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -37,7 +36,6 @@ class AssetRequest(BaseModel):
 
 class AssetResponse(BaseModel):
     response: str
-    thread_id: str
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -79,16 +77,42 @@ class TextToPdfRequest(BaseModel):
     content: str
     filename: Optional[str] = None
 
-class AssetChatStreamHandler(AssistantEventHandler):
-    def __init__(self):
-        super().__init__()  # ✅ This is the fix
+class AssetChatStreamHandler:
+    """Custom event handler for OpenAI Responses API streaming.
+    
+    Processes streaming events from the Responses API and accumulates
+    the response text and response ID for later use.
+    """
+    def __init__(self, label: str = ""):
         self.response_text = ""
+        self.response_id = None
+        self.label = label
+        if self.label:
+            print(f"\n--- Starting stream: {self.label} ---")
 
-    @override
     def on_text_delta(self, delta, snapshot):
+        """Legacy method kept for compatibility (not actively used)."""
         print(delta.value, end="", flush=True)
         self.response_text += delta.value
-        
+
+    def handle(self, event):
+        if event.type == "response.created":
+            self.response_id = event.response.id
+            logger.info(f"Response created with ID: {self.response_id}")
+
+        elif event.type == "response.output_text.delta":
+            print(event.delta, end="", flush=True)
+            self.response_text += event.delta
+
+        elif event.type == "response.completed":
+            self.response_id = event.response.id
+            label_suffix = f" ({self.label})" if self.label else ""
+            print(f"\n\n--- stream completed{label_suffix} ---")
+
+        elif event.type == "response.error":
+            label_suffix = f" ({self.label})" if self.label else ""
+            print(f"\n[stream error]{label_suffix} {event.error}")
+
 
 def construct_input_variables(course: dict, file_names: list[str]) -> dict:
     input_variables = {
@@ -102,53 +126,52 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
 
 def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, user_id: str):
     """Background task to process asset chat generation"""
-    thread_id = None  # Initialize thread_id for recovery purposes
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for asset '{asset_type_name}'")
         
         course = get_course(course_id)
-        if not course or "assistant_id" not in course:
-            task_manager.mark_failed(task_id, "Course or assistant not found")
+        if not course:
+            task_manager.mark_failed(task_id, "Course not found")
             return
-
-        assistant_id = course["assistant_id"]
-
+        vector_store_id = course.get("vector_store_id")
+        if not vector_store_id:
+            task_manager.mark_failed(task_id, "Vector store ID not found")
+            return
+        logger.info(f"Vector store ID: {vector_store_id}")
         # Check if mark-scheme and extract questions first
         extracted_questions = ""
+        systemPrompt = PromptParser().render_prompt("app/prompts/system/overall_context.json" , {})
         if asset_type_name == "mark-scheme":
             # First extract questions using qp-extraction
             input_variables_qp = construct_input_variables(course, file_names)
             parser_qp = PromptParser()
             prompt_qp = parser_qp.get_asset_prompt("qp-extraction", input_variables_qp)
             
-            thread_qp = client.beta.threads.create()
-            client.beta.threads.messages.create(
-                thread_id=thread_qp.id,
-                role="user",
-                content=prompt_qp
-            )
-            
-            handler_qp = AssetChatStreamHandler()
+            handler_qp = AssetChatStreamHandler(label="Question Extraction")
+
             try:
-                with client.beta.threads.runs.stream(
-                    thread_id=thread_qp.id,
-                    assistant_id=assistant_id,
-                    event_handler=handler_qp
+                with client.responses.stream(
+                    model=settings.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": systemPrompt},
+                        {"role": "user", "content": prompt_qp}
+                    ],
+                    tools = [{"type": "file_search", "vector_store_ids": [vector_store_id]}]
                 ) as stream:
-                    stream.until_done()
+                    for event in stream:
+                        handler_qp.handle(event)
             except Exception as stream_error:
                 logger.warning(f"Stream interrupted during question extraction in task {task_id}: {stream_error}")
-                # Continue - we can still get the response from thread messages
+                # Continue - we can still get the response from messages
             
             try:
-                messages_qp = client.beta.threads.messages.list(thread_id=thread_qp.id)
-                if not messages_qp.data or len(messages_qp.data) == 0:
-                    raise Exception("No messages found in question extraction thread")
-                extracted_questions = messages_qp.data[0].content[0].text.value
+                extracted_questions = handler_qp.response_text
+                if not extracted_questions or len(extracted_questions.strip()) == 0:
+                    raise Exception("No response found in question extraction")
                 logger.info(f"Extracted questions: {extracted_questions}")
             except Exception as msg_error:
-                logger.error(f"Error retrieving extracted questions from thread {thread_qp.id}: {msg_error}")
+                logger.error(f"Error retrieving extracted questions: {msg_error}")
                 # Don't fail the entire task - continue without extracted questions
                 extracted_questions = ""
 
@@ -163,83 +186,38 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
         logger.info(f"Prompt for asset '{asset_type_name}': {prompt}")
 
-        # Create a new thread
-        thread = client.beta.threads.create()
-        thread_id = thread.id
-
-        # Send message to thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=prompt
-        )
-
         # Stream run with proper error handling
-        handler = AssetChatStreamHandler()
+        handler = AssetChatStreamHandler(label=f"Asset Generation: {asset_type_name}")
         stream_was_interrupted = False
         # Use temperature 0.3 for mark-scheme to ensure consistency
         temp = 0.3 if asset_type_name == "mark-scheme" else 1.0
         try:
-            with client.beta.threads.runs.stream(
-                thread_id=thread_id,
-                assistant_id=assistant_id,
+            with client.responses.stream(
+                model=settings.OPENAI_MODEL,
+                input=[
+                    {"role": "system", "content": systemPrompt},
+                    {"role": "user", "content": prompt}
+                ],
                 temperature=temp,
-                event_handler=handler
+                tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
             ) as stream:
-                stream.until_done()
+                for event in stream:
+                    handler.handle(event)
         except Exception as stream_error:
             stream_was_interrupted = True
             logger.warning(f"Stream interrupted in task {task_id}, but continuing to retrieve response: {stream_error}")
             # Continue - we can still get the response from thread messages even if stream was interrupted
 
-        # Get complete response from thread messages with retry logic
-        complete_response = None
+        # Get complete response from handler
+        complete_response = handler.response_text.strip()
         
-        # First, check if handler accumulated any response text during streaming
-        if handler.response_text and len(handler.response_text.strip()) > 0:
-            logger.info(f"Using accumulated response text from handler for task {task_id}")
-            complete_response = handler.response_text
-        
-        # If stream was interrupted, wait a bit for message to be written to thread
-        if stream_was_interrupted:
-            time.sleep(2)  # Wait 2 seconds for message to be persisted
-        
-        # Try to get response from thread messages with polling
-        max_retries = 5
-        retry_delay = 2
-        for attempt in range(max_retries):
-            try:
-                messages = client.beta.threads.messages.list(thread_id=thread_id)
-                if messages.data and len(messages.data) > 0:
-                    latest_message = messages.data[0]
-                    if latest_message.content and len(latest_message.content) > 0:
-                        thread_response = latest_message.content[0].text.value
-                        if thread_response and len(thread_response.strip()) > 0:
-                            # Prefer thread response over handler response as it's more complete
-                            complete_response = thread_response
-                            logger.info(f"Retrieved response from thread messages for task {task_id}")
-                            break
-                else:
-                    logger.warning(f"No messages found in thread on attempt {attempt + 1}")
-            except Exception as msg_error:
-                logger.warning(f"Error retrieving messages on attempt {attempt + 1}: {msg_error}")
-            
-            # Wait before next retry (except on last attempt)
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-        
-        # Use handler response if thread messages failed
-        if not complete_response or len(complete_response.strip()) == 0:
-            if handler.response_text and len(handler.response_text.strip()) > 0:
-                logger.info(f"Falling back to handler accumulated text for task {task_id}")
-                complete_response = handler.response_text
-            else:
-                raise Exception("No response available from stream handler or thread messages")
+        if not complete_response:
+            raise Exception("No response available from stream handler")
 
         # Mark task as completed with result
         result = {
             "response": complete_response,
-            "thread_id": thread_id
+            "response_id": handler.response_id
         }
         task_manager.mark_completed(task_id, result)
         logger.info(f"Completed background task {task_id} for asset '{asset_type_name}'")
@@ -249,34 +227,12 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         # Don't fail the task if it's just a connection interruption - response might still be available
         if "incomplete chunked read" in error_msg.lower() or "peer closed connection" in error_msg.lower():
             logger.warning(f"Connection interrupted in background task {task_id} for asset '{asset_type_name}': {error_msg}")
-            # Try to get the response anyway if thread_id exists
-            if thread_id:
-                try:
-                    messages = client.beta.threads.messages.list(thread_id=thread_id)
-                    if messages.data and len(messages.data) > 0:
-                        latest_message = messages.data[0]
-                        if latest_message.content and len(latest_message.content) > 0:
-                            complete_response = latest_message.content[0].text.value
-                            result = {
-                                "response": complete_response,
-                                "thread_id": thread_id
-                            }
-                            task_manager.mark_completed(task_id, result)
-                            logger.info(f"Retrieved response after connection interruption for task {task_id}")
-                            return
-                except Exception as recovery_error:
-                    logger.error(f"Failed to recover response after connection error: {recovery_error}")
         
         logger.error(f"Exception in background task {task_id} for asset '{asset_type_name}': {error_msg}")
         task_manager.mark_failed(task_id, error_msg)
 
 @router.post("/courses/{course_id}/asset_chat/{asset_type_name}", response_model=TaskResponse)
-async def create_asset_chat(
-    course_id: str, 
-    asset_type_name: str, 
-    request: AssetRequest, 
-    background_tasks: BackgroundTasks,
-    user_id: str = Depends(verify_token)
+async def create_asset_chat(course_id: str, asset_type_name: str, request: AssetRequest, background_tasks: BackgroundTasks,user_id: str = Depends(verify_token)
 ):
     """
     Create asset chat generation task (runs in background)
@@ -289,9 +245,9 @@ async def create_asset_chat(
         
         # Validate course exists
         course = get_course(course_id)
-        if not course or "assistant_id" not in course:
-            raise HTTPException(status_code=404, detail="Course or assistant not found")
-
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+        
         # Create task
         task_id = task_manager.create_task(
             task_type="asset_chat_create",
@@ -323,49 +279,48 @@ async def create_asset_chat(
         logger.error(f"Exception in create_asset_chat for asset '{asset_type_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_name: str, thread_id: str, user_prompt: str, user_id: str):
-    """Background task to process asset chat continuation"""
+def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_name: str, previous_response_id: str, user_prompt: str, user_id: str):
+    """Background task to process asset chat continuation using Responses API"""
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for continue asset '{asset_name}'")
+        logger.info(f"Previous response ID: {previous_response_id}")
         
         course = get_course(course_id)
-        if not course or "assistant_id" not in course:
-            task_manager.mark_failed(task_id, "Course or assistant not found")
+        if not course:
+            task_manager.mark_failed(task_id, "Course not found")
             return
-        assistant_id = course["assistant_id"]
 
         # Get asset type to determine temperature
         asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
         asset_type = asset.get("asset_type", "") if asset else ""
         temp = 0.3 if asset_type == "mark-scheme" else 1.0
-        print(f"Temperature: {temp}")
-        # Send user prompt to the thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_prompt
-        )
 
+        vector_store_id = course.get("vector_store_id")
+        
         # Create and stream the run
-        handler = AssetChatStreamHandler()
-        with client.beta.threads.runs.stream(
-            thread_id=thread_id,
-            assistant_id=assistant_id,
-            temperature=temp,
-            event_handler=handler
-        ) as stream:
-            stream.until_done()
+        handler = AssetChatStreamHandler(label=f"Continue Asset Chat: {asset_name}")
+        
+        stream_kwargs = {
+            "model": settings.OPENAI_MODEL,
+            "input": [{"role": "user", "content": user_prompt}],
+            "temperature": temp,
+            "previous_response_id": previous_response_id,
+        }
+        
+        if vector_store_id:
+            stream_kwargs["tools"] = [{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+            
+        with client.responses.stream(**stream_kwargs) as stream:
+            for event in stream:
+                handler.handle(event)
 
-        # Get complete response from thread messages
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
-        latest_message = messages.data[0]
-        complete_response = latest_message.content[0].text.value
+        complete_response = handler.response_text.strip()
         
         # Mark task as completed with result
         result = {
             "response": complete_response,
-            "thread_id": thread_id
+            "response_id": handler.response_id
         }
         task_manager.mark_completed(task_id, result)
         logger.info(f"Completed background task {task_id} for continue asset '{asset_name}'")
@@ -375,14 +330,7 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
         task_manager.mark_failed(task_id, str(e))
 
 @router.put("/courses/{course_id}/asset_chat/{asset_name}", response_model=TaskResponse)
-async def continue_asset_chat(
-    course_id: str, 
-    asset_name: str, 
-    thread_id: str, 
-    request: AssetPromptRequest, 
-    background_tasks: BackgroundTasks,
-    user_id: str = Depends(verify_token)
-):
+async def continue_asset_chat(course_id: str, asset_name: str, response_id: str, request: AssetPromptRequest, background_tasks: BackgroundTasks, user_id: str = Depends(verify_token)):
     """
     Continue asset chat conversation (runs in background)
     Returns task_id immediately - use /tasks/{task_id} to check status
@@ -390,8 +338,8 @@ async def continue_asset_chat(
     try:
         # Validate course exists
         course = get_course(course_id)
-        if not course or "assistant_id" not in course:
-            raise HTTPException(status_code=404, detail="Course or assistant not found")
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
 
         # Create task
         task_id = task_manager.create_task(
@@ -399,7 +347,7 @@ async def continue_asset_chat(
             metadata={
                 "course_id": course_id,
                 "asset_name": asset_name,
-                "thread_id": thread_id,
+                "response_id": response_id,
                 "user_id": user_id
             }
         )
@@ -410,7 +358,7 @@ async def continue_asset_chat(
             task_id,
             course_id,
             asset_name,
-            thread_id,
+            response_id,
             request.user_prompt,
             user_id
         )
@@ -511,8 +459,8 @@ def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_to
 @router.post("/courses/{course_id}/assets/image", response_model=ImageResponse)
 def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(verify_token)):
     course = get_course(course_id)
-    if not course or "assistant_id" not in course:
-        raise HTTPException(status_code=404, detail="Course or assistant not found")
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
 
     input_variables = construct_input_variables(course, [])
     parser = PromptParser()
