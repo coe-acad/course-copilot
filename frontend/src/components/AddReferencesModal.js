@@ -278,14 +278,20 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
 
     return (
       <Modal open={open} onClose={handleClose}>
-        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Discover Resources</h3>
-        <p style={{ color: '#555', fontSize: 14, marginBottom: 16 }}>
-          Search the web for high-quality educational resources
-        </p>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          maxHeight: '90vh',
+          overflow: 'hidden',
+        }}>
+          <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, flexShrink: 0 }}>Discover Resources</h3>
+          <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 20, flexShrink: 0 }}>
+            Search the web for high-quality educational resources
+          </p>
 
         {/* Search Input */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ position: 'relative' }}>
+        <div style={{ marginBottom: 20, flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: '100%' }}>
             <input
               type="text"
               value={query}
@@ -294,11 +300,20 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
               placeholder="Enter a topic (e.g., Machine Learning, Python Programming)"
               style={{
                 width: '100%',
-                padding: '12px 100px 12px 12px',
+                padding: '12px 120px 12px 12px',
                 fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
+                border: '1.5px solid #e5e7eb',
+                borderRadius: '10px',
                 outline: 'none',
+                background: '#fafbfc',
+                transition: 'border 0.18s, background 0.18s',
+                boxSizing: 'border-box',
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.border = '1.5px solid #2563eb';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.border = '1.5px solid #e5e7eb';
               }}
             />
             <button
@@ -317,8 +332,24 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
                 fontSize: '14px',
                 color: 'white',
                 fontWeight: 500,
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading && query.trim()) {
+                  e.currentTarget.style.background = '#1d4ed8';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading && query.trim()) {
+                  e.currentTarget.style.background = '#2563eb';
+                }
               }}
             >
+              <FiSearch size={16} />
               {loading ? 'Searching...' : 'Search'}
             </button>
           </div>
@@ -334,6 +365,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
             color: '#dc2626',
             fontSize: '14px',
             marginBottom: '16px',
+            flexShrink: 0,
           }}>
             {discoverError}
           </div>
@@ -347,6 +379,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
             alignItems: 'center',
             padding: '40px',
             color: '#6b7280',
+            flex: 1,
           }}>
             <div style={{
               width: '24px',
@@ -357,7 +390,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
               animation: 'spin 1s linear infinite',
               marginRight: '12px',
             }} />
-            Discovering resources...
+            <span style={{ fontSize: '14px' }}>Discovering resources...</span>
           </div>
         )}
 
@@ -366,7 +399,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
           <div style={{
             maxHeight: '400px',
             overflowY: 'auto',
-            marginBottom: '16px',
+            marginBottom: '20px',
           }}>
             <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 15, color: '#1f2937' }}>
               Found {resources.length} resource{resources.length > 1 ? 's' : ''}
@@ -374,8 +407,8 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
             {resources.map((resource, idx) => (
               <div key={idx} style={{
                 background: '#fff',
-                border: selectedResources.includes(resource.url) ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                borderRadius: '8px',
+                border: selectedResources.includes(resource.url) ? '2px solid #2563eb' : '1.5px solid #e5e7eb',
+                borderRadius: '10px',
                 padding: '12px',
                 marginBottom: '12px',
                 transition: 'all 0.2s ease',
@@ -454,6 +487,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
             padding: '40px',
             color: '#6b7280',
             textAlign: 'center',
+            flex: 1,
           }}>
             <FiSearch size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
             <p style={{ fontSize: '14px', margin: 0 }}>
@@ -462,9 +496,38 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-          <button onClick={() => setStep(1)} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Back to Add Resources</button>
-          <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          gap: 12,
+          marginTop: '24px',
+          paddingTop: '20px',
+          borderTop: '1px solid #e5e7eb',
+          flexShrink: 0,
+        }}>
+          <button 
+            onClick={() => setStep(1)} 
+            style={{ 
+              padding: '9px 22px', 
+              fontSize: 15, 
+              borderRadius: 8, 
+              border: '1.5px solid #e5e7eb', 
+              background: '#fff', 
+              color: '#222',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'border 0.18s, background 0.18s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.border = '1.5px solid #d1d5db';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.border = '1.5px solid #e5e7eb';
+            }}
+          >
+            Back to Add Resources
+          </button>
+          <div style={{ display: 'flex', gap: 12 }}>
             {selectedResources.length > 0 && (
               <button
                 onClick={async () => {
@@ -495,21 +558,56 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
                 }}
                 disabled={loading}
                 style={{
-                  padding: '8px 16px',
+                  padding: '9px 22px',
                   fontSize: 15,
-                  borderRadius: 6,
+                  borderRadius: 8,
                   border: 'none',
                   background: loading ? '#9ca3af' : '#10b981',
                   color: '#fff',
                   fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer'
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.18s',
+                  boxShadow: loading ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.2)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.background = '#059669';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.background = '#10b981';
+                  }
                 }}
               >
                 {loading ? 'Adding...' : `Add Selected (${selectedResources.length})`}
               </button>
             )}
-            <button onClick={handleClose} style={{ padding: '8px 16px', fontSize: 15, borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Done</button>
+            <button 
+              onClick={handleClose} 
+              style={{ 
+                padding: '9px 22px', 
+                fontSize: 15, 
+                borderRadius: 8, 
+                border: 'none', 
+                background: '#2563eb', 
+                color: '#fff', 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                transition: 'background 0.18s, box-shadow 0.18s',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1d4ed8';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#2563eb';
+              }}
+            >
+              Done
+            </button>
           </div>
+        </div>
         </div>
 
         <style>{`

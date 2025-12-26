@@ -59,69 +59,30 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                 {/* Header */}
                 <div
                     style={{
-                        paddingBottom: "20px",
-                        borderBottom: "1px solid #e5e7eb",
-                        marginBottom: "20px",
+                        marginBottom: "24px",
                         flexShrink: 0,
                     }}
                 >
-                    <div
+                    <h3
                         style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
+                            margin: 0,
+                            fontSize: "18px",
+                            fontWeight: 600,
+                            color: "#1f2937",
+                            marginBottom: "8px",
                         }}
                     >
-                        <div>
-                            <h2
-                                style={{
-                                    margin: 0,
-                                    fontSize: "24px",
-                                    fontWeight: 700,
-                                    color: "#1f2937",
-                                }}
-                            >
-                                Discover Resources
-                            </h2>
-                            <p
-                                style={{
-                                    margin: "8px 0 0 0",
-                                    fontSize: "14px",
-                                    color: "#6b7280",
-                                }}
-                            >
-                                Search the web for high-quality educational resources
-                            </p>
-                        </div>
-
-                        {/* Close Button */}
-                        <button
-                            onClick={handleClose}
-                            style={{
-                                background: "transparent",
-                                border: "none",
-                                cursor: "pointer",
-                                padding: "8px",
-                                borderRadius: "6px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                color: "#6b7280",
-                                transition: "all 0.2s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = "#f3f4f6";
-                                e.currentTarget.style.color = "#374151";
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = "transparent";
-                                e.currentTarget.style.color = "#6b7280";
-                            }}
-                            title="Close"
-                        >
-                            <FiX size={20} />
-                        </button>
-                    </div>
+                        Discover Resources
+                    </h3>
+                    <p
+                        style={{
+                            margin: 0,
+                            fontSize: "14px",
+                            color: "#6b7280",
+                        }}
+                    >
+                        Search the web for high-quality educational resources
+                    </p>
                 </div>
 
                 {/* Search Input */}
@@ -135,18 +96,19 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                             placeholder="Enter a topic (e.g., Machine Learning, Python Programming)"
                             style={{
                                 width: "100%",
-                                padding: "12px 40px 12px 12px",
+                                padding: "12px 110px 12px 12px",
                                 fontSize: "14px",
-                                border: "1px solid #d1d5db",
-                                borderRadius: "8px",
+                                border: "1.5px solid #e5e7eb",
+                                borderRadius: "10px",
                                 outline: "none",
-                                transition: "border-color 0.2s ease",
+                                background: "#fafbfc",
+                                transition: "border 0.18s, background 0.18s",
                             }}
                             onFocus={(e) => {
-                                e.currentTarget.style.borderColor = "#2563eb";
+                                e.currentTarget.style.border = "1.5px solid #2563eb";
                             }}
                             onBlur={(e) => {
-                                e.currentTarget.style.borderColor = "#d1d5db";
+                                e.currentTarget.style.border = "1.5px solid #e5e7eb";
                             }}
                         />
                         <button
@@ -166,8 +128,10 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                                 alignItems: "center",
                                 gap: "6px",
                                 fontSize: "14px",
+                                fontWeight: 500,
                                 color: "white",
                                 transition: "all 0.2s ease",
+                                whiteSpace: "nowrap",
                             }}
                             onMouseEnter={(e) => {
                                 if (!loading && query.trim()) {
@@ -196,7 +160,7 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                             borderRadius: "8px",
                             color: "#dc2626",
                             fontSize: "14px",
-                            marginBottom: "20px",
+                            marginBottom: "16px",
                             flexShrink: 0,
                         }}
                     >
@@ -213,6 +177,7 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                             alignItems: "center",
                             padding: "40px",
                             color: "#6b7280",
+                            flex: 1,
                         }}
                     >
                         <div
@@ -226,7 +191,7 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                                 marginRight: "12px",
                             }}
                         />
-                        Discovering resources...
+                        <span style={{ fontSize: "14px" }}>Discovering resources...</span>
                     </div>
                 )}
 
@@ -235,15 +200,16 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                     <div
                         style={{
                             flex: 1,
-                            overflow: "auto",
-                            padding: "0 4px",
+                            overflowY: "auto",
+                            marginBottom: "16px",
+                            maxHeight: "400px",
                         }}
                     >
                         <div
                             style={{
                                 background: "#fafbfc",
                                 border: "1px solid #e5e7eb",
-                                borderRadius: "8px",
+                                borderRadius: "10px",
                                 padding: "20px",
                                 fontSize: "14px",
                                 lineHeight: "1.6",
@@ -342,14 +308,51 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                             padding: "40px",
                             color: "#6b7280",
                             textAlign: "center",
+                            flex: 1,
                         }}
                     >
                         <FiSearch size={48} style={{ marginBottom: "16px", opacity: 0.5 }} />
-                        <p style={{ fontSize: "16px", margin: 0 }}>
+                        <p style={{ fontSize: "14px", margin: 0 }}>
                             Enter a topic to discover resources
                         </p>
                     </div>
                 )}
+
+                {/* Footer Buttons */}
+                <div
+                    style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: "12px",
+                        marginTop: "24px",
+                        paddingTop: "20px",
+                        borderTop: "1px solid #e5e7eb",
+                        flexShrink: 0,
+                    }}
+                >
+                    <button
+                        onClick={handleClose}
+                        style={{
+                            padding: "9px 22px",
+                            borderRadius: "8px",
+                            border: "1.5px solid #e5e7eb",
+                            background: "#fff",
+                            fontSize: "15px",
+                            color: "#222",
+                            fontWeight: 500,
+                            cursor: "pointer",
+                            transition: "border 0.18s, background 0.18s",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.border = "1.5px solid #d1d5db";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.border = "1.5px solid #e5e7eb";
+                        }}
+                    >
+                        Done
+                    </button>
+                </div>
             </div>
 
             <style>{`
