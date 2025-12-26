@@ -15,8 +15,10 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
-from app.services.openai_service import evaluate_files_all_in_one
+
+from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name, create_qa_data, update_evaluation, get_qa_data_by_evaluation_id
+from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
@@ -144,6 +146,7 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
 
 async def _process_evaluation(evaluation_id: str, user_id: str):
     """Process evaluation in background using local file extraction with parallel workers"""
+    partial_result = None  # Store whatever we have so we can return partial output on failure
     try:
         # Check if evaluation is already completed
         evaluation = await asyncio.to_thread(get_evaluation_by_evaluation_id, evaluation_id)
@@ -168,14 +171,22 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         # Extract answer sheets
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
+        all_qas_data = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
                 pages = await asyncio.to_thread(extract_text_tables, answer_sheet_path)
                 extraction_result = await asyncio.to_thread(split_into_qas, pages, pdf_path=answer_sheet_path)
                 
                 extracted_email = extraction_result.get("email", None)
-                qas_list = extraction_result.get("answers", [])
-                
+                qas_list = extraction_result.get("answers", [])                
+                qas_data = extraction_result.get("full_data", [])
+
+                # Collect QA data to save in bulk later
+                all_qas_data.append({
+                    "student_index": i,
+                    "qa_data": qas_data
+                })
+
                 answer_sheet_data = {
                     "file_id": f"answer_sheet_{i+1}",
                     "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
@@ -190,6 +201,11 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
                 continue
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
+
+        # Save all QA data at once
+        if all_qas_data:
+            create_qa_data(evaluation_id, all_qas_data)
+            logger.info(f"QAs created for evaluation {evaluation_id} with {len(all_qas_data)} entries")
 
         # Determine batch size based on question count
         total_sheets = len(extracted_answer_sheets)
@@ -259,10 +275,24 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"ALL BATCHES COMPLETED: {sorted(batch_results.keys())} | Total students: {len(all_students)}")
         logger.info("=" * 60)
         
+        # Track what came back so we can surface partial results in case of failure
+        partial_result = {
+            "evaluation_id": evaluation_id,
+            "students": all_students
+        }
+        expected_file_ids = [sheet.get("file_id") for sheet in extracted_answer_sheets if sheet.get("file_id")]
+        returned_file_ids = [s.get("file_id") for s in all_students if s.get("file_id")]
+        missing_file_ids = [fid for fid in expected_file_ids if fid not in returned_file_ids]
+        duplicate_file_ids = [fid for fid in set(returned_file_ids) if returned_file_ids.count(fid) > 1]
+
         # Verify all students were evaluated
         if len(all_students) != len(extracted_answer_sheets):
             logger.error(f"Student count mismatch: expected {len(extracted_answer_sheets)}, got {len(all_students)}")
-            raise HTTPException(status_code=500, detail="Evaluation incomplete: student count mismatch")
+            if missing_file_ids:
+                logger.error(f"Missing file_ids: {missing_file_ids}")
+            if duplicate_file_ids:
+                logger.error(f"Duplicate file_ids in evaluation results: {duplicate_file_ids}")
+            raise HTTPException(status_code=500, detail=f"Evaluation incomplete: student count mismatch. Missing: {missing_file_ids or 'unknown'}")
         
         logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
         
@@ -271,6 +301,7 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             "evaluation_id": evaluation_id,
             "students": all_students
         }
+        logger.info(f"Final evaluation result: {evaluation_result}")
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
             answers = student.get("answers", [])
@@ -284,6 +315,7 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         overall_max = sum(s.get("max_total_score", 0) for s in evaluation_result.get("students", []))
         evaluation_result["total_score"] = overall_total
         evaluation_result["max_total_score"] = overall_max
+
         
         # Save evaluation result to MongoDB
         try:
@@ -365,6 +397,12 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed"})
         except Exception as status_error:
             logger.error(f"Failed to update evaluation status: {str(status_error)}")
+        # Persist partial results so they can be surfaced via status API
+        try:
+            if partial_result:
+                update_evaluation(evaluation_id, {"partial_result": partial_result})
+        except Exception as partial_error:
+            logger.error(f"Failed to store partial_result for {evaluation_id}: {str(partial_error)}")
 
         # Clean up temporary files
         try:
@@ -374,9 +412,12 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         except Exception as cleanup_error:
             logger.error(f"Failed to cleanup temporary files: {str(cleanup_error)}")
         
-        return {
+        result_payload = {
             "error": str(e)
         }
+        if partial_result:
+            result_payload["partial_result"] = partial_result
+        return result_payload
 
 @router.get("/evaluation/evaluate-files")
 async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token)):
@@ -423,6 +464,57 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
     except Exception as e:
         logger.error(f"Error starting evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error starting evaluation: {str(e)}")
+
+@router.get("/evaluation/get-qas")
+def get_qas(evaluation_id: str, user_id: str, student_index: int = 0):
+    try:
+        qas_doc = get_qa_data_by_evaluation_id(evaluation_id)
+        if not qas_doc:
+            return {
+                "question_data": [],
+                "answer_data": []
+            }
+
+        stored_data = qas_doc.get("qa_data", [])
+        
+        target_data = []
+
+        # Check if stored_data is our new wrapper structure (list of dicts with student_index)
+        if isinstance(stored_data, list) and len(stored_data) > 0:
+            first_item = stored_data[0]
+            if isinstance(first_item, dict) and "student_index" in first_item and "qa_data" in first_item:
+                 # It's the new structure
+                 found = next((item for item in stored_data if item.get("student_index") == int(student_index)), None)
+                 if found:
+                     target_data = found.get("qa_data", [])
+            else:
+                 # It's likely the old structure (directly the QA list for one student)
+                 # In this case we just return it, ignoring student_index as we likely only have one
+                 target_data = stored_data
+        
+        question_data = []
+        answer_data = []
+
+        for item in target_data:
+            question_data.append(item.get("question", ""))
+
+            answer_list = item.get("answer", [])
+            if answer_list:
+                answer_data.append(answer_list[0].get("content", ""))
+            else:
+                answer_data.append("")
+
+        return {
+            "question_data": question_data,
+            "answer_data": answer_data
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting qas data for evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting qas data: {str(e)}"
+        )
 
 @router.put("/evaluation/edit-results")
 def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token)):
@@ -474,7 +566,8 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             return {
                 "status": "failed",
                 "message": "Evaluation processing failed. Please try again or contact support.",
-                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
+                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", []),
+                "partial_result": evaluation.get("partial_result")
             }
         
         if "evaluation_result" in evaluation:

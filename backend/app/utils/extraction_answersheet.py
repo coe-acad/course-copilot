@@ -394,7 +394,7 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
     return results
 
 
-def split_into_qas(pages_content, pdf_path=None, answers_only=True):
+def split_into_qas(pages_content, pdf_path=None, answers_only=False):
     """
     Global Q&A parse (handles page spill) + attach tables and images
     to the correct answer via (page,y) spans.
@@ -447,45 +447,47 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
             # Continue without images rather than failing the entire extraction
             logger.warning("Continuing without image extraction due to error")
 
-    # 6) If answers_only mode, convert to simplified format
-    if answers_only:
-        logger.info(f"Converting {len(results)} Q&A pairs to answers-only format")
-        answers_only_results = []
-        for idx, qa in enumerate(results):
-            # Extract answer content from the answer array
-            answer_content = ""
-            if qa.get("answer") and isinstance(qa["answer"], list):
-                for ans_item in qa["answer"]:
-                    if isinstance(ans_item, dict) and ans_item.get("type") == "text":
-                        answer_content += ans_item.get("content", "")
-                    elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
-                        # Format table data as readable text
-                        table_data = ans_item.get("content", [])
-                        if table_data and isinstance(table_data, list):
-                            answer_content += "\n[Table]:\n"
-                            for row in table_data:
-                                if row:  # Skip empty rows
-                                    # Join cells with | separator
-                                    row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                                    answer_content += row_text + "\n"
-                            answer_content += "[End Table]\n"
-                    elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
-                        # Include image reference in answer content
-                        file_id = ans_item.get("file_id", "")
-                        if file_id:
-                            answer_content += f"\n[Image: {file_id}]\n"
-            
-            # Store only answer with question number (NO question text)
-            answer_only = {
-                "question_number": str(idx + 1),
-                "student_answer": answer_content if answer_content else None
-            }
-            answers_only_results.append(answer_only)
+    # 6) Convert to simplified format (Always do this to ensure we have format for LLM)
+    logger.info(f"Converting {len(results)} Q&A pairs to answers-only format")
+    answers_only_results = []
+    for idx, qa in enumerate(results):
+        # Extract answer content from the answer array
+        answer_content = ""
+        if qa.get("answer") and isinstance(qa["answer"], list):
+            for ans_item in qa["answer"]:
+                if isinstance(ans_item, dict) and ans_item.get("type") == "text":
+                    answer_content += ans_item.get("content", "")
+                elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
+                    # Format table data as readable text
+                    table_data = ans_item.get("content", [])
+                    if table_data and isinstance(table_data, list):
+                        answer_content += "\n[Table]:\n"
+                        for row in table_data:
+                            if row:  # Skip empty rows
+                                # Join cells with | separator
+                                row_text = " | ".join(str(cell) if cell else "" for cell in row)
+                                answer_content += row_text + "\n"
+                        answer_content += "[End Table]\n"
+                elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
+                    # Include image reference in answer content
+                    file_id = ans_item.get("file_id", "")
+                    if file_id:
+                        answer_content += f"\n[Image: {file_id}]\n"
         
-        logger.info(f"Converted to {len(answers_only_results)} answers-only entries")
-        return {
-            "email": extracted_email,
-            "answers": answers_only_results
+        # Store only answer with question number (NO question text)
+        answer_only = {
+            "question_number": str(idx + 1),
+            "student_answer": answer_content if answer_content else None
         }
-
-    return results
+        answers_only_results.append(answer_only)
+    
+    logger.info(f"Converted to {len(answers_only_results)} answers-only entries")
+    
+    # Return dictionary with both formats
+    # 'answers': The simplified version used by the evaluation prompt/LLM
+    # 'full_data': The detailed version (text, complex tables, bbox, etc.) useful for DB storage or UI
+    return {
+        "email": extracted_email,
+        "answers": answers_only_results,
+        "full_data": results
+    }
