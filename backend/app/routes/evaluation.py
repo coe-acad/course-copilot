@@ -79,15 +79,15 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
             logger.error(f"Failed to create evaluation {evaluation_id}")
             raise HTTPException(status_code=500, detail="Failed to create evaluation record")
         
-        logger.info(f"Successfully created handwritten evaluation {evaluation_id}")
+        logger.info(f"Successfully created digital evaluation {evaluation_id}")
         
         return {
             "evaluation_id": evaluation_id,
-            "message": "Mark scheme uploaded successfully for handwritten evaluation"
+            "message": "Mark scheme uploaded successfully for digital evaluation"
         }
         
     except Exception as e:
-        logger.error(f"Error uploading mark scheme for handwritten evaluation: {str(e)}")
+        logger.error(f"Error uploading mark scheme for digital evaluation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
 
 @router.post("/evaluation/upload-mark-scheme-handwritten")
@@ -300,57 +300,43 @@ def _process_evaluation(evaluation_id: str, user_id: str):
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
-                pages = extract_text_tables(answer_sheet_path)
-                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)
+                # Use appropriate extraction method based on evaluation type
+                if evaluation_type == "handwritten":
+                    # For handwritten: use Mistral OCR extraction with mark scheme context
+                    # Pass the extracted mark scheme as context for better extraction
+                    extraction_result = split_into_qas_mistral(
+                        answer_sheet_path,
+                        mark_scheme_context=extracted_mark_scheme
+                    )  # Returns {"email": ..., "answers": [...]}
+                else:
+                    # For digital (default): use pdfplumber extraction
+                    pages = extract_text_tables(answer_sheet_path)
+                    extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
                 
+                # Extract email and answers from result
                 extracted_email = extraction_result.get("email", None)
                 qas_list = extraction_result.get("answers", [])
                 
+                # Log extracted email for debugging
+                if extracted_email:
+                    logger.info(f"Extracted email from answer sheet {i+1}: {extracted_email}")
+                else:
+                    logger.warning(f"No email found in answer sheet {i+1}")
+                
+                # Wrap in proper structure with email
                 answer_sheet_data = {
                     "file_id": f"answer_sheet_{i+1}",
                     "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
                     "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                    "email": extracted_email,
-                    "answers": qas_list
+                    "email": extracted_email,  # Add extracted email to the data
+                    "answers": qas_list  # Use answers directly from extraction_result
                 }
                 extracted_answer_sheets.append(answer_sheet_data)
-                logger.info(f"Answer sheet {i+1} extracted: {answer_sheet_data}")
+                logger.info(f"Completed {evaluation_type} extraction for answer sheet {i+1}")
+
             except Exception as extraction_error:
                 logger.error(f"Failed to extract answer sheet {i+1}: {str(extraction_error)}")
                 continue
-            # Use appropriate extraction method based on evaluation type
-            if evaluation_type == "handwritten":
-                # For handwritten: use Mistral OCR extraction with mark scheme context
-                # Pass the extracted mark scheme as context for better extraction
-                extraction_result = split_into_qas_mistral(
-                    answer_sheet_path,
-                    mark_scheme_context=extracted_mark_scheme
-                )  # Returns {"email": ..., "answers": [...]}
-            else:
-                # For digital (default): use pdfplumber extraction
-                pages = extract_text_tables(answer_sheet_path)
-                extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
-            
-            # Extract email and answers from result
-            extracted_email = extraction_result.get("email", None)
-            qas_list = extraction_result.get("answers", [])
-            
-            # Log extracted email for debugging
-            if extracted_email:
-                logger.info(f"Extracted email from answer sheet {i+1}: {extracted_email}")
-            else:
-                logger.warning(f"No email found in answer sheet {i+1}")
-            
-            # Wrap in proper structure with email
-            answer_sheet_data = {
-                "file_id": f"answer_sheet_{i+1}",
-                "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
-                "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
-                "email": extracted_email,  # Add extracted email to the data
-                "answers": qas_list  # Use answers directly from extraction_result
-            }
-            extracted_answer_sheets.append(answer_sheet_data)
-            logger.info(f"Completed {evaluation_type} extraction for answer sheet {i+1}")
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
 
