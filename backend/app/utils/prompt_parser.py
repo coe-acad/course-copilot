@@ -9,7 +9,7 @@ class PromptParser:
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # points to backend/app
 
     def _load_template_json(self, template_file_path):
-        print(f"Trying to load prompt template: {template_file_path}")  # Add this line
+        print(f"prompt template: {template_file_path}")  # Add this line
         # Given a file path, loads the prompt template from the JSON file.
         if not os.path.exists(template_file_path):
             raise FileNotFoundError(f"Prompt template file not found: {template_file_path}")
