@@ -201,8 +201,8 @@ def _extract_structured_text_format(text: str) -> List[Dict[str, Any]]:
     """
     questions = []
     
-    # Split by question blocks - look for questionnumber pattern
-    question_blocks = re.split(r'\n(?=(?:questionnumber|"questionnumber")\s*:\s*\d+)', text, flags=re.IGNORECASE)
+    # Split by question blocks - look for questionnumber pattern (allow space)
+    question_blocks = re.split(r'\n(?=(?:question\s*number|"question\s*number")\s*:\s*\d+)', text, flags=re.IGNORECASE)
     
     for block in question_blocks:
         if not block.strip():
@@ -224,23 +224,25 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
         "markingscheme": []
     }
     
-    # Extract question number
-    qnum_match = re.search(r'(?:questionnumber|"questionnumber")\s*:\s*(\d+)', block, re.IGNORECASE)
+    # Extract question number (allow space)
+    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*:\s*(\d+)', block, re.IGNORECASE)
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
     
     # Extract question text (support both "question:" and "question-text:")
+    # Extract question text (support "question:", "question-text:", "Question text:")
+    # Look ahead for either answertemplate OR markingscheme (including Total = X variation)
     qtext_match = re.search(
-        r'(?:question-text|"question-text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|$))',
+        r'(?:question-text|"question-text"|question\s*text|"question\s*text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|markingscheme|"markingscheme"|marking\s*scheme\(.*?\)|marking\s*scheme|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
     if qtext_match:
         question_data["question-text"] = _clean_text(qtext_match.group(1))
     
-    # Extract answertemplate
+    # Extract answertemplate (Optional now)
     answer_match = re.search(
-        r'(?:answertemplate|"answertemplate")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:markingscheme|"markingscheme"|$))',
+        r'(?:answertemplate|"answertemplate")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:markingscheme|"markingscheme"|marking\s*scheme\(.*?\)|marking\s*scheme|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
@@ -258,16 +260,18 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
         question_data["markingscheme"] = _extract_array_items(marking_match.group(1))
     else:
         # Try indented format without brackets (new format)
-        # Capture all text after markingscheme: until end of block
+        # Handle "Marking scheme (Total = X):" or just "Marking scheme:"
+        # usage of [:=] allows for both : and = separators
+        # We want to capture EVERYTHING until the end of the block
         marking_match = re.search(
-            r'(?:markingscheme|"markingscheme")\s*:\s*(.*?)$',
+            r'(?:markingscheme|"markingscheme"|marking\s*scheme.*?)[:=]\s*(.*)',
             block,
             re.DOTALL | re.IGNORECASE
         )
         if marking_match:
             marking_text = marking_match.group(1).strip()
             if marking_text:
-                question_data["markingscheme"] = _extract_indented_items(marking_text)
+                question_data["markingscheme"] = _extract_bullet_points(marking_text)
     
     return question_data
 
@@ -585,7 +589,7 @@ def validate_mark_scheme(questions: List[Dict[str, Any]]) -> bool:
     if not questions:
         return False
     
-    required_fields = ["questionnumber", "question-text", "answertemplate", 
+    required_fields = ["questionnumber", "question-text", 
                       "markingscheme"]
     
     for question in questions:
