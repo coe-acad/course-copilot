@@ -26,21 +26,58 @@ db = client["creators-copilot-demo"]
 # Initialize GridFS for file storage
 fs = gridfs.GridFS(db)
 
-# Add to collection
-def add_to_collection(collection_name: str, data: dict):
-    collection = db[collection_name]
+logger = logging.getLogger(__name__)
+
+
+# ============== ORG-AWARE DATABASE HELPERS ==============
+
+def get_org_collection(collection_name: str, org_db_name: str = None) -> Collection:
+    """
+    Get collection from organization database or default database.
+    
+    Args:
+        collection_name: Name of the collection
+        org_db_name: Organization database name (if None, uses default db)
+    
+    Returns:
+        MongoDB Collection object
+    """
+    if org_db_name:
+        return client[org_db_name][collection_name]
+    return db[collection_name]
+
+
+def get_org_gridfs(org_db_name: str = None):
+    """
+    Get GridFS instance for organization database or default database.
+    
+    Args:
+        org_db_name: Organization database name (if None, uses default db)
+    
+    Returns:
+        GridFS instance
+    """
+    if org_db_name:
+        return gridfs.GridFS(client[org_db_name])
+    return fs
+
+
+# ============== BASE CRUD OPERATIONS (ORG-AWARE) ==============
+
+def add_to_collection(collection_name: str, data: dict, org_db_name: str = None):
+    collection = get_org_collection(collection_name, org_db_name)
     collection.insert_one(data)
 
-def get_one_from_collection(collection_name: str, query: dict):
-    collection = db[collection_name]
+def get_one_from_collection(collection_name: str, query: dict, org_db_name: str = None):
+    collection = get_org_collection(collection_name, org_db_name)
     doc = collection.find_one(query)
     if doc and '_id' in doc:
         doc['_id'] = str(doc['_id'])
     return doc
 
-def get_many_from_collection(collection_name: str, query: dict):
+def get_many_from_collection(collection_name: str, query: dict, org_db_name: str = None):
     docs = []
-    collection = db[collection_name]
+    collection = get_org_collection(collection_name, org_db_name)
     for doc in collection.find(query):
         # Convert ObjectId to string for JSON serialization
         if '_id' in doc:
@@ -48,49 +85,53 @@ def get_many_from_collection(collection_name: str, query: dict):
         docs.append(doc)
     return docs
 
-def update_in_collection(collection_name: str, query: dict, data: dict):
-    collection = db[collection_name]
+def update_in_collection(collection_name: str, query: dict, data: dict, org_db_name: str = None):
+    collection = get_org_collection(collection_name, org_db_name)
     collection.update_one(query, {"$set": data})
 
-def delete_from_collection(collection_name: str, query: dict):
-    collection = db[collection_name]
+def delete_from_collection(collection_name: str, query: dict, org_db_name: str = None):
+    collection = get_org_collection(collection_name, org_db_name)
     collection.delete_one(query)
 
 # Users
-def create_user(user_id: str, email: str, display_name: str = None, role: str = "user"):
+def create_user(user_id: str, email: str, display_name: str = None, role: str = "user", org_db_name: str = None):
     user_data = {"_id": user_id, "email": email, "role": role}
     if display_name:
         user_data["display_name"] = display_name
-    add_to_collection("users", user_data)
+    add_to_collection("users", user_data, org_db_name)
 
-def update_user_role(user_id: str, role: str):
+def update_user_role(user_id: str, role: str, org_db_name: str = None):
     """Update user's role"""
-    update_in_collection("users", {"_id": user_id}, {"role": role})
+    update_in_collection("users", {"_id": user_id}, {"role": role}, org_db_name)
 
-def delete_user(user_id: str):
+def delete_user(user_id: str, org_db_name: str = None):
     """Delete a user"""
-    delete_from_collection("users", {"_id": user_id})
+    delete_from_collection("users", {"_id": user_id}, org_db_name)
 
-def get_user_by_user_id(user_id: str):
-    return get_one_from_collection("users", {"_id": user_id})
+def get_user_by_user_id(user_id: str, org_db_name: str = None):
+    return get_one_from_collection("users", {"_id": user_id}, org_db_name)
 
-def get_email_by_user_id(user_id: str):
-    user_doc = get_one_from_collection("users", {"_id": user_id})
+def get_email_by_user_id(user_id: str, org_db_name: str = None):
+    user_doc = get_one_from_collection("users", {"_id": user_id}, org_db_name)
     if not user_doc:
         return None
     return user_doc.get("email")
 
-def get_user_display_name(user_id: str):
+def get_user_display_name(user_id: str, org_db_name: str = None):
     """Get user's display name, falls back to email if display_name not available"""
-    user_doc = get_one_from_collection("users", {"_id": user_id})
+    user_doc = get_one_from_collection("users", {"_id": user_id}, org_db_name)
     if not user_doc:
         return None
     # Prefer display_name, fallback to email
     return user_doc.get("display_name") or user_doc.get("email")
 
-def get_user_by_email(email: str):
+def get_user_by_email(email: str, org_db_name: str = None):
     """Get user by email address"""
-    return get_one_from_collection("users", {"email": email})
+    return get_one_from_collection("users", {"email": email}, org_db_name)
+
+def get_all_users(org_db_name: str = None):
+    """Get all users from organization or default database"""
+    return get_many_from_collection("users", {}, org_db_name)
 
 # Organization Databases
 def create_new_organization_database(org_name: str, org_id: str = None):
@@ -446,7 +487,7 @@ def list_all_organization_databases():
         raise HTTPException(status_code=500, detail=f"Failed to list organization databases: {str(e)}")
 
 # Courses
-def create_course(data: dict):
+def create_course(data: dict, org_db_name: str = None):
     course_id = str(uuid4())
     add_to_collection(
         "courses",
@@ -455,26 +496,27 @@ def create_course(data: dict):
             "created_at": datetime.utcnow(),
             **data,
         },
+        org_db_name
     )
     return course_id
 
-def get_course(course_id: str):
-    return get_one_from_collection("courses", {"_id": course_id})
+def get_course(course_id: str, org_db_name: str = None):
+    return get_one_from_collection("courses", {"_id": course_id}, org_db_name)
 
-def get_courses_by_user_id(user_id: str):
+def get_courses_by_user_id(user_id: str, org_db_name: str = None):
     """Get courses owned by user AND courses shared with user"""
     # Get courses user owns
-    owned_courses = get_many_from_collection("courses", {"user_id": user_id})
+    owned_courses = get_many_from_collection("courses", {"user_id": user_id}, org_db_name)
     
     # Get courses shared with user
-    shared_courses = get_shared_courses(user_id)
+    shared_courses = get_shared_courses(user_id, org_db_name)
     
     # Mark owned courses as owned and shared courses as shared
     for course in owned_courses:
         course["is_owner"] = True
         course["is_shared"] = False
         # Add count of users this course is shared with
-        shares = get_course_shares(course["_id"])
+        shares = get_course_shares(course["_id"], org_db_name)
         course["shared_count"] = len(shares)
     
     for course in shared_courses:
@@ -482,19 +524,19 @@ def get_courses_by_user_id(user_id: str):
         course["is_shared"] = True
         course["shared_count"] = 0
         # Add owner email for display
-        owner_email = get_email_by_user_id(course.get("user_id"))
+        owner_email = get_email_by_user_id(course.get("user_id"), org_db_name)
         course["owner_email"] = owner_email
     
     return owned_courses + shared_courses
 
-def update_course(course_id: str, data: dict):
-    update_in_collection("courses", {"_id": course_id}, data)
+def update_course(course_id: str, data: dict, org_db_name: str = None):
+    update_in_collection("courses", {"_id": course_id}, data, org_db_name)
 
-def delete_course(course_id: str):
-    delete_from_collection("courses", {"_id": course_id})
+def delete_course(course_id: str, org_db_name: str = None):
+    delete_from_collection("courses", {"_id": course_id}, org_db_name)
 
 # Course Sharing
-def share_course(course_id: str, owner_id: str, shared_with_user_id: str, shared_with_email: str):
+def share_course(course_id: str, owner_id: str, shared_with_user_id: str, shared_with_email: str, org_db_name: str = None):
     """Share a course with another user"""
     from datetime import datetime
     share_data = {
@@ -504,38 +546,38 @@ def share_course(course_id: str, owner_id: str, shared_with_user_id: str, shared
         "shared_with_email": shared_with_email,
         "shared_at": datetime.utcnow().isoformat()
     }
-    add_to_collection("course_shares", share_data)
+    add_to_collection("course_shares", share_data, org_db_name)
 
-def get_course_shares(course_id: str):
+def get_course_shares(course_id: str, org_db_name: str = None):
     """Get list of users a course is shared with"""
-    return get_many_from_collection("course_shares", {"course_id": course_id})
+    return get_many_from_collection("course_shares", {"course_id": course_id}, org_db_name)
 
-def get_shared_courses(user_id: str):
+def get_shared_courses(user_id: str, org_db_name: str = None):
     """Get courses shared with a user"""
-    shares = get_many_from_collection("course_shares", {"shared_with_user_id": user_id})
+    shares = get_many_from_collection("course_shares", {"shared_with_user_id": user_id}, org_db_name)
     course_ids = [share["course_id"] for share in shares]
     if not course_ids:
         return []
-    return get_many_from_collection("courses", {"_id": {"$in": course_ids}})
+    return get_many_from_collection("courses", {"_id": {"$in": course_ids}}, org_db_name)
 
-def is_course_shared_with_user(course_id: str, user_id: str):
+def is_course_shared_with_user(course_id: str, user_id: str, org_db_name: str = None):
     """Check if course is already shared with a specific user"""
     share = get_one_from_collection("course_shares", {
         "course_id": course_id,
         "shared_with_user_id": user_id
-    })
+    }, org_db_name)
     return share is not None
 
-def revoke_course_share(course_id: str, user_id: str):
+def revoke_course_share(course_id: str, user_id: str, org_db_name: str = None):
     """Remove sharing access for a user"""
     delete_from_collection("course_shares", {
         "course_id": course_id,
         "shared_with_user_id": user_id
-    })
+    }, org_db_name)
 
-def is_course_accessible(course_id: str, user_id: str):
+def is_course_accessible(course_id: str, user_id: str, org_db_name: str = None):
     """Check if user owns or has access to a course"""
-    course = get_course(course_id)
+    course = get_course(course_id, org_db_name)
     if not course:
         return False
     
@@ -544,36 +586,36 @@ def is_course_accessible(course_id: str, user_id: str):
         return True
     
     # Check if course is shared with user
-    return is_course_shared_with_user(course_id, user_id)
+    return is_course_shared_with_user(course_id, user_id, org_db_name)
 
-def get_course_owner_email(course_id: str):
+def get_course_owner_email(course_id: str, org_db_name: str = None):
     """Get the email of the course owner"""
-    course = get_course(course_id)
+    course = get_course(course_id, org_db_name)
     if not course:
         return None
     owner_id = course.get("user_id")
     if not owner_id:
         return None
-    return get_email_by_user_id(owner_id)
+    return get_email_by_user_id(owner_id, org_db_name)
 
 # Resources
-def create_resource(course_id: str, resource_name: str, content: str = None):
+def create_resource(course_id: str, resource_name: str, content: str = None, org_db_name: str = None):
     resource_data = {"course_id": course_id, "resource_name": resource_name}
     if content is not None:
         resource_data["content"] = content
-    add_to_collection("resources", resource_data)
+    add_to_collection("resources", resource_data, org_db_name)
 
-def get_resources_by_course_id(course_id: str):
-    return get_many_from_collection("resources", {"course_id": course_id})
+def get_resources_by_course_id(course_id: str, org_db_name: str = None):
+    return get_many_from_collection("resources", {"course_id": course_id}, org_db_name)
 
-def get_resource_by_course_id_and_resource_name(course_id: str, resource_name: str):
-    return get_one_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
+def get_resource_by_course_id_and_resource_name(course_id: str, resource_name: str, org_db_name: str = None):
+    return get_one_from_collection("resources", {"course_id": course_id, "resource_name": resource_name}, org_db_name)
 
-def delete_resource(course_id: str, resource_name: str):
-    delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
+def delete_resource(course_id: str, resource_name: str, org_db_name: str = None):
+    delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name}, org_db_name)
 
 # Assets
-def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str, created_by_user_id: str = None):
+def create_asset(course_id: str, asset_name: str, asset_category: str, asset_type: str, asset_content: str, asset_last_updated_by: str, asset_last_updated_at: str, created_by_user_id: str = None, org_db_name: str = None):
     asset_data = {
         "course_id": course_id, 
         "asset_name": asset_name, 
@@ -585,29 +627,29 @@ def create_asset(course_id: str, asset_name: str, asset_category: str, asset_typ
     }
     if created_by_user_id:
         asset_data["created_by_user_id"] = created_by_user_id
-    add_to_collection("assets", asset_data)
+    add_to_collection("assets", asset_data, org_db_name)
 
-def get_assets_by_course_id(course_id: str):
-    return get_many_from_collection("assets", {"course_id": course_id})
+def get_assets_by_course_id(course_id: str, org_db_name: str = None):
+    return get_many_from_collection("assets", {"course_id": course_id}, org_db_name)
 
-def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str):
-    return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+def get_asset_by_course_id_and_asset_name(course_id: str, asset_name: str, org_db_name: str = None):
+    return get_one_from_collection("assets", {"course_id": course_id, "asset_name": asset_name}, org_db_name)
 
-def get_asset_by_course_id_and_asset_type(course_id: str, asset_type: str):
-    return get_one_from_collection("assets", {"course_id": course_id, "asset_type": asset_type})
+def get_asset_by_course_id_and_asset_type(course_id: str, asset_type: str, org_db_name: str = None):
+    return get_one_from_collection("assets", {"course_id": course_id, "asset_type": asset_type}, org_db_name)
 
-def get_asset_by_evaluation_id(evaluation_id: str):
+def get_asset_by_evaluation_id(evaluation_id: str, org_db_name: str = None):
     """Get asset that references this evaluation_id"""
-    return get_one_from_collection("assets", {"asset_content": evaluation_id, "asset_type": "evaluation"})
+    return get_one_from_collection("assets", {"asset_content": evaluation_id, "asset_type": "evaluation"}, org_db_name)
 
-def delete_asset_from_db(course_id: str, asset_name: str):
-    delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name})
+def delete_asset_from_db(course_id: str, asset_name: str, org_db_name: str = None):
+    delete_from_collection("assets", {"course_id": course_id, "asset_name": asset_name}, org_db_name)
 
 # Evaluation    
 def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_id: str, vector_store_id: str, 
                      mark_scheme_path: str = None, mark_scheme_file_id: str = None,
                      answer_sheet_paths: list[str] = None, answer_sheet_file_ids: list[str] = None, 
-                     answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital"):
+                     answer_sheet_filenames: list[str] = None, evaluation_type: str = "digital", org_db_name: str = None):
     """Create evaluation record supporting both local paths and OpenAI file IDs
     
     Args:
@@ -621,6 +663,7 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
         answer_sheet_file_ids: List of OpenAI file IDs for answer sheets
         answer_sheet_filenames: Original filenames of answer sheets
         evaluation_type: Type of evaluation - "digital" or "handwritten" (default: "digital")
+        org_db_name: Organization database name for multi-tenant support
     """
     evaluation = {
         "evaluation_id": evaluation_id, 
@@ -634,20 +677,20 @@ def create_evaluation(evaluation_id: str, course_id: str, evaluation_assistant_i
         "answer_sheet_filenames": answer_sheet_filenames or [],
         "evaluation_type": evaluation_type
     }
-    add_to_collection("evaluations", evaluation)
+    add_to_collection("evaluations", evaluation, org_db_name)
     return evaluation
 
-def get_evaluation_by_evaluation_id(evaluation_id: str):
-    return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id})
+def get_evaluation_by_evaluation_id(evaluation_id: str, org_db_name: str = None):
+    return get_one_from_collection("evaluations", {"evaluation_id": evaluation_id}, org_db_name)
 
-def get_evaluations_by_course_id(course_id: str):
-    return get_many_from_collection("evaluations", {"course_id": course_id})
+def get_evaluations_by_course_id(course_id: str, org_db_name: str = None):
+    return get_many_from_collection("evaluations", {"course_id": course_id}, org_db_name)
 
-def update_evaluation(evaluation_id: str, data: dict):
+def update_evaluation(evaluation_id: str, data: dict, org_db_name: str = None):
     """Update an evaluation record with new data"""
     logger = logging.getLogger(__name__)
     logger.info(f"Updating evaluation {evaluation_id} with data: {list(data.keys())}")
-    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, data)
+    update_in_collection("evaluations", {"evaluation_id": evaluation_id}, data, org_db_name)
     
 def update_evaluation_with_result(evaluation_id: str, evaluation_result: dict):
     """
@@ -788,56 +831,111 @@ def remove_setting_label(category: str, label: str):
     update_configuration(setting["_id"], {"options": options})
 
 # GridFS File Storage Functions
-def store_pdf_in_mongo(file_content: bytes, filename: str, metadata: dict = None) -> str:
-    """Store file binary data in MongoDB using GridFS"""
+def store_pdf_in_mongo(file_content: bytes, filename: str, metadata: dict = None, org_db_name: str = None) -> str:
+    """Store file binary data in MongoDB using GridFS (org-specific if org_db_name provided)"""
     logger = logging.getLogger(__name__)
-    file_id = fs.put(
+    target_fs = get_org_gridfs(org_db_name) if org_db_name else fs
+    file_id = target_fs.put(
         file_content,
         filename=filename,
         content_type=metadata.get("content_type", "application/pdf") if metadata else "application/pdf",
         metadata=metadata or {}
     )
-    logger.info(f"Stored file '{filename}' in MongoDB with file_id: {file_id}")
+    logger.info(f"Stored file '{filename}' in MongoDB with file_id: {file_id} (org: {org_db_name or 'default'})")
     return str(file_id)
 
-def retrieve_pdf_from_mongo(file_id: str) -> bytes:
-    """Retrieve file binary data from MongoDB using GridFS"""
+def retrieve_pdf_from_mongo(file_id: str, org_db_name: str = None) -> bytes:
+    """Retrieve file binary data from MongoDB using GridFS (org-specific if org_db_name provided)"""
     logger = logging.getLogger(__name__)
+    target_fs = get_org_gridfs(org_db_name) if org_db_name else fs
     try:
-        grid_out = fs.get(ObjectId(file_id))
-        logger.info(f"Retrieved file with file_id: {file_id}, filename: {grid_out.filename}")
+        grid_out = target_fs.get(ObjectId(file_id))
+        logger.info(f"Retrieved file with file_id: {file_id}, filename: {grid_out.filename} (org: {org_db_name or 'default'})")
         return grid_out.read()
     except gridfs.NoFile:
-        logger.error(f"File not found in MongoDB with file_id: {file_id}")
+        logger.error(f"File not found in MongoDB with file_id: {file_id} (org: {org_db_name or 'default'})")
         raise HTTPException(status_code=404, detail="File not found in database")
 
-def delete_pdf_from_mongo(file_id: str):
-    """Delete file from MongoDB GridFS"""
+def delete_pdf_from_mongo(file_id: str, org_db_name: str = None):
+    """Delete file from MongoDB GridFS (org-specific if org_db_name provided)"""
     logger = logging.getLogger(__name__)
+    target_fs = get_org_gridfs(org_db_name) if org_db_name else fs
     try:
-        fs.delete(ObjectId(file_id))
-        logger.info(f"Deleted file with file_id: {file_id}")
+        target_fs.delete(ObjectId(file_id))
+        logger.info(f"Deleted file with file_id: {file_id} (org: {org_db_name or 'default'})")
     except gridfs.NoFile:
         logger.warning(f"Attempted to delete non-existent file: {file_id}")
 
 # Admin Files
-def create_admin_file(file_data: dict):
+def create_admin_file(file_data: dict, org_db_name: str = None):
     """Create a new admin file record"""
     from uuid import uuid4
     file_id = str(uuid4())
     file_data["_id"] = file_id
     file_data["created_at"] = datetime.utcnow().isoformat()
-    add_to_collection("admin_files", file_data)
+    add_to_collection("admin_files", file_data, org_db_name)
     return file_id
 
-def get_all_admin_files():
-    """Get all admin files"""
-    return get_many_from_collection("admin_files", {})
+def get_all_admin_files(org_db_name: str = None):
+    """Get all admin files for an organization"""
+    return get_many_from_collection("admin_files", {}, org_db_name)
 
-def get_admin_file_by_id(file_id: str):
+def get_admin_file_by_id(file_id: str, org_db_name: str = None):
     """Get admin file by ID"""
-    return get_one_from_collection("admin_files", {"_id": file_id})
+    return get_one_from_collection("admin_files", {"_id": file_id}, org_db_name)
 
-def delete_admin_file(file_id: str):
+def delete_admin_file(file_id: str, org_db_name: str = None):
     """Delete an admin file"""
-    delete_from_collection("admin_files", {"_id": file_id})
+    delete_from_collection("admin_files", {"_id": file_id}, org_db_name)
+
+
+# ============== PAYMENT RECORDS ==============
+
+def create_payment_record(payment_data: dict, org_db_name: str = None) -> str:
+    """
+    Create a new payment record in the organization's database.
+    
+    Args:
+        payment_data: Payment details including razorpay_order_id, amount, etc.
+        org_db_name: Organization database name
+    
+    Returns:
+        The payment record ID
+    """
+    payment_id = str(uuid4())
+    payment_data["_id"] = payment_id
+    payment_data["created_at"] = datetime.utcnow().isoformat()
+    add_to_collection("payments", payment_data, org_db_name)
+    logger.info(f"Created payment record: {payment_id} (org: {org_db_name or 'default'})")
+    return payment_id
+
+
+def update_payment_record(payment_id: str, update_data: dict, org_db_name: str = None):
+    """Update a payment record with verification details"""
+    update_in_collection("payments", {"_id": payment_id}, update_data, org_db_name)
+    logger.info(f"Updated payment record: {payment_id}")
+
+
+def get_payment_by_order_id(razorpay_order_id: str, org_db_name: str = None) -> Optional[dict]:
+    """Get payment record by Razorpay order ID"""
+    return get_one_from_collection("payments", {"razorpay_order_id": razorpay_order_id}, org_db_name)
+
+
+def get_payment_by_id(payment_id: str, org_db_name: str = None) -> Optional[dict]:
+    """Get payment record by ID"""
+    return get_one_from_collection("payments", {"_id": payment_id}, org_db_name)
+
+
+def get_payment_history(org_db_name: str = None) -> List[dict]:
+    """Get all payment records for an organization, sorted by date descending"""
+    payments = get_many_from_collection("payments", {}, org_db_name)
+    # Sort by created_at descending
+    payments.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return payments
+
+
+def get_non_admin_user_count(org_db_name: str = None) -> int:
+    """Get count of non-admin users in the organization"""
+    collection = get_org_collection("users", org_db_name)
+    count = collection.count_documents({"role": {"$ne": "admin"}})
+    return count

@@ -9,7 +9,7 @@ from ..services import openai_service
 from ..services.mongo import get_course, get_resources_by_course_id, create_resource, get_resource_by_course_id_and_resource_name, delete_resource as delete_resource_in_db
 from ..services.openai_service import create_file, connect_file_to_vector_store
 from ..utils.course_pdf_utils import generate_course_pdf
-from ..utils.verify_token import verify_token
+from ..utils.verify_token import verify_token, get_user_org_context
 from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
@@ -32,28 +32,28 @@ class ResourceViewResponse(BaseModel):
     resource_name: str
     content: str
 
-def check_course_exists(course_id: str):
+def check_course_exists(course_id: str, org_db_name: str = None):
     # check if the course exists
     # if it exists, return True
     # if it doesn't exist, raise error
-    course = get_course(course_id)
+    course = get_course(course_id, org_db_name)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     return True
 
-def create_course_description_file(course_id: str, user_id: str = Depends(verify_token)):
+def create_course_description_file(course_id: str, user_id: str, org_db_name: str = None):
     """
     Create a course description file using PDF utility and add it to vector store
     """
     try:
         # Get course information from MongoDB
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             logger.error(f"Course not found: {course_id}")
             return None
         
         # Generate PDF using the utility
-        pdf_path = generate_course_pdf(course_id)
+        pdf_path = generate_course_pdf(course_id, org_db_name)
         if not pdf_path or not os.path.exists(pdf_path):
             logger.error(f"Failed to generate PDF for course {course_id}")
             return None
@@ -66,7 +66,7 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         resource_name = os.path.basename(pdf_path)
 
         # Create resource in MongoDB
-        create_resource(course_id, resource_name)
+        create_resource(course_id, resource_name, None, org_db_name)
 
         # Upload the PDF to OpenAI (open as binary stream)
         with open(pdf_path, "rb") as f:
@@ -105,14 +105,16 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
 
 # Keep this route, we add the file to the vector store attached to the Assistant
 @router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
-def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
+def upload_resources(course_id: str, files: List[UploadFile] = File(...), ctx: dict = Depends(get_user_org_context)):
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
-        check_course_exists(course_id)
+        check_course_exists(course_id, org_db_name)
         # if course exists, get the assistant id and vector store id from the course
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
 
         # Build a set of existing resource names for collision handling
-        existing_resources = get_resources_by_course_id(course_id) or []
+        existing_resources = get_resources_by_course_id(course_id, org_db_name) or []
         existing_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
 
         def ensure_unique_name(filename: str, used: set[str]) -> str:
@@ -136,7 +138,7 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
 
         # Create resource records with the possibly renamed filenames
         for file in files:
-            create_resource(course_id, file.filename)
+            create_resource(course_id, file.filename, None, org_db_name)
 
         return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
@@ -144,10 +146,11 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/resources", response_model=ResourceListResponse) 
-def list_resources(course_id: str, user_id: str = Depends(verify_token)):
+def list_resources(course_id: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
     try:
-        check_course_exists(course_id)
-        resources = get_resources_by_course_id(course_id)
+        check_course_exists(course_id, org_db_name)
+        resources = get_resources_by_course_id(course_id, org_db_name)
         resource_list = [
             ResourceResponse(resourceName=data.get("resource_name", "Unknown Name"))
             for data in resources
@@ -158,24 +161,26 @@ def list_resources(course_id: str, user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}/resources/{resource_name}", response_model=DeleteResponse)
-def delete_resource(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+def delete_resource(course_id: str, resource_name: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
     try:    
-        check_course_exists(course_id)
-        delete_resource_in_db(course_id, resource_name)
+        check_course_exists(course_id, org_db_name)
+        delete_resource_in_db(course_id, resource_name, org_db_name)
         return DeleteResponse(message="Resource deleted successfully")
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/resources/{resource_name}/content", response_model=ResourceViewResponse)
-def get_resource_content(course_id: str, resource_name: str, user_id: str = Depends(verify_token)):
+def get_resource_content(course_id: str, resource_name: str, ctx: dict = Depends(get_user_org_context)):
     """Get resource content for viewing"""
+    org_db_name = ctx.get("org_db_name")
     try:
         # 1. Check course exists
-        check_course_exists(course_id)
+        check_course_exists(course_id, org_db_name)
         
         # 2. Get resource from database
-        resource = get_resource_by_course_id_and_resource_name(course_id, resource_name)
+        resource = get_resource_by_course_id_and_resource_name(course_id, resource_name, org_db_name)
         print(resource)
         print(resource_name)
         print(resource["content"])

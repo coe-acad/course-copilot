@@ -47,23 +47,24 @@ def create_vector_store(assistant_id: str):
         logger.error(f"Error creating vector store for assistant {assistant_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def upload_admin_files_to_vector_store(course_id: str, vector_store_id: str):
+def upload_admin_files_to_vector_store(course_id: str, vector_store_id: str, org_db_name: str = None):
     """
     Upload all admin files to a course's vector store and create resource records
     
     Args:
         course_id: The course ID to associate resources with
         vector_store_id: The vector store ID to upload files to
+        org_db_name: Organization database name for multi-tenant support
     
     Returns:
         Number of files successfully uploaded
     """
     try:
-        # Get all admin files
-        admin_files = get_all_admin_files()
+        # Get all admin files for this organization
+        admin_files = get_all_admin_files(org_db_name)
         
         if not admin_files:
-            logger.info("No admin files to upload to vector store")
+            logger.info(f"No admin files to upload to vector store for org: {org_db_name}")
             return 0
         
         uploaded_count = 0
@@ -100,7 +101,7 @@ def upload_admin_files_to_vector_store(course_id: str, vector_store_id: str):
                 
                 # Step 3: Create resource record in MongoDB so it shows up in UI
                 logger.info(f"Creating resource record for '{filename}' in course {course_id}...")
-                create_resource(course_id, filename)
+                create_resource(course_id, filename, None, org_db_name)
                 logger.info(f"✅ Resource record created")
                 
                 uploaded_count += 1

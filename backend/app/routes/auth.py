@@ -76,13 +76,58 @@ async def login(request: Request):
         id_token = user["idToken"]
         refresh_token = user["refreshToken"]
         logger.info(f"User logged in: {email}")
-        # Ensure user exists in Mongo
+        
+        # Import here to avoid circular imports
+        from ..services.master_db import is_superadmin, get_organization_by_user_id, get_org_db
+        
+        # Check if superadmin
+        if is_superadmin(user_id):
+            logger.info(f"SuperAdmin logged in: {email}")
+            return JSONResponse(content={
+                "message": "Login successful", 
+                "token": id_token, 
+                "refresh_token": refresh_token, 
+                "user_id": user_id,
+                "role": "superadmin",
+                "is_superadmin": True
+            }, status_code=200)
+        
+        # Find user's organization
+        org = get_organization_by_user_id(user_id)
+        if org:
+            org_db_name = org.get("database_name")
+            org_db = get_org_db(org_db_name)
+            user_doc = org_db["users"].find_one({"_id": user_id})
+            role = user_doc.get("role", "user") if user_doc else "user"
+            
+            logger.info(f"User {email} logged in with org: {org.get('name')}, role: {role}")
+            return JSONResponse(content={
+                "message": "Login successful", 
+                "token": id_token, 
+                "refresh_token": refresh_token, 
+                "user_id": user_id,
+                "role": role,
+                "org_id": org.get("_id"),
+                "org_name": org.get("name"),
+                "is_superadmin": False
+            }, status_code=200)
+        
+        # Fallback to legacy behavior for users not in any org
+        # (backward compatibility - ensure user exists in default Mongo)
         try:
             if not get_user_by_user_id(user_id):
                 create_user(user_id, email)
         except Exception as e:
             logger.warning(f"Mongo user create (login) skipped or failed for {email}: {str(e)}")
-        return JSONResponse(content={"message": "Login successful", "token": id_token, "refresh_token": refresh_token, "user_id": user_id}, status_code=200)
+        
+        return JSONResponse(content={
+            "message": "Login successful", 
+            "token": id_token, 
+            "refresh_token": refresh_token, 
+            "user_id": user_id,
+            "role": "user",
+            "is_superadmin": False
+        }, status_code=200)
     except Exception as e:
         logger.error(f"Login failed: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid credentials")

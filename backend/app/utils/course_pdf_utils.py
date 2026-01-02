@@ -51,10 +51,10 @@ class CoursePDFUtils:
             alignment=1  # Center alignment
         )
     
-    def get_course_info(self, course_id):
+    def get_course_info(self, course_id, org_db_name=None):
         try:
             # Get course data from MongoDB
-            course_data = get_course(course_id)
+            course_data = get_course(course_id, org_db_name)
             
             if not course_data:
                 print(f"Course not found: {course_id}")
@@ -66,10 +66,10 @@ class CoursePDFUtils:
             print(f"Error getting course info: {str(e)}")
             return None
     
-    def create_course_pdf(self, course_id, output_filename=None):
+    def create_course_pdf(self, course_id, output_filename=None, org_db_name=None):
         try:
             # Get course information
-            course_data = self.get_course_info(course_id)
+            course_data = self.get_course_info(course_id, org_db_name)
             
             if not course_data:
                 print("Could not retrieve course information")
@@ -154,5 +154,5 @@ class CoursePDFUtils:
 course_pdf_utils = CoursePDFUtils()
 
 # Function to use the utility
-def generate_course_pdf(course_id):
-    return course_pdf_utils.create_course_pdf(course_id)
+def generate_course_pdf(course_id, org_db_name=None):
+    return course_pdf_utils.create_course_pdf(course_id, org_db_name=org_db_name)

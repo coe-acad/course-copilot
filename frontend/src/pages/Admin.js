@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiUsers, FiFileText, FiTag, FiLogOut, FiDownload, FiTrash2 } from "react-icons/fi";
-import { uploadAdminDocument, getAdminDocuments, downloadAdminDocument, deleteAdminDocument, getAllSettings, addSettingLabel, removeSettingLabel, getAllUsers, updateUserRole, createUser, deleteUser } from "../services/admin";
+import { FiUsers, FiFileText, FiTag, FiLogOut, FiDownload, FiTrash2, FiCreditCard, FiCheck } from "react-icons/fi";
+import { uploadAdminDocument, getAdminDocuments, downloadAdminDocument, deleteAdminDocument, getAllSettings, addSettingLabel, removeSettingLabel, getAllUsers, updateUserRole, createUser, deleteUser, getPaymentSummary, createPaymentOrder, verifyPayment, getPaymentHistory, getPaymentReceipt } from "../services/admin";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("users");
@@ -44,6 +44,7 @@ export default function Admin() {
     { id: "users", label: "User Management", icon: <FiUsers /> },
     { id: "documents", label: "Add Documents", icon: <FiFileText /> },
     { id: "settings", label: "Add Setting Labels", icon: <FiTag /> },
+    { id: "payments", label: "Payments", icon: <FiCreditCard /> },
   ];
 
   // Loading state
@@ -213,6 +214,7 @@ export default function Admin() {
         {activeTab === "users" && <UserManagement />}
         {activeTab === "documents" && <AddDocuments />}
         {activeTab === "settings" && <AddSettingLabels />}
+        {activeTab === "payments" && <Payments />}
       </div>
     </div>
   );
@@ -226,7 +228,7 @@ function UserManagement() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
-  const [newUserRole, setNewUserRole] = useState("user");
+  const [newUserPassword, setNewUserPassword] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -248,19 +250,24 @@ function UserManagement() {
   };
 
   const handleAddUser = async () => {
-    if (!newUserEmail || !newUserName) {
-      setCreateError("Email and name are required");
+    if (!newUserEmail || !newUserName || !newUserPassword) {
+      setCreateError("Name, email and password are required");
+      return;
+    }
+
+    if (newUserPassword.length < 6) {
+      setCreateError("Password must be at least 6 characters");
       return;
     }
 
     try {
       setCreating(true);
       setCreateError("");
-      await createUser(newUserEmail, newUserName, newUserRole);
+      await createUser(newUserName, newUserEmail, newUserPassword);
       setShowAddUserModal(false);
       setNewUserEmail("");
       setNewUserName("");
-      setNewUserRole("user");
+      setNewUserPassword("");
       await loadUsers();
       alert("User created successfully!");
     } catch (err) {
@@ -301,7 +308,7 @@ function UserManagement() {
     }
   };
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -470,18 +477,39 @@ function UserManagement() {
             </h2>
 
             {createError && (
-              <div style={{ 
-                padding: "12px", 
-                background: "#fef2f2", 
-                border: "1px solid #fecaca", 
-                borderRadius: 8, 
-                color: "#dc2626", 
+              <div style={{
+                padding: "12px",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: 8,
+                color: "#dc2626",
                 marginBottom: 16,
-                fontSize: 14 
+                fontSize: 14
               }}>
                 {createError}
               </div>
             )}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
+                Name
+              </label>
+              <input
+                type="text"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                disabled={creating}
+                placeholder="John Doe"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  fontSize: 15,
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
@@ -504,16 +532,16 @@ function UserManagement() {
               />
             </div>
 
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
-                Display Name
+                Password
               </label>
               <input
-                type="text"
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
+                type="password"
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)}
                 disabled={creating}
-                placeholder="John Doe"
+                placeholder="Minimum 6 characters"
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -525,28 +553,6 @@ function UserManagement() {
               />
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
-                Role
-              </label>
-              <select
-                value={newUserRole}
-                onChange={(e) => setNewUserRole(e.target.value)}
-                disabled={creating}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 8,
-                  fontSize: 15,
-                  boxSizing: "border-box",
-                }}
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button
                 onClick={() => {
@@ -554,7 +560,7 @@ function UserManagement() {
                   setCreateError("");
                   setNewUserEmail("");
                   setNewUserName("");
-                  setNewUserRole("user");
+                  setNewUserPassword("");
                 }}
                 disabled={creating}
                 style={{
@@ -630,18 +636,18 @@ function AddDocuments() {
       const allowedTypes = ["application/pdf", "text/plain"];
       const allowedExtensions = [".pdf", ".txt"];
       const fileExtension = "." + file.name.split(".").pop().toLowerCase();
-      
+
       if (!allowedTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
         setError("Only PDF and TXT files are allowed");
         return;
       }
-      
+
       // Validate file size (10MB)
       if (file.size > 10 * 1024 * 1024) {
         setError("File size must be less than 10MB");
         return;
       }
-      
+
       setSelectedFile(file);
       setError("");
     }
@@ -657,14 +663,14 @@ function AddDocuments() {
       setUploading(true);
       setError("");
       await uploadAdminDocument(documentTitle, selectedFile);
-      
+
       // Reset form
       setDocumentTitle("");
       setSelectedFile(null);
-      
+
       // Reload documents
       await loadDocuments();
-      
+
       alert("Document uploaded successfully!");
     } catch (err) {
       console.error("Error uploading document:", err);
@@ -723,16 +729,16 @@ function AddDocuments() {
         <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0, marginBottom: 16 }}>
           Upload Document
         </h2>
-        
+
         {error && (
-          <div style={{ 
-            padding: "12px", 
-            background: "#fef2f2", 
-            border: "1px solid #fecaca", 
-            borderRadius: 8, 
-            color: "#dc2626", 
+          <div style={{
+            padding: "12px",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 8,
+            color: "#dc2626",
             marginBottom: 16,
-            fontSize: 14 
+            fontSize: 14
           }}>
             {error}
           </div>
@@ -805,11 +811,11 @@ function AddDocuments() {
           {/* Selected File Preview */}
           {selectedFile && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                background: '#f3f4f6', 
-                borderRadius: 8, 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: '#f3f4f6',
+                borderRadius: 8,
                 padding: '10px 12px',
                 border: '1px solid #e5e7eb'
               }}>
@@ -877,7 +883,7 @@ function AddDocuments() {
         <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0, marginBottom: 16 }}>
           Uploaded Documents ({documents.length})
         </h2>
-        
+
         {loading ? (
           <div style={{ color: "#6b7280", textAlign: "center", padding: "40px 0" }}>
             Loading documents...
@@ -1053,14 +1059,14 @@ function AddSettingLabels() {
         </h2>
 
         {error && (
-          <div style={{ 
-            padding: "12px", 
-            background: "#fef2f2", 
-            border: "1px solid #fecaca", 
-            borderRadius: 8, 
-            color: "#dc2626", 
+          <div style={{
+            padding: "12px",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 8,
+            color: "#dc2626",
             marginBottom: 16,
-            fontSize: 14 
+            fontSize: 14
           }}>
             {error}
           </div>
@@ -1141,7 +1147,7 @@ function AddSettingLabels() {
         <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0, marginBottom: 16 }}>
           Existing Labels
         </h2>
-        
+
         {loading ? (
           <div style={{ color: "#6b7280", textAlign: "center", padding: "40px 0" }}>
             Loading settings...
@@ -1174,21 +1180,6 @@ function AddSettingLabels() {
                       }}
                     >
                       <span>{option}</span>
-                      <button
-                        onClick={() => handleRemoveLabel(setting.category, option)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#dc2626",
-                          cursor: "pointer",
-                          padding: 2,
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                        title="Remove label"
-                      >
-                        <FiTrash2 size={14} />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -1202,3 +1193,358 @@ function AddSettingLabels() {
 }
 
 
+// Payments Component
+function Payments() {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [paymentHistory, setPaymentHistoryState] = useState([]);
+  const [showReceipt, setShowReceipt] = useState(null);
+  const [receiptData, setReceiptData] = useState(null);
+
+  useEffect(() => {
+    loadData();
+    // Load Razorpay script
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [summaryData, historyData] = await Promise.all([
+        getPaymentSummary(),
+        getPaymentHistory()
+      ]);
+      setSummary(summaryData);
+      setPaymentHistoryState(historyData.payments || []);
+    } catch (err) {
+      console.error("Error loading payment data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePayNow = async () => {
+    try {
+      setProcessing(true);
+
+      // Create order
+      const orderData = await createPaymentOrder();
+
+      // Open Razorpay checkout
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "Course Copilot",
+        description: `Payment for ${summary.user_count} users`,
+        order_id: orderData.order_id,
+        handler: async function (response) {
+          try {
+            // Verify payment
+            await verifyPayment(
+              response.razorpay_order_id,
+              response.razorpay_payment_id,
+              response.razorpay_signature
+            );
+            alert("Payment successful!");
+            loadData();
+          } catch (err) {
+            console.error("Payment verification failed:", err);
+            alert("Payment verification failed. Please contact support.");
+          }
+        },
+        prefill: {
+          email: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).email : ''
+        },
+        theme: {
+          color: "#2563eb"
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
+    } catch (err) {
+      console.error("Error creating order:", err);
+      alert(err.response?.data?.detail || "Failed to create payment order");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleViewReceipt = async (paymentId) => {
+    try {
+      const data = await getPaymentReceipt(paymentId);
+      setReceiptData(data.receipt);
+      setShowReceipt(true);
+    } catch (err) {
+      console.error("Error loading receipt:", err);
+      alert("Failed to load receipt");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
+        Loading payment information...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: "#111827", margin: 0, marginBottom: 8 }}>
+          Payments
+        </h1>
+        <p style={{ fontSize: 15, color: "#6b7280", margin: 0 }}>
+          Manage organization payments
+        </p>
+      </div>
+
+      {/* Payment Summary Card */}
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 32,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          marginBottom: 24,
+          maxWidth: 500,
+        }}
+      >
+        {!summary?.configured ? (
+          <div style={{ textAlign: "center", color: "#6b7280" }}>
+            <p>Payment not configured by SuperAdmin.</p>
+            <p style={{ fontSize: 14 }}>Please contact your SuperAdmin to set up payment.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Users (excl. admin):</span>
+                <span style={{ fontWeight: 600, color: "#111827" }}>{summary.user_count}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Price per user:</span>
+                <span style={{ fontWeight: 600, color: "#111827" }}>₹{(summary.price_per_user_paise / 100).toFixed(2)}</span>
+              </div>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 600, color: "#111827", fontSize: 18 }}>Total Amount:</span>
+                  <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 24 }}>₹{(summary.total_amount_paise / 100).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handlePayNow}
+              disabled={processing || summary.user_count === 0}
+              style={{
+                width: "100%",
+                padding: "14px 24px",
+                background: processing || summary.user_count === 0 ? "#9ca3af" : "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 16,
+                cursor: processing || summary.user_count === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              {processing ? "Processing..." : `Pay Now ₹${(summary.total_amount_paise / 100).toFixed(2)}`}
+            </button>
+            {summary.user_count === 0 && (
+              <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", marginTop: 12 }}>
+                No users to charge. Add users first.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Payment History */}
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 24,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        }}
+      >
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: 0, marginBottom: 16 }}>
+          Payment History
+        </h2>
+
+        {paymentHistory.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
+            <FiCreditCard style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }} />
+            <p>No payment history yet</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {paymentHistory.map((payment) => (
+              <div
+                key={payment._id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 16,
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, color: "#111827" }}>
+                    ₹{(payment.amount_paise / 100).toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>
+                    {payment.user_count} users • {new Date(payment.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {payment.status === "captured" ? (
+                    <>
+                      <span style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 12px",
+                        background: "#dcfce7",
+                        color: "#16a34a",
+                        borderRadius: 20,
+                        fontSize: 13,
+                        fontWeight: 500,
+                      }}>
+                        <FiCheck size={14} /> Paid
+                      </span>
+                      <button
+                        onClick={() => handleViewReceipt(payment._id)}
+                        style={{
+                          padding: "6px 12px",
+                          background: "#f3f4f6",
+                          border: "none",
+                          borderRadius: 6,
+                          color: "#374151",
+                          fontSize: 13,
+                          cursor: "pointer",
+                        }}
+                      >
+                        View Receipt
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{
+                      padding: "4px 12px",
+                      background: "#fef3c7",
+                      color: "#d97706",
+                      borderRadius: 20,
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}>
+                      {payment.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Receipt Modal */}
+      {showReceipt && receiptData && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setShowReceipt(false)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 500,
+              width: "90%",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🧾</div>
+              <h2 style={{ fontSize: 20, fontWeight: 600, color: "#111827", margin: 0 }}>
+                Payment Receipt
+              </h2>
+            </div>
+
+            <div style={{ background: "#f9fafb", borderRadius: 8, padding: 20, marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Payment ID:</span>
+                <span style={{ fontWeight: 500, color: "#111827", fontFamily: "monospace", fontSize: 12 }}>
+                  {receiptData.razorpay_payment_id}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Organization:</span>
+                <span style={{ fontWeight: 500, color: "#111827" }}>{receiptData.org_name}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Users:</span>
+                <span style={{ fontWeight: 500, color: "#111827" }}>{receiptData.user_count}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ color: "#6b7280" }}>Price per user:</span>
+                <span style={{ fontWeight: 500, color: "#111827" }}>
+                  ₹{(receiptData.price_per_user_paise / 100).toFixed(2)}
+                </span>
+              </div>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 600, color: "#111827" }}>Total Amount:</span>
+                  <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 20 }}>
+                    {receiptData.amount_display}
+                  </span>
+                </div>
+              </div>
+              <div style={{ marginTop: 16, fontSize: 12, color: "#6b7280" }}>
+                Date: {new Date(receiptData.captured_at).toLocaleString()}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowReceipt(false)}
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

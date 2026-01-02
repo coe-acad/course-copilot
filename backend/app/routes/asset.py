@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from datetime import datetime
-from ..utils.verify_token import verify_token
+from ..utils.verify_token import verify_token, get_user_org_context
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
@@ -100,14 +100,14 @@ def construct_input_variables(course: dict, file_names: list[str]) -> dict:
     }
     return input_variables
 
-def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, user_id: str):
+def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, user_id: str, org_db_name: str = None):
     """Background task to process asset chat generation"""
     thread_id = None  # Initialize thread_id for recovery purposes
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for asset '{asset_type_name}'")
         
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course or "assistant_id" not in course:
             task_manager.mark_failed(task_id, "Course or assistant not found")
             return
@@ -273,19 +273,21 @@ async def create_asset_chat(
     asset_type_name: str, 
     request: AssetRequest, 
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(verify_token)
+    ctx: dict = Depends(get_user_org_context)
 ):
     """
     Create asset chat generation task (runs in background)
     Returns task_id immediately - use /tasks/{task_id} to check status
     """
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         # Backwards compatibility: Convert old "lesson-plans" to "lecture"
         if asset_type_name == "lesson-plans":
             asset_type_name = "lecture"
         
         # Validate course exists
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course or "assistant_id" not in course:
             raise HTTPException(status_code=404, detail="Course or assistant not found")
 
@@ -307,7 +309,8 @@ async def create_asset_chat(
             course_id,
             asset_type_name,
             request.file_names,
-            user_id
+            user_id,
+            org_db_name
         )
 
         return TaskResponse(
@@ -320,13 +323,13 @@ async def create_asset_chat(
         logger.error(f"Exception in create_asset_chat for asset '{asset_type_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_name: str, thread_id: str, user_prompt: str, user_id: str):
+def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_name: str, thread_id: str, user_prompt: str, user_id: str, org_db_name: str = None):
     """Background task to process asset chat continuation"""
     try:
         task_manager.mark_processing(task_id)
         logger.info(f"Starting background task {task_id} for continue asset '{asset_name}'")
         
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course or "assistant_id" not in course:
             task_manager.mark_failed(task_id, "Course or assistant not found")
             return
@@ -372,15 +375,17 @@ async def continue_asset_chat(
     thread_id: str, 
     request: AssetPromptRequest, 
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(verify_token)
+    ctx: dict = Depends(get_user_org_context)
 ):
     """
     Continue asset chat conversation (runs in background)
     Returns task_id immediately - use /tasks/{task_id} to check status
     """
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         # Validate course exists
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course or "assistant_id" not in course:
             raise HTTPException(status_code=404, detail="Course or assistant not found")
 
@@ -403,7 +408,8 @@ async def continue_asset_chat(
             asset_name,
             thread_id,
             request.user_prompt,
-            user_id
+            user_id,
+            org_db_name
         )
 
         return TaskResponse(
@@ -417,7 +423,9 @@ async def continue_asset_chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/courses/{course_id}/assets", response_model=AssetCreateResponse)
-def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest, user_id: str = Depends(verify_token)):
+def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetCreateRequest, ctx: dict = Depends(get_user_org_context)):
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     # TODO: Make this a configuration for the app overall, add the remaining categories and asset types here
     category_map = {
         "brainstorm": "curriculum",
@@ -443,12 +451,12 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         cleaned_text = request.content
     
     # Get user's display name for the asset
-    user_display_name = get_user_display_name(user_id)
+    user_display_name = get_user_display_name(user_id, org_db_name)
     if not user_display_name:
         user_display_name = "Unknown User"
     
     try:
-        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id, org_db_name)
     except ValueError as e:
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))
@@ -458,11 +466,11 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
 def generate_asset_pdf(
     course_id: str,
     request: TextToPdfRequest,
-    user_id: str = Depends(verify_token),
+    ctx: dict = Depends(get_user_org_context),
 ):
     """Generate a PDF from provided text content and stream it back to the client."""
-
-    course = get_course(course_id)
+    org_db_name = ctx.get("org_db_name")
+    course = get_course(course_id, org_db_name)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
@@ -480,13 +488,15 @@ def generate_asset_pdf(
     )
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
-def get_assets(course_id: str, user_id: str = Depends(verify_token)):
-    assets = get_assets_by_course_id(course_id)
+def get_assets(course_id: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
+    assets = get_assets_by_course_id(course_id, org_db_name)
     return AssetListResponse(assets=assets)
 
 @router.get("/courses/{course_id}/assets/{asset_name}/view", response_model=AssetViewResponse)
-def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
-    asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
+def view_asset(course_id: str, asset_name: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
+    asset = get_asset_by_course_id_and_asset_name(course_id, asset_name, org_db_name)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return AssetViewResponse(
@@ -500,8 +510,9 @@ def view_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_to
     )
 
 @router.post("/courses/{course_id}/assets/image", response_model=ImageResponse)
-def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(verify_token)):
-    course = get_course(course_id)
+def create_image(course_id: str, asset_type_name: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
+    course = get_course(course_id, org_db_name)
     if not course or "assistant_id" not in course:
         raise HTTPException(status_code=404, detail="Course or assistant not found")
 
@@ -523,15 +534,16 @@ def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(ve
 
 #delete asset
 @router.delete("/courses/{course_id}/assets/{asset_name}", response_model=AssetCreateResponse)
-def delete_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_token)):
+def delete_asset(course_id: str, asset_name: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
     try:
         # Check if asset exists
-        asset = get_asset_by_course_id_and_asset_name(course_id, asset_name)
+        asset = get_asset_by_course_id_and_asset_name(course_id, asset_name, org_db_name)
         if not asset:
             raise HTTPException(status_code=404, detail="Asset not found")
         
         # Delete asset using the dedicated function
-        delete_asset_from_db(course_id, asset_name)
+        delete_asset_from_db(course_id, asset_name, org_db_name)
         
         return AssetCreateResponse(message=f"Asset '{asset_name}' deleted successfully")
     except Exception as e:
@@ -539,8 +551,9 @@ def delete_asset(course_id: str, asset_name: str, user_id: str = Depends(verify_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/courses/{course_id}/assets/{asset_name}/save-as-resource", response_model=AssetCreateResponse)
-def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreateRequest, user_id: str = Depends(verify_token)):
+def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreateRequest, ctx: dict = Depends(get_user_org_context)):
     """Save an existing asset as a resource so it can be viewed in the resource view modal"""
+    org_db_name = ctx.get("org_db_name")
     try:
         
         # 2. Get the content from the frontend request
@@ -552,7 +565,7 @@ def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreate
         
         # 5. Save the content as a resource
         logger.info(f"Saving resource: {asset_name} with content length: {len(content)}")
-        create_resource(course_id, asset_name, content)
+        create_resource(course_id, asset_name, content, org_db_name)
         logger.info(f"Resource saved successfully: {asset_name}")
         
         return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{asset_name}' successfully")

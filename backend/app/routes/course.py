@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from ..services import openai_service
 import logging
-from ..utils.verify_token import verify_token
+from ..utils.verify_token import verify_token, get_user_org_context
 from ..services.mongo import (
     get_course, get_courses_by_user_id, create_course as create_course_in_db, 
     update_course, delete_course as delete_course_in_db, get_resources_by_course_id,
@@ -53,10 +53,12 @@ class CourseShareInfo(BaseModel):
     shared_at: str
 
 @router.get("/courses", response_model=list[CourseResponse])
-def get_courses(user_id: str = Depends(verify_token)):
-    logger.info(f"Fetching courses for user {user_id}")
+def get_courses(ctx: dict = Depends(get_user_org_context)):
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
+    logger.info(f"Fetching courses for user {user_id} in org db {org_db_name}")
     try:
-        courses = get_courses_by_user_id(user_id)
+        courses = get_courses_by_user_id(user_id, org_db_name)
         logger.info(f"Fetched courses for user {user_id}: {len(courses)} courses")
         return [
             CourseResponse(
@@ -74,7 +76,9 @@ def get_courses(user_id: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @router.post("/courses", response_model=CourseResponse)
-def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
+def create_course(request: CourseCreateRequest, ctx: dict = Depends(get_user_org_context)):
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         assistant_id = openai_service.create_assistant()
         vector_store_id = create_vector_store(assistant_id)
@@ -94,33 +98,16 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
             "user_id": user_id,
             "assistant_id": assistant_id,
             "vector_store_id": vector_store_id
-        })
-        create_course_description_file(course_id, user_id)
+        }, org_db_name)
+        create_course_description_file(course_id, user_id, org_db_name)
         
         # Upload all admin files to the course's vector store and resources
         try:
             logger.info(f"Starting admin files upload for course {course_id}")
-            uploaded_count = upload_admin_files_to_vector_store(course_id, vector_store_id)
+            uploaded_count = upload_admin_files_to_vector_store(course_id, vector_store_id, org_db_name)
             logger.info(f"✅ Uploaded {uploaded_count} admin files to course {course_id}")
         except Exception as admin_error:
             logger.error(f"❌ Error uploading admin files to course {course_id}: {str(admin_error)}", exc_info=True)
-        
-        # Create a default evaluation scheme for the course
-        # Create evaluation assistant and vector store for the default scheme
-        # eval_id = str(uuid4())
-        # eval_info = create_evaluation_assistant_and_vector_store(eval_id)
-        # eval_assistant_id = eval_info[0]
-        # eval_vector_store_id = eval_info[1]
-        
-        # Create default evaluation scheme
-        # create_evaluation(
-        #     course_id=course_id,
-        #     scheme_name=f"{request.name}_Default_Scheme",
-        #     scheme_description=f"Default evaluation scheme for {request.name}",
-        #     evaluation_assistant_id=eval_assistant_id,
-        #     vector_store_id=eval_vector_store_id,
-        #     mark_scheme_file_id=""  # Will be set when mark scheme is uploaded
-        # )
         
         return CourseResponse(name = request.name, id = course_id)
     except Exception as e:
@@ -128,14 +115,16 @@ def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_to
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/courses/{course_id}")
-async def delete_course(course_id: str, user_id: str = Depends(verify_token)):
-    delete_course_in_db(course_id)
+async def delete_course(course_id: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
+    delete_course_in_db(course_id, org_db_name)
     return {"message": "Course deleted successfully"}
 
 @router.put("/courses/{course_id}/settings")
-def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id: str = Depends(verify_token)):
+def save_course_settings(course_id: str, request: CourseSettingsRequest, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
     try:
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             # TODO: This error does not propagate to the except block below. It prints empty detail. Check why and fix.
             raise HTTPException(status_code=404, detail="Course not found")
@@ -143,7 +132,7 @@ def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id
         print(request.dict())
         course["settings"] = request.dict()
         # Update the course in the database
-        update_course(course_id, course)
+        update_course(course_id, course, org_db_name)
         logger.info(f"Updated settings for course {course_id}")
         return {"message": "Settings updated"}
 
@@ -152,9 +141,10 @@ def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/settings")
-def get_course_settings(course_id: str, user_id: str = Depends(verify_token)):
+def get_course_settings(course_id: str, ctx: dict = Depends(get_user_org_context)):
+    org_db_name = ctx.get("org_db_name")
     try:
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         return course.get("settings", {})
@@ -176,21 +166,23 @@ def update_course_description(request: CourseDescriptionRequest, user_id: str = 
 
 # Course Sharing Endpoints
 @router.post("/courses/{course_id}/share", response_model=ShareResponse)
-def share_course_with_user(course_id: str, request: ShareCourseRequest, user_id: str = Depends(verify_token)):
+def share_course_with_user(course_id: str, request: ShareCourseRequest, ctx: dict = Depends(get_user_org_context)):
     """Share a course with another user by email"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         logger.info(f"User {user_id} attempting to share course {course_id} with {request.email}")
         
         # Check if course exists and user owns it
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
         if course.get("user_id") != user_id:
             raise HTTPException(status_code=403, detail="Only the course owner can share it")
         
-        # Check if target user exists
-        target_user = get_user_by_email(request.email.lower())
+        # Check if target user exists (in the same org)
+        target_user = get_user_by_email(request.email.lower(), org_db_name)
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found. Please check the email and confirm that the email is registered on the platform.")
         
@@ -201,17 +193,17 @@ def share_course_with_user(course_id: str, request: ShareCourseRequest, user_id:
             raise HTTPException(status_code=400, detail="You cannot share a course with yourself")
         
         # Check if already shared
-        if is_course_shared_with_user(course_id, target_user_id):
+        if is_course_shared_with_user(course_id, target_user_id, org_db_name):
             raise HTTPException(status_code=400, detail="Course is already shared with this user")
         
         # Share the course
-        share_course(course_id, user_id, target_user_id, request.email.lower())
+        share_course(course_id, user_id, target_user_id, request.email.lower(), org_db_name)
         logger.info(f"Course {course_id} shared with user {target_user_id}")
         
         # Send email notification
         try:
             from ..utils.email_utils import send_course_share_notification
-            sharer_email = get_email_by_user_id(user_id)
+            sharer_email = get_email_by_user_id(user_id, org_db_name)
             send_course_share_notification(
                 recipient_email=request.email.lower(),
                 course_name=course.get("name", "Untitled Course"),
@@ -234,15 +226,17 @@ def share_course_with_user(course_id: str, request: ShareCourseRequest, user_id:
         raise HTTPException(status_code=500, detail=f"Error sharing course: {str(e)}")
 
 @router.get("/courses/{course_id}/shares", response_model=list[CourseShareInfo])
-def get_course_shared_users(course_id: str, user_id: str = Depends(verify_token)):
+def get_course_shared_users(course_id: str, ctx: dict = Depends(get_user_org_context)):
     """Get list of users a course is shared with"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         # Check if user has access to the course
-        if not is_course_accessible(course_id, user_id):
+        if not is_course_accessible(course_id, user_id, org_db_name):
             raise HTTPException(status_code=403, detail="Access denied")
         
         # Get the course to check ownership
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
@@ -250,7 +244,7 @@ def get_course_shared_users(course_id: str, user_id: str = Depends(verify_token)
         if course.get("user_id") != user_id:
             raise HTTPException(status_code=403, detail="Only the course owner can view sharing details")
         
-        shares = get_course_shares(course_id)
+        shares = get_course_shares(course_id, org_db_name)
         
         return [
             CourseShareInfo(
@@ -268,11 +262,13 @@ def get_course_shared_users(course_id: str, user_id: str = Depends(verify_token)
         raise HTTPException(status_code=500, detail=f"Error getting course shares: {str(e)}")
 
 @router.delete("/courses/{course_id}/shares/{target_user_id}")
-def revoke_course_sharing(course_id: str, target_user_id: str, user_id: str = Depends(verify_token)):
+def revoke_course_sharing(course_id: str, target_user_id: str, ctx: dict = Depends(get_user_org_context)):
     """Revoke course sharing access for a user"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         # Check if course exists and user owns it
-        course = get_course(course_id)
+        course = get_course(course_id, org_db_name)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
@@ -280,7 +276,7 @@ def revoke_course_sharing(course_id: str, target_user_id: str, user_id: str = De
             raise HTTPException(status_code=403, detail="Only the course owner can revoke sharing")
         
         # Revoke the share
-        revoke_course_share(course_id, target_user_id)
+        revoke_course_share(course_id, target_user_id, org_db_name)
         logger.info(f"Revoked course {course_id} sharing for user {target_user_id}")
         
         return {"message": "Sharing access revoked successfully"}

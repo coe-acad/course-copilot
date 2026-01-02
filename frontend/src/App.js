@@ -10,24 +10,28 @@ import AssetStudio from './pages/AssetStudio';
 import Evaluation from './pages/Evaluation';
 import Admin from './pages/Admin';
 import AdminLogin from './pages/AdminLogin';
+import SuperAdmin from './pages/SuperAdmin';
+import SuperAdminLogin from './pages/SuperAdminLogin';
 
 function App() {
   return (
     <ErrorBoundary>
-        <Router>
-          <Routes>
-            <Route path="/" element={<Navigate to="/login" />} />
-            <Route path="/courses" element={<Courses />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/studio/:feature" element={<AssetStudio />} />
-            <Route path="/evaluation" element={<Evaluation />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/admin-login" element={<AdminLogin />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Router>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Navigate to="/login" />} />
+          <Route path="/courses" element={<Courses />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/studio/:feature" element={<AssetStudio />} />
+          <Route path="/evaluation" element={<Evaluation />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/superadmin" element={<SuperAdmin />} />
+          <Route path="/superadmin-login" element={<SuperAdminLogin />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Router>
     </ErrorBoundary>
   );
 }

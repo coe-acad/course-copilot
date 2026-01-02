@@ -31,7 +31,7 @@ export async function downloadAdminDocument(fileId, filename) {
   const res = await axiosInstance.get(`/admin/documents/${fileId}/download`, {
     responseType: 'blob',
   });
-  
+
   // Create download link
   const url = window.URL.createObjectURL(new Blob([res.data]));
   const link = document.createElement('a');
@@ -94,11 +94,11 @@ export async function updateUserRole(userId, role) {
 /**
  * Create a new user
  */
-export async function createUser(email, displayName, role) {
+export async function createUser(name, email, password) {
   const res = await axiosInstance.post('/admin/users', {
     email,
-    display_name: displayName,
-    role
+    display_name: name,
+    password
   });
   return res.data;
 }
@@ -111,3 +111,48 @@ export async function deleteUser(userId) {
   return res.data;
 }
 
+// ============== PAYMENT OPERATIONS ==============
+
+/**
+ * Get payment summary (user count, price, total)
+ */
+export async function getPaymentSummary() {
+  const res = await axiosInstance.get('/admin/payment-summary');
+  return res.data;
+}
+
+/**
+ * Create Razorpay order for payment
+ */
+export async function createPaymentOrder() {
+  const res = await axiosInstance.post('/admin/payments/create-order');
+  return res.data;
+}
+
+/**
+ * Verify Razorpay payment
+ */
+export async function verifyPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature) {
+  const res = await axiosInstance.post('/admin/payments/verify', {
+    razorpay_order_id: razorpayOrderId,
+    razorpay_payment_id: razorpayPaymentId,
+    razorpay_signature: razorpaySignature,
+  });
+  return res.data;
+}
+
+/**
+ * Get payment history
+ */
+export async function getPaymentHistory() {
+  const res = await axiosInstance.get('/admin/payments/history');
+  return res.data;
+}
+
+/**
+ * Get payment receipt
+ */
+export async function getPaymentReceipt(paymentId) {
+  const res = await axiosInstance.get(`/admin/payments/${paymentId}/receipt`);
+  return res.data;
+}

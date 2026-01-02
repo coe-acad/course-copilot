@@ -16,7 +16,7 @@ export default function Login() {
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
         // Handle successful Google login
-        
+
         // Store complete user object
         localStorage.setItem('user', JSON.stringify({
           id: event.data.user.userId,
@@ -26,7 +26,7 @@ export default function Login() {
         }));
         localStorage.setItem('token', event.data.user.token);
         localStorage.setItem('refresh_token', event.data.user.refreshToken);
-        
+
         // Navigate to courses
         navigate("/courses");
       }
@@ -41,8 +41,16 @@ export default function Login() {
     setError("");
 
     try {
-      await login(email, password);
-      navigate("/courses");
+      const userData = await login(email, password);
+
+      // Route based on role
+      if (userData.isSuperAdmin) {
+        navigate("/superadmin");
+      } else if (userData.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/courses");
+      }
     } catch (err) {
       setError(err.detail || "Login failed. Please check credentials.");
     } finally {
@@ -56,13 +64,13 @@ export default function Login() {
       // Open Google login in a new tab with proper opener reference
       const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login`;
       const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
-      
+
       if (!popup) {
         setError("Popup blocked. Please allow popups for this site.");
         setLoading(false);
         return;
       }
-      
+
       setLoading(false);
     } catch (err) {
       setError("Google login failed. Please try again.");
@@ -182,25 +190,25 @@ export default function Login() {
 
         {/* Admin Access */}
         <div style={{ marginTop: 28, paddingTop: 24, borderTop: "1px solid #e5e7eb" }}>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
+          <div style={{
+            display: "flex",
+            alignItems: "center",
             justifyContent: "center",
             marginBottom: 10,
-            gap: 6 
+            gap: 6
           }}>
-            <div style={{ 
-              width: 24, 
-              height: 1, 
-              background: "linear-gradient(to right, transparent, #d1d5db, transparent)" 
+            <div style={{
+              width: 24,
+              height: 1,
+              background: "linear-gradient(to right, transparent, #d1d5db, transparent)"
             }} />
             <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 500, letterSpacing: "0.5px" }}>
               ADMIN ACCESS
             </span>
-            <div style={{ 
-              width: 24, 
-              height: 1, 
-              background: "linear-gradient(to right, transparent, #d1d5db, transparent)" 
+            <div style={{
+              width: 24,
+              height: 1,
+              background: "linear-gradient(to right, transparent, #d1d5db, transparent)"
             }} />
           </div>
           <button
@@ -251,6 +259,69 @@ export default function Login() {
             </svg>
             <span style={{ letterSpacing: "0.3px" }}>Admin Panel</span>
             {/* Arrow Icon */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ marginLeft: 6, opacity: 0.8 }}
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* SuperAdmin Panel Button */}
+          <button
+            onClick={() => navigate("/superadmin-login")}
+            disabled={loading}
+            style={{
+              width: "100%",
+              marginTop: 10,
+              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              color: "#f1f5f9",
+              border: "1px solid #334155",
+              borderRadius: 8,
+              padding: "11px 0",
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: loading ? "not-allowed" : "pointer",
+              transition: "all 0.3s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 2px 8px rgba(15, 23, 42, 0.25)",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(15, 23, 42, 0.4)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(15, 23, 42, 0.25)";
+            }}
+          >
+            {/* Crown Icon */}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ marginRight: 8 }}
+            >
+              <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" />
+              <path d="M3 20h18" />
+            </svg>
+            <span style={{ letterSpacing: "0.3px" }}>SuperAdmin Panel</span>
             <svg
               width="16"
               height="16"

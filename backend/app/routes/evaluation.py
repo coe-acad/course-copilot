@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import csv
 import io
-from ..utils.verify_token import verify_token
+from ..utils.verify_token import verify_token, get_user_org_context
 from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
 from app.services.openai_service import create_evaluation_assistant_and_vector_store, evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor
@@ -41,7 +41,9 @@ class EditresultRequest(BaseModel):
     feedback: str
 
 @router.post("/evaluation/upload-mark-scheme")
-def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
+def upload_mark_scheme(course_id: str = Form(...), ctx: dict = Depends(get_user_org_context), mark_scheme: UploadFile = File(...)):
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
         evaluation_id = str(uuid4())
         
@@ -72,11 +74,12 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
             vector_store_id=vector_store_id,
             mark_scheme_path=str(mark_scheme_path),
             answer_sheet_paths=[],
-            answer_sheet_filenames=[]
+            answer_sheet_filenames=[],
+            org_db_name=org_db_name
         )
         
         # Verify creation
-        created_evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        created_evaluation = get_evaluation_by_evaluation_id(evaluation_id, org_db_name)
         if not created_evaluation:
             logger.error(f"Failed to create evaluation {evaluation_id}")
             raise HTTPException(status_code=500, detail="Failed to create evaluation record")
