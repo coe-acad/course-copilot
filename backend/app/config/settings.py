@@ -9,7 +9,7 @@ class Settings:
     
     # OpenAI Configuration
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.1")
     
     # Mistral AI Configuration
     MISTRAL_API_KEY: str = os.getenv("MISTRAL_API_KEY", "")
