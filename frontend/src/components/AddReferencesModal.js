@@ -527,86 +527,61 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
           >
             Back to Add Resources
           </button>
-          <div style={{ display: 'flex', gap: 12 }}>
-            {selectedResources.length > 0 && (
-              <button
-                onClick={async () => {
-                  try {
-                    setLoading(true);
-                    const { addDiscoveredResources } = await import('../services/resources');
-                    const courseId = localStorage.getItem('currentCourseId');
+          {selectedResources.length > 0 && (
+            <button
+              onClick={async () => {
+                try {
+                  setLoading(true);
+                  const { addDiscoveredResources } = await import('../services/resources');
+                  const courseId = localStorage.getItem('currentCourseId');
 
-                    // Get full resource objects for selected URLs
-                    const selectedResourceObjects = resources.filter(r => selectedResources.includes(r.url));
+                  // Get full resource objects for selected URLs
+                  const selectedResourceObjects = resources.filter(r => selectedResources.includes(r.url));
 
-                    await addDiscoveredResources(courseId, selectedResourceObjects);
+                  await addDiscoveredResources(courseId, selectedResourceObjects);
 
-                    // Show success and close
-                    alert(`Successfully added ${selectedResourceObjects.length} resource(s) to knowledge base!`);
+                  // Show success and close
+                  alert(`Successfully added ${selectedResourceObjects.length} resource(s) to knowledge base!`);
 
-                    if (onRefresh) {
-                      onRefresh();
-                    }
-
-                    handleClose();
-                  } catch (error) {
-                    console.error('Error adding resources:', error);
-                    alert('Failed to add resources. Please try again.');
-                  } finally {
-                    setLoading(false);
+                  if (onRefresh) {
+                    onRefresh();
                   }
-                }}
-                disabled={loading}
-                style={{
-                  padding: '9px 22px',
-                  fontSize: 15,
-                  borderRadius: 8,
-                  border: 'none',
-                  background: loading ? '#9ca3af' : '#10b981',
-                  color: '#fff',
-                  fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'background 0.18s',
-                  boxShadow: loading ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.2)',
-                }}
-                onMouseEnter={(e) => {
-                  if (!loading) {
-                    e.currentTarget.style.background = '#059669';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!loading) {
-                    e.currentTarget.style.background = '#10b981';
-                  }
-                }}
-              >
-                {loading ? 'Adding...' : `Add Selected (${selectedResources.length})`}
-              </button>
-            )}
-            <button 
-              onClick={handleClose} 
-              style={{ 
-                padding: '9px 22px', 
-                fontSize: 15, 
-                borderRadius: 8, 
-                border: 'none', 
-                background: '#2563eb', 
-                color: '#fff', 
-                fontWeight: 600, 
-                cursor: 'pointer',
-                transition: 'background 0.18s, box-shadow 0.18s',
-                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)',
+
+                  handleClose();
+                } catch (error) {
+                  console.error('Error adding resources:', error);
+                  alert('Failed to add resources. Please try again.');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              style={{
+                padding: '9px 22px',
+                fontSize: 15,
+                borderRadius: 8,
+                border: 'none',
+                background: loading ? '#9ca3af' : '#10b981',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'background 0.18s',
+                boxShadow: loading ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.2)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#1d4ed8';
+                if (!loading) {
+                  e.currentTarget.style.background = '#059669';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#2563eb';
+                if (!loading) {
+                  e.currentTarget.style.background = '#10b981';
+                }
               }}
             >
-              Done
+              {loading ? 'Adding...' : `Add Selected (${selectedResources.length})`}
             </button>
-          </div>
+          )}
         </div>
         </div>
 

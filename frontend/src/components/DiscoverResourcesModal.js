@@ -317,42 +317,6 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                         </p>
                     </div>
                 )}
-
-                {/* Footer Buttons */}
-                <div
-                    style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        gap: "12px",
-                        marginTop: "24px",
-                        paddingTop: "20px",
-                        borderTop: "1px solid #e5e7eb",
-                        flexShrink: 0,
-                    }}
-                >
-                    <button
-                        onClick={handleClose}
-                        style={{
-                            padding: "9px 22px",
-                            borderRadius: "8px",
-                            border: "1.5px solid #e5e7eb",
-                            background: "#fff",
-                            fontSize: "15px",
-                            color: "#222",
-                            fontWeight: 500,
-                            cursor: "pointer",
-                            transition: "border 0.18s, background 0.18s",
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.border = "1.5px solid #d1d5db";
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.border = "1.5px solid #e5e7eb";
-                        }}
-                    >
-                        Done
-                    </button>
-                </div>
             </div>
 
             <style>{`
