@@ -60,3 +60,10 @@ class PromptParser:
             self._get_prompt_path("prompts/evaluation/evaluation.json"), input_variables
         )
         return full_evaluation_prompt
+
+    def get_eval_hints_prompt(self, extracted_questions: str):
+        input_variables = {"extracted_questions": extracted_questions}
+        eval_hints_prompt = self.render_prompt(
+            self._get_prompt_path("prompts/evaluation/eval-hints.json"), input_variables
+        )
+        return eval_hints_prompt

@@ -189,20 +189,23 @@ def _extract_structured_text_format(text: str) -> List[Dict[str, Any]]:
     """
     Extract mark scheme from structured text format.
     Expected format:
-    questionnumber: 1
-    question: "..."
-    answertemplate: "..."
-    markingscheme:
-        A (X): description
-        B (Y): description
-        C (Z): description
+    Question number: Q1 (or just 1)
+    Question text: "..."
+    Marking scheme (Total = X): 
+        - a) description [0.5]
+        - b) description [1]
     
     Also supports legacy format with question-text and markingscheme with brackets.
     """
     questions = []
     
-    # Split by question blocks - look for questionnumber pattern (allow space)
-    question_blocks = re.split(r'\n(?=(?:question\s*number|"question\s*number")\s*:\s*\d+)', text, flags=re.IGNORECASE)
+    # Split by question blocks - look for "Question number:" pattern (supports Q1, Q2, or just 1, 2)
+    # Pattern matches: "Question number: Q1", "Question number: 1", "questionnumber: 1", etc.
+    question_blocks = re.split(
+        r'\n(?=(?:question\s*number|"question\s*number")\s*:\s*(?:Q\s*)?\d+)', 
+        text, 
+        flags=re.IGNORECASE
+    )
     
     for block in question_blocks:
         if not block.strip():
@@ -224,16 +227,19 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
         "markingscheme": []
     }
     
-    # Extract question number (allow space)
-    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*:\s*(\d+)', block, re.IGNORECASE)
+    # Extract question number - supports "Question number: Q1", "Question number: 1", "questionnumber: 1"
+    qnum_match = re.search(
+        r'(?:question\s*number|"question\s*number")\s*:\s*(?:Q\s*)?(\d+)', 
+        block, 
+        re.IGNORECASE
+    )
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
     
-    # Extract question text (support both "question:" and "question-text:")
-    # Extract question text (support "question:", "question-text:", "Question text:")
+    # Extract question text - supports "Question text:", "question-text:", "question:", etc.
     # Look ahead for either answertemplate OR markingscheme (including Total = X variation)
     qtext_match = re.search(
-        r'(?:question-text|"question-text"|question\s*text|"question\s*text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|markingscheme|"markingscheme"|marking\s*scheme\(.*?\)|marking\s*scheme|$))',
+        r'(?:question\s*text|"question\s*text"|question-text|"question-text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|marking\s*scheme\s*\(.*?\)|markingscheme|"markingscheme"|marking\s*scheme|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
@@ -261,10 +267,9 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     else:
         # Try indented format without brackets (new format)
         # Handle "Marking scheme (Total = X):" or just "Marking scheme:"
-        # usage of [:=] allows for both : and = separators
-        # We want to capture EVERYTHING until the end of the block
+        # Pattern matches: "Marking scheme (Total = 10):", "markingscheme:", etc.
         marking_match = re.search(
-            r'(?:markingscheme|"markingscheme"|marking\s*scheme.*?)[:=]\s*(.*)',
+            r'(?:marking\s*scheme\s*\([^)]*\)|markingscheme|"markingscheme"|marking\s*scheme)\s*:\s*(.*)',
             block,
             re.DOTALL | re.IGNORECASE
         )
@@ -474,7 +479,12 @@ def _normalize_question_format(item: Dict[str, Any]) -> Dict[str, Any]:
         # Handle string numbers
         if isinstance(qnum, str):
             qnum = qnum.strip()
-            if qnum.isdigit():
+            # Handle "Q1", "Q2" format
+            if qnum.upper().startswith('Q'):
+                num_match = re.search(r'\d+', qnum)
+                if num_match:
+                    normalized["questionnumber"] = int(num_match.group())
+            elif qnum.isdigit():
                 normalized["questionnumber"] = int(qnum)
             else:
                 # Try to extract first number from string

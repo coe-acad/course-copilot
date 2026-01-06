@@ -274,6 +274,23 @@ def extract_images_from_pdf(pdf_path):
                 for img_index, img_obj in enumerate(page_images):
                     try:
                         x0, top, x1, bottom = img_obj["x0"], img_obj["top"], img_obj["x1"], img_obj["bottom"]
+                        
+                        # Get page dimensions to clamp bounding box coordinates
+                        page_width = page.width
+                        page_height = page.height
+                        
+                        # Clamp coordinates to be within page bounds (handle floating point precision issues)
+                        x0 = max(0.0, min(x0, page_width))
+                        top = max(0.0, min(top, page_height))
+                        x1 = max(0.0, min(x1, page_width))
+                        bottom = max(0.0, min(bottom, page_height))
+                        
+                        # Ensure x1 > x0 and bottom > top
+                        if x1 <= x0:
+                            x1 = min(x0 + 1, page_width)
+                        if bottom <= top:
+                            bottom = min(top + 1, page_height)
+                        
                         logger.debug(f"Processing image {img_index + 1} on page {page_index + 1}: bbox=({x0}, {top}, {x1}, {bottom})")
                         
                         image = page.within_bbox((x0, top, x1, bottom)).to_image(resolution=150)

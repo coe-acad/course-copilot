@@ -8,6 +8,7 @@ import json
 from uuid import uuid4
 import shutil
 import asyncio
+import threading
 from datetime import datetime
 from flask import request
 import os
@@ -198,6 +199,73 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         logger.error(f"Error uploading answer sheets for evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
 
+@router.post("/evaluation/upload-answer-sheets-handwritten")
+def upload_answer_sheets_handwritten(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
+    """
+    Upload answer sheets for handwritten evaluation workflow.
+    Uses the same logic as digital upload, but the evaluation_type is already set to "handwritten"
+    when the mark scheme was uploaded, so processing will use handwritten extraction.
+    """
+    try:
+        # Validate inputs
+        if not answer_sheets:
+            raise HTTPException(status_code=400, detail="No answer sheet files provided")
+        
+        logger.info(f"Uploading {len(answer_sheets)} answer sheets for handwritten evaluation {evaluation_id}")
+        
+        # Get evaluation record
+        evaluation = get_evaluation_by_evaluation_id(evaluation_id)
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+        
+        # Verify this is a handwritten evaluation
+        evaluation_type = evaluation.get("evaluation_type", "digital")
+        if evaluation_type != "handwritten":
+            logger.warning(f"Evaluation {evaluation_id} is not marked as handwritten (type: {evaluation_type})")
+        
+        # Check if mark scheme exists
+        if not evaluation.get("mark_scheme_path"):
+            raise HTTPException(status_code=400, detail="Mark scheme must be uploaded first")
+        
+        # Save answer sheets locally
+        eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        
+        answer_sheet_paths = []
+        answer_sheet_filenames = []
+        
+        for i, answer_sheet in enumerate(answer_sheets):
+            filename = f"answer_sheet_{i+1}_{answer_sheet.filename}"
+            file_path = eval_dir / filename
+            
+            with open(file_path, "wb") as f:
+                content = answer_sheet.file.read()
+                f.write(content)
+            
+            answer_sheet_paths.append(str(file_path))
+            answer_sheet_filenames.append(answer_sheet.filename)
+            logger.info(f"Saved answer sheet to {file_path}")
+        
+        # Update evaluation record
+        update_evaluation(evaluation_id, {
+            "answer_sheet_paths": answer_sheet_paths,
+            "answer_sheet_filenames": answer_sheet_filenames
+        })
+        
+        logger.info(f"Successfully uploaded {len(answer_sheet_paths)} answer sheets for handwritten evaluation {evaluation_id}")
+
+        return {
+            "evaluation_id": evaluation_id,
+            "answer_sheet_count": len(answer_sheet_paths),
+            "answer_sheet_filenames": answer_sheet_filenames
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading answer sheets for handwritten evaluation {evaluation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading answer sheets: {str(e)}")
+
 async def _process_evaluation(evaluation_id: str, user_id: str):
     """Process evaluation in background using local file extraction with parallel workers"""
     try:
@@ -235,20 +303,22 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         extracted_answer_sheets = []
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
-                pages = await asyncio.to_thread(extract_text_tables, answer_sheet_path)
-                extraction_result = await asyncio.to_thread(split_into_qas, pages, pdf_path=answer_sheet_path)
                 # Use appropriate extraction method based on evaluation type
                 if evaluation_type == "handwritten":
                     # For handwritten: use Mistral OCR extraction with mark scheme context
                     # Pass the extracted mark scheme as context for better extraction
-                    extraction_result = split_into_qas_mistral(
+                    # Run in thread to avoid blocking the event loop
+                    extraction_result = await asyncio.to_thread(
+                        split_into_qas_mistral,
                         answer_sheet_path,
-                        mark_scheme_context=extracted_mark_scheme
+                        True,  # answers_only
+                        extracted_mark_scheme  # mark_scheme_context
                     )  # Returns {"email": ..., "answers": [...]}
                 else:
                     # For digital (default): use pdfplumber extraction
-                    pages = extract_text_tables(answer_sheet_path)
-                    extraction_result = split_into_qas(pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
+                    # Run in thread to avoid blocking the event loop
+                    pages = await asyncio.to_thread(extract_text_tables, answer_sheet_path)
+                    extraction_result = await asyncio.to_thread(split_into_qas, pages, pdf_path=answer_sheet_path)  # Returns {"email": ..., "answers": [...]}
                 
                 # Extract email and answers from result
                 extracted_email = extraction_result.get("email", None)
@@ -362,132 +432,6 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         
         logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
         logger.info(f"Starting evaluation for {evaluation_id} with {total_sheets} answer sheets")
-
-        # # Determine batch size based on question count
-        # if question_count < 15:
-        #     BATCH_SIZE = 10
-        #     logger.info(f"Using batch size 10 for {question_count} questions (< 15)")
-        # else:
-        #     BATCH_SIZE = 6
-        #     logger.info(f"Using batch size 6 for {question_count} questions (>= 15)")
-        
-        # all_students = []
-        
-        # # Process in batches
-        # for batch_start in range(0, total_sheets, BATCH_SIZE):
-        #     batch_end = min(batch_start + BATCH_SIZE, total_sheets)
-        #     batch_sheets = extracted_answer_sheets[batch_start:batch_end]
-        #     batch_num = (batch_start // BATCH_SIZE) + 1
-            
-        #     logger.info(f"Processing batch {batch_num}: sheets {batch_start + 1} to {batch_end}")
-            
-        #     if BATCH_SIZE == 10:
-        #         # For batch size 5, process in rounds of 10 sheets max (2 workers * 5 sheets)
-        #         max_sheets_per_round = 10
-        #         logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 10")
-        #         round_num = 1
-        #         for round_start in range(0, len(batch_sheets), max_sheets_per_round):
-        #             round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
-        #             round_sheets = batch_sheets[round_start:round_end]
-                    
-        #             logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
-                    
-        #             if len(round_sheets) <= 5:
-        #                 # If 5 or fewer sheets, use single worker
-        #                 logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
-        #                 round_data = {"answer_sheets": round_sheets}
-        #                 round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
-        #                 all_students.extend(round_result.get("students", []))
-        #             else:
-        #                 # If more than 5 sheets, split between 2 workers, max 5 sheets each
-        #                 mid_point = len(round_sheets) // 2
-        #                 worker1_sheets = round_sheets[:mid_point]
-        #                 worker2_sheets = round_sheets[mid_point:]
-                        
-        #                 # Ensure no worker gets more than 5 sheets
-        #                 if len(worker1_sheets) > 5:
-        #                     worker1_sheets = round_sheets[:5]
-        #                     worker2_sheets = round_sheets[5:]
-                        
-        #                 logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
-                        
-        #                 def evaluate_worker_batch(sheets, worker_num):
-        #                     """Helper function to evaluate sheets in a worker"""
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
-        #                     if not sheets:
-        #                         logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
-        #                         return {"students": []}
-        #                     worker_data = {"answer_sheets": sheets}
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
-        #                     result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
-        #                     return result
-                        
-        #                 # Use ThreadPoolExecutor with 2 workers for this round
-        #                 with ThreadPoolExecutor(max_workers=2) as executor:
-        #                     future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
-        #                     future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
-                            
-        #                     # Get results from both workers
-        #                     result1 = future1.result()
-        #                     result2 = future2.result()
-                        
-        #                 # Merge results from both workers in this round
-        #                 round_students = result1.get("students", []) + result2.get("students", [])
-        #                 all_students.extend(round_students)
-        #                 logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
-        #             round_num += 1
-        #     else:
-        #         # For batch size 6, process in rounds of 6 sheets max (2 workers * 3 sheets)
-        #         max_sheets_per_round = 6
-        #         logger.info(f"Batch {batch_num}: Processing {len(batch_sheets)} sheets in rounds of max 6")
-        #         round_num = 1
-        #         for round_start in range(0, len(batch_sheets), max_sheets_per_round):
-        #             round_end = min(round_start + max_sheets_per_round, len(batch_sheets))
-        #             round_sheets = batch_sheets[round_start:round_end]
-                    
-        #             logger.info(f"Batch {batch_num}, Round {round_num}: Processing {len(round_sheets)} sheets")
-                    
-        #             # If 3 or fewer sheets, use single worker
-        #             if len(round_sheets) <= 3:
-        #                 logger.info(f"Round {round_num}: Using 1 worker for {len(round_sheets)} sheets")
-        #                 round_data = {"answer_sheets": round_sheets}
-        #                 round_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, round_data)
-        #                 all_students.extend(round_result.get("students", []))
-        #             else:
-        #                 # Split between 2 workers for more than 3 sheets
-        #                 mid_point = len(round_sheets) // 2
-        #                 worker1_sheets = round_sheets[:mid_point]
-        #                 worker2_sheets = round_sheets[mid_point:]
-                        
-        #                 logger.info(f"Round {round_num}: Using 2 workers - Worker 1: {len(worker1_sheets)} sheets, Worker 2: {len(worker2_sheets)} sheets")
-                        
-        #                 def evaluate_worker_batch(sheets, worker_num):
-        #                     """Helper function to evaluate sheets in a worker"""
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Started processing {len(sheets)} sheets")
-        #                     if not sheets:
-        #                         logger.warning(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: No sheets to process")
-        #                         return {"students": []}
-        #                     worker_data = {"answer_sheets": sheets}
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Worker data contains {len(worker_data['answer_sheets'])} sheets")
-        #                     result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, worker_data)
-        #                     logger.info(f"Batch {batch_num}, Round {round_num}, Worker {worker_num}: Completed processing")
-        #                     return result
-                        
-        #                 # Use ThreadPoolExecutor with 2 workers for this round
-        #                 with ThreadPoolExecutor(max_workers=2) as executor:
-        #                     future1 = executor.submit(evaluate_worker_batch, worker1_sheets, 1)
-        #                     future2 = executor.submit(evaluate_worker_batch, worker2_sheets, 2)
-                            
-        #                     # Get results from both workers
-        #                     result1 = future1.result()
-        #                     result2 = future2.result()
-                        
-        #                 # Merge results from both workers in this round
-        #                 round_students = result1.get("students", []) + result2.get("students", [])
-        #                 all_students.extend(round_students)
-        #                 logger.info(f"Batch {batch_num}, Round {round_num}: Completed with {len(round_students)} students")
-        #             round_num += 1
         
         # Create final evaluation result
         evaluation_result = {
@@ -634,8 +578,23 @@ async def evaluate_files(evaluation_id: str, user_id: str = Depends(verify_token
         # Mark as processing and start evaluation in background
         update_evaluation(evaluation_id, {"status": "processing"})
         
-        # Start the async background task
-        asyncio.create_task(_process_evaluation(evaluation_id, user_id))
+        # Run the entire evaluation in a separate thread with its own event loop
+        # This ensures it doesn't block the main event loop at all
+        def run_evaluation_in_thread():
+            """Run async evaluation in a separate thread with its own event loop"""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_process_evaluation(evaluation_id, user_id))
+            finally:
+                loop.close()
+        
+        # Start the evaluation in a daemon thread (fire-and-forget)
+        # This completely isolates it from the main event loop
+        thread = threading.Thread(target=run_evaluation_in_thread, daemon=True)
+        thread.start()
+        
+        logger.info(f"Evaluation {evaluation_id} started in isolated background thread (daemon)")
         
         return {
             "evaluation_id": evaluation_id,

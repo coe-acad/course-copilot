@@ -412,3 +412,19 @@ Focus on accuracy, credibility, and usefulness over quantity."""
         logger.error(f"Failed to parse JSON response: {output}")
         # Fallback: return empty list or raise exception
         raise ValueError(f"Invalid JSON response from API: {str(e)}")
+
+def eval_hints(extracted_questions: str):
+    prompt = PromptParser().get_eval_hints_prompt(extracted_questions)
+    run = client.responses.create(
+        model=settings.OPENAI_MODEL,
+        input=[{"role": "system", "content":"You are an expert data extractor assisting a Handwriting Recognition (HTR) system."}, {"role": "user", "content": prompt}]
+    )
+    while run.status in ("queued", "in_progress"):
+        time.sleep(1) # Add a small sleep to avoid tight loop
+        run = client.responses.retrieve(run.id)
+
+    if run.status == "failed":
+        logger.error(f"OpenAI evaluation failed: {run.last_error}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {run.last_error}")
+
+    return run.output_text.strip()

@@ -1,4 +1,5 @@
 from mistralai import Mistral
+import sys
 import os
 from dotenv import load_dotenv
 import json
@@ -9,7 +10,8 @@ from typing import Dict, Any
 import logging
 from pathlib import Path
 from app.utils.prompt_parser import PromptParser
-
+from app.services.openai_service import eval_hints
+import traceback
 load_dotenv()
 
 # Use native Mistral API
@@ -117,7 +119,7 @@ def extract_images_from_pdf(pdf_path: str, output_dir: str = "temp_extracted_ima
         print(error_msg)
         if output_file:
             output_file.write(error_msg + "\n")
-        import traceback
+
         traceback.print_exc()
         return []
 
@@ -360,31 +362,53 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_s
         pdf_images.append(img_base64)
     pdf_document.close()
 
-    # 2) Format mark scheme context if provided
-    mark_scheme_formatted = ""
+    # 2) Get eval hints context if mark scheme is provided
+    extracted_questions = ""
+    eval_hints_formatted = ""
     if mark_scheme_context:
-        mark_scheme_text = format_mark_scheme_context(mark_scheme_context)
-        logging.info(f"Mark scheme context provided: {len(mark_scheme_text)} characters")
-        # Format with header for prompt inclusion
-        mark_scheme_formatted = (
-            "---\n\n"
-            "## MARK SCHEME CONTEXT\n\n"
-            "IMPORTANT: The following mark scheme is provided as context to help you better understand the questions and expected answer format. "
-            "Use this information to:\n"
-            "- Identify questions correctly by matching question numbers and text\n"
-            "- Understand the expected answer format and structure\n"
-            "- Better interpret handwritten answers in context\n"
-            "- Ensure you extract all questions that are present in the mark scheme\n\n"
-            f"{mark_scheme_text}\n\n"
-        )
+        # Extract questions from mark_scheme_context
+        questions = mark_scheme_context.get('mark_scheme', [])
+        logging.info(f"Mark scheme context: {questions}")
+        if questions:
+            # Format questions as simple text for eval_hints
+            question_lines = []
+            for question in questions:
+                qnum = question.get('questionnumber') or question.get('question_number') or 'N/A'
+                qtext = question.get('question-text') or question.get('question_text') or question.get('question', '')
+                if qtext:
+                    question_lines.append(f"Question {qnum}: {qtext}")
+            extracted_questions = "\n".join(question_lines)
+            logging.info(f"Extracted {len(questions)} questions from mark scheme: {(extracted_questions)} characters")
+    
+    if extracted_questions:
+        # Get eval hints using the eval_hints function
+        try:
+            eval_hints_output = eval_hints(extracted_questions)
+            logging.info(f"Eval hints generated: {(eval_hints_output)} characters")
+            # Format with header for prompt inclusion
+            eval_hints_formatted = (
+                "---\n\n"
+                "## EVAL HINTS CONTEXT\n\n"
+                "IMPORTANT: The following evaluation hints are provided as context to help you better understand the questions and expected answer format. "
+                "Use this information to:\n"
+                "- Identify questions correctly by matching question numbers and text\n"
+                "- Understand the expected answer format and structure\n"
+                "- Better interpret handwritten answers in context\n"
+                "- Ensure you extract all questions that are present in the hints\n\n"
+                f"{eval_hints_output}\n\n"
+            )
+        except Exception as e:
+            logging.error(f"Error generating eval hints: {str(e)}")
+            # If eval_hints fails, leave eval_hints_formatted as empty string
+            eval_hints_formatted = ""
     
     # 3) Load prompt from JSON file using PromptParser
     # Use PromptParser's path resolution which works in both development and production
     # It uses __file__ to resolve paths relative to backend/app, regardless of working directory
     prompt_parser = PromptParser()
     input_variables = {}
-    if mark_scheme_formatted:
-        input_variables["mark_scheme_context"] = mark_scheme_formatted
+    if eval_hints_formatted:
+        input_variables["eval_hints_context"] = eval_hints_formatted
     
     # Resolve path using PromptParser's _get_prompt_path which handles production paths correctly
     # This uses os.path.abspath(__file__) internally, so it works regardless of where the script is run from
@@ -405,8 +429,8 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_s
     
     # Log the final prompt for debugging
     logging.info(f"Final prompt length: {len(system_prompt)} characters")
-    if mark_scheme_formatted:
-        logging.info("Mark scheme context included in prompt")
+    if eval_hints_formatted:
+        logging.info("Eval hints context included in prompt")
     print("\n" + "="*80)
     print("FINAL HANDWRITTEN EXTRACTION PROMPT (with mark scheme context)")
     print("="*80)
@@ -861,7 +885,6 @@ Format your response as:
         print(error_msg)
         if output_file:
             output_file.write(error_msg + "\n")
-        import traceback
         traceback.print_exc()
         if output_file:
             output_file.write(traceback.format_exc() + "\n")
@@ -874,321 +897,6 @@ Format your response as:
             'visual_elements': '',
             'confidence': 'N/A'
         }
-
-if __name__ == "__main__":
-    # PDF Processing Mode
-    pdf_path = "handwritten answersheet.pdf"  # Updated to the latest file
-    output_file = "output.txt"
-    
-    # Open output file for writing
-    with open(output_file, 'w', encoding='utf-8') as f:
-        try:
-            print("=" * 80)
-            print("STEP 0: Processing PDF with Mistral API")
-            print("=" * 80)
-            f.write("=" * 80 + "\n")
-            f.write("STEP 0: Processing PDF with Mistral API\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Convert PDF to images (Mistral doesn't support document_url directly)
-            print("\nConverting PDF pages to images...")
-            f.write("\nConverting PDF pages to images...\n")
-            
-            pdf_document = fitz.open(pdf_path)
-            pdf_images = []
-            
-            for page_num in range(len(pdf_document)):
-                page = pdf_document[page_num]
-                # Render at high resolution (300 DPI)
-                mat = fitz.Matrix(3, 3)
-                pix = page.get_pixmap(matrix=mat)
-                
-                # Convert to base64
-                img_bytes = pix.tobytes("png")
-                img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-                pdf_images.append(img_base64)
-                
-                print(f"  Converted page {page_num + 1}/{len(pdf_document)}")
-                f.write(f"  Converted page {page_num + 1}/{len(pdf_document)}\n")
-            
-            pdf_document.close()
-            print(f"✓ Converted {len(pdf_images)} pages to images\n")
-            f.write(f"✓ Converted {len(pdf_images)} pages to images\n\n")
-            
-            # Choose model
-            model = "mistral-large-latest"  # Mistral's multimodal model for PDF processing
-            
-            print(f"\nUsing model: {model}")
-            f.write(f"\nUsing model: {model}\n")
-            
-            # Build content with all PDF pages as images
-            content_items = [
-                {
-                    "type": "text",
-                    "text": "You are a specialized OCR system designed for extracting content from handwritten academic answer sheets with maximum accuracy. Your task is to extract ALL visible content EXACTLY as it appears, maintaining the original layout, structure, and sequential order.\n\n---\n\n## CORE PRINCIPLES\n\nCRITICAL: Extract content in the EXACT sequence it appears in the document:\n- Top to bottom, left to right progression\n- Page by page in order\n- NO rearranging, regrouping, or summarizing\n- ALL elements (text, images, tables, diagrams) must appear inline at their exact position\n\n---\n\n## TEXT EXTRACTION RULES\n\n### Character-Level Accuracy\n- Extract every character, word, and symbol exactly as written\n- DO NOT correct spelling, grammar, or formatting errors\n- DO NOT standardize or clean up the text\n- Preserve original writing style and quirks\n\n### Preserve All Formatting\n- Original line breaks, spacing, and indentation\n- Headers, footers, watermarks, page numbers\n- Question numbers, bullet points, subpoints, section markers\n- Heading hierarchy (main headings → subheadings → sub-subheadings)\n- Natural reading flow and document structure\n\n### Handwriting-Specific Guidelines\n- When text is ambiguous or unclear, make your best interpretation\n- For illegible or highly uncertain text, use: [UNCERTAIN: possible_text]\n- Preserve strikethroughs, corrections, and insertions (use ^word^ for insertions, word for strikethroughs)\n- Maintain spacing between words as perceived\n- Note significant pressure variations or emphasis if visible\n\n---\n\n## INLINE IMAGE AND DIAGRAM HANDLING\n\n### Critical Rule: Inline Placement\nWhen you encounter ANY visual element, insert its description at that EXACT position in the document flow. Never move visuals to the end.\n\n### Image vs. Table Distinction\nTreat as IMAGE if:\n- Flowcharts with arrows and decision points\n- Diagrams with labels and relationships\n- Charts/graphs (bar charts, pie charts, line graphs, scatter plots)\n- Illustrations, drawings, or sketches\n- Photos or complex visual layouts\n- Any visual without clear row-column grid structure\n\nTreat as TABLE only if:\n- Clear rectangular grid with visible or implied borders\n- Defined rows and columns with consistent structure\n- Data organized in cells with clear alignment\n- Header row typically present\n\n### Image Description Format\n[IMAGE DESCRIPTION: Provide detailed structural description focusing on layout, relationships, and visual elements. Describe shapes, arrows, connections, spatial arrangement, and overall organization.\n\nTEXT IN IMAGE: Extract all visible text, labels, numbers, and annotations exactly as they appear. Use bullet points for multiple labels.\n\nIMAGE TYPE: Specify one - diagram | flowchart | bar_chart | line_graph | pie_chart | scatter_plot | illustration | sketch | photo | complex_visual\n\nIMAGE CONTEXT: Identify which question number, section, or concept this visual relates to]\n\nThen immediately continue with the text that follows.\n\n---\n\n## INLINE TABLE HANDLING\n\n### Table Detection Criteria\nOnly mark as a table if there is:\n- Clear grid structure with rows and columns\n- Consistent cell boundaries (visible or strongly implied)\n- Tabular data organization\n- Header row typically present\n\n### Table Description Format\nWhen you encounter a table, provide ONLY a detailed description at the exact position where it appears. Do NOT rewrite the full table text and do NOT recreate it in markdown.\n\n[TABLE DESCRIPTION: Provide comprehensive structural description focusing on layout, organization, and data relationships. Describe:\n- Number of rows and columns\n- Header structure and column purposes\n- Data organization pattern (e.g., comparison table, data table, calculation table)\n- Any special formatting, merged cells, or visual emphasis\n- Overall purpose and context of the table\n\nTABLE TYPE: Specify one - data_table | comparison_table | calculation_table | reference_table | summary_table | other\n\nTABLE CONTEXT: Identify which question number, section, or concept this table relates to]\n\nThen immediately continue with the next handwritten content in order.\n\n---\n\n## MATHEMATICAL CONTENT EXTRACTION\n\n### Equations and Formulas\n- Use Unicode for special characters: ×, ÷, ±, ≤, ≥, ≠, √, ∞, ∫, ∑, π, θ\n- Superscripts: x², a³, e^(2x)\n- Subscripts: H₂O, x₁, aₙ\n- Fractions: Use (numerator)/(denominator) or proper notation based on clarity\n- Maintain alignment for multi-line equations\n\n### Mathematical Expressions in Handwriting\n- If notation is ambiguous, provide best interpretation\n- Use [UNCERTAIN: x² or x³] for unclear exponents\n- Preserve work shown, including crossed-out attempts\n\n---\n\n## STRUCTURAL ELEMENT PRESERVATION\n\nMaintain all structural elements exactly:\n- Numbering systems: 1., 2., (a), (b), i., ii., etc.\n- Bullet types: •, ○, ■, -, →, *, etc.\n- Question-answer layouts and spacing\n- Bold emphasis (use text if detectable)\n- Underlines and emphasis markers\n- Visual separators: dashes, lines, brackets\n- Margins and indentation levels\n\n---\n\n## ERROR HANDLING AND UNCERTAINTY MARKING\n\n### Uncertainty Markers\nUse these markers to flag extraction issues:\n\n- [UNCERTAIN: possible_text] - Text is unclear but this is the best interpretation\n- [ILLEGIBLE] - Text cannot be reliably read\n- [UNCLEAR_WORD] - Single word is unreadable\n- [SMUDGED] - Content is smudged or damaged\n- [FADED] - Content is too faint to read confidently\n- [PARTIAL: visible_portion...] - Only part of the content is readable\n\n### Impact on Confidence Score\n- Each uncertainty marker reduces text accuracy component\n- Multiple uncertainties in critical areas (question answers) have higher impact\n- Document overall legibility affects handwriting confidence score\n\n---\n\n## CONFIDENCE SCORING SYSTEM\n\nAt the end of your extraction, provide a detailed confidence assessment:\n\n### Scoring Components\n\n| Component | Weight | Evaluation Criteria |\n|-----------|--------|---------------------|\n| Text Accuracy | 40% | Character recognition precision, proper handling of handwriting variations, minimal [UNCERTAIN] markers, correct preservation of formatting and alignment |\n| Visual Element Handling | 25% | Correct identification of images vs. tables, accurate inline placement, comprehensive structural descriptions, complete text extraction from visuals |\n| Table Structure Accuracy | 20% | Accurate detection of true tables (no false positives from charts), complete row-column preservation, proper markdown formatting, data integrity |\n| Handwriting Legibility | 15% | Overall clarity of handwriting, confidence in character interpretation, frequency of uncertain extractions, writing consistency |\n\n### Per-Question Confidence Scores\n\nCRITICAL FORMATTING REQUIREMENT: For EACH question extracted, you MUST provide an individual confidence score using the EXACT format specified below. This exact format is required for automated parsing and must be followed precisely.\n\nREQUIRED FORMAT (use this EXACT format for each question - this is mandatory):\n\nQUESTION [N] CONFIDENCE: [X] / 100\n\nWhere:\n- [N] is the question number as an integer (1, 2, 3, 4, etc.)\n- [X] is the confidence score as a number (0-100, can include decimals like 85.5)\n- The format must be: \"QUESTION\" (all caps) followed by a space, then the question number, then a space, then \"CONFIDENCE:\" (all caps), then a space, then the score, optionally followed by \" / 100\"\n\nValid format examples (any of these will work):\n- QUESTION 1 CONFIDENCE: 85 / 100\n- QUESTION 2 CONFIDENCE: 92/100\n- QUESTION 3 CONFIDENCE: 87.5 / 100\n- QUESTION 4 CONFIDENCE: 90\n\nIMPORTANT PLACEMENT: Place all per-question confidence scores in a dedicated section at the END of your response, after all question content but BEFORE the overall/total confidence score section. This ensures proper parsing.\n\nBREAKDOWN FOR QUESTION [N]:\n- Text Accuracy: [X]/40 - [Brief note on text quality for this question]\n- Visual Elements: [X]/25 - [Note on any images/diagrams in this question]\n- Table Structure: [X]/20 - [Note on any tables in this question]\n- Handwriting Legibility: [X]/15 - [Note on handwriting clarity for this question]\n\nISSUES FOR QUESTION [N]:\n- [List any specific difficulties, uncertainties, or challenges for this question]\n\nMANDATORY: Repeat this format for ALL questions found in the document (Question 1, Question 2, Question 3, etc.). You MUST provide a confidence score for EVERY SINGLE question you extract.\n\nCRITICAL REQUIREMENT: If you extract 5 questions, you MUST provide exactly 5 confidence scores (one for Question 1, one for Question 2, one for Question 3, one for Question 4, and one for Question 5). If you extract 10 questions, you MUST provide exactly 10 confidence scores. There is NO exception to this rule - every question MUST have its own confidence score.\n\nMissing confidence scores will result in \"N/A\" being assigned to those questions, which indicates incomplete extraction. Your response is incomplete and unacceptable if you do not provide confidence scores for ALL questions..\n\n### Overall Confidence Score Format\n\nTOTAL CONFIDENCE SCORE: [X] / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: [X]/40 - [Brief note on overall text quality and any issues]\n- Visual Elements: [X]/25 - [Note on overall image/diagram handling accuracy]\n- Table Structure: [X]/20 - [Note on overall table detection and extraction]\n- Handwriting Legibility: [X]/15 - [Note on overall handwriting clarity and challenges]\n\nKEY CHALLENGES:\n- [List any specific difficulties encountered across the document]\n- [Note any sections with multiple uncertainties]\n- [Summary of per-question confidence variations]\n\nRELIABILITY NOTES:\n- [Any warnings about specific sections or content types]\n- [Overall assessment of extraction quality]\n\n---\n\n## CORRECT OUTPUT EXAMPLE\n\nStudent Name: John Smith     Roll No: 2024-0156     Date: 15/03/2024\n\nPHYSICS EXAMINATION - ANSWER SHEET\n\nQuestion 1: Explain Newton's Second Law of Motion with an example.\n\nAnswer: Newton's Second Law states that Force = mass × acceleration or F = ma. This means that the acceleration of an object depends on the net force acting upon it and the mass of the object.\n\n[IMAGE DESCRIPTION: A hand-drawn diagram showing a rectangular block on a horizontal surface with two arrows. One arrow points right labeled 'Applied Force' and another points left labeled 'Friction'. The block has 'm = 5kg' written inside it.\n\nTEXT IN IMAGE: \n- Applied Force (right arrow)\n- Friction (left arrow)  \n- m = 5kg\n- F = 20N\n\nIMAGE TYPE: diagram\n\nIMAGE CONTEXT: Illustrates force application for Question 1 example]\n\nExample: When we push a box of mass 5kg with a force of 20N, the [UNCERTAIN: acceleration] can be calculated using a = F/m = 20/5 = 4 m/s²\n\nQuestion 2: Calculate the velocity using the data below:\n\n[TABLE DESCRIPTION: A data table with 3 columns and 4 rows (including header). The table presents physical parameters for velocity calculation with parameter names, numerical values, and units.\n\nTEXT IN TABLE:\n- Header row: Parameter, Value, Unit\n- Row 1: Initial Velocity, 0, m/s\n- Row 2: Acceleration, 9.8, m/s²\n- Row 3: Time, 5, s\n\nTABLE TYPE: data_table\n\nTABLE CONTEXT: Provides input data for Question 2 velocity calculation]\n\n| Parameter | Value | Unit |\n|-----------|-------|------|\n| Initial Velocity | 0 | m/s |\n| Acceleration | 9.8 | m/s² |\n| Time | 5 | s |\n\nSolution: Using v = u + at\nv = 0 + (9.8)(5)\nv = 49 m/s 50 m/s\n\n[Note: Student corrected their answer]\n\n---\n\n## CONFIDENCE SCORES EXAMPLE\n\nQUESTION 1 CONFIDENCE: 85 / 100\n\nBREAKDOWN FOR QUESTION 1:\n- Text Accuracy: 35/40 - Clear handwriting, minor uncertainty in one word\n- Visual Elements: 22/25 - Diagram well-described with all labels extracted\n- Table Structure: 20/20 - No tables in this question\n- Handwriting Legibility: 8/15 - Generally clear but some pressure variations\n\nISSUES FOR QUESTION 1:\n- One uncertain word marked: [UNCERTAIN: acceleration]\n- Diagram extraction complete and accurate\n\nQUESTION 2 CONFIDENCE: 92 / 100\n\nBREAKDOWN FOR QUESTION 2:\n- Text Accuracy: 38/40 - Very clear text extraction\n- Visual Elements: 25/25 - No images in this question\n- Table Structure: 19/20 - Table well-extracted with complete data\n- Handwriting Legibility: 10/15 - Clear and consistent handwriting\n\nISSUES FOR QUESTION 2:\n- Student correction noted (49 m/s corrected to 50 m/s)\n- Table description and markdown format both provided accurately\n\nTOTAL CONFIDENCE SCORE: 88 / 100\n\nOVERALL BREAKDOWN:\n- Text Accuracy: 36/40 - High accuracy with minimal uncertainties\n- Visual Elements: 23/25 - Images and tables properly identified and described\n- Table Structure: 19/20 - Accurate table detection and extraction\n- Handwriting Legibility: 9/15 - Generally legible with minor variations\n\nKEY CHALLENGES:\n- One uncertain word in Question 1\n- Student correction in Question 2 properly preserved\n- Overall extraction quality is high\n\nRELIABILITY NOTES:\n- All questions successfully extracted with high confidence\n- Visual elements (diagram and table) comprehensively described\n- Extraction suitable for automated grading with minimal review\n\n---\n\n## WRONG OUTPUT EXAMPLES - DO NOT DO THIS\n\nWRONG: Moving all images to end of document\nWRONG: Reordering content by type (all questions, then all images)\nWRONG: Auto-correcting student spelling or grammar\nWRONG: Summarizing or paraphrasing answers\nWRONG: Treating bar charts or line graphs as tables\nWRONG: Skipping headers, footers, or student information\nWRONG: Ignoring crossed-out work or corrections\nWRONG: Failing to mark uncertain text with [UNCERTAIN] tags\nWRONG: Providing only total confidence score without per-question scores\nWRONG: Providing table markdown without table description\n\n---\n\n## FINAL EXECUTION CHECKLIST\n\nBefore submitting extraction, verify:\n- Content extracted in exact sequential order\n- All visuals described and placed inline at correct positions\n- Images vs. tables correctly distinguished (graphs are NOT tables)\n- Tables have BOTH description AND markdown format\n- All uncertain text marked with appropriate tags\n- Mathematical notation properly formatted\n- Student corrections and edits preserved\n- Per-question confidence scores provided for ALL questions\n- Total confidence score provided with detailed breakdown\n- No content rearranged or moved from original position\n\n---\n\n## GOAL\n\nProduce a flawless, character-perfect sequential reproduction of the handwritten answer sheet where:\n1. Every element appears in its original position\n2. Handwriting is interpreted with maximum accuracy\n3. Uncertainties are clearly flagged\n4. Visual elements (images AND tables) are comprehensively described\n5. Per-question confidence scores reflect extraction quality for each question\n6. Overall confidence assessment reflects total extraction quality\n\nThis extraction should be usable for automated grading, archival, or digitization purposes with minimal manual review required."
-                }
-            ]
-            
-            # Add all PDF pages as images
-            for page_num, img_base64 in enumerate(pdf_images, 1):
-                content_items.append({
-                    "type": "image_url",
-                    "image_url": f"data:image/png;base64,{img_base64}"
-                })
-            
-            messages = [
-                {
-                    "role": "user",
-                    "content": content_items
-                }
-            ]
-            
-            print("\nSending request to Mistral API...")
-            f.write("\nSending request to Mistral API...\n")
-            
-            chat_response = client.chat.complete(
-                model=model,
-                messages=messages
-            )
-            
-            print("\nChat Response:")
-            print("=" * 50)
-            f.write("\nChat Response:\n")
-            f.write("=" * 50 + "\n")
-            
-            # Extract the text from the response
-            extracted_text = ""
-            if hasattr(chat_response, 'choices') and chat_response.choices:
-                for choice in chat_response.choices:
-                    if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
-                        extracted_text += choice.message.content + "\n"
-            
-            print(extracted_text)
-            f.write(extracted_text + "\n")
-            
-            # Extract per-question confidence scores BEFORE removing confidence section
-            print("\n" + "=" * 80)
-            print("Extracting Per-Question Confidence Scores")
-            print("=" * 80)
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("Extracting Per-Question Confidence Scores\n")
-            f.write("=" * 80 + "\n\n")
-            
-            per_question_confidence = parse_per_question_confidence(extracted_text, output_file=f)
-            
-            # Extract overall confidence score separately and remove it (and everything after) from text
-            confidence_score = "N/A"
-            confidence_details = ""
-            
-            # First, look for the confidence section header to remove the entire section
-            # This prevents confidence scores from appearing in question answers
-            confidence_section_start = None
-            
-            # Pattern 0: Look for "CONFIDENCE SCORES:" or "**CONFIDENCE SCORES:**" section header
-            # This is the most reliable way to find where the confidence section starts
-            confidence_header_patterns = [
-                r'\*\*CONFIDENCE\s+SCORES?\*\*:',
-                r'CONFIDENCE\s+SCORES?:',
-                r'---\s*CONFIDENCE\s+SCORES\s*---',
-                r'---\s*\n\s*\*\*CONFIDENCE',
-                r'---\s*\n\s*CONFIDENCE',
-                r'CONFIDENCE SCORES',
-            ]
-            
-            for pattern in confidence_header_patterns:
-                match = re.search(pattern, extracted_text, re.IGNORECASE | re.MULTILINE)
-                if match:
-                    confidence_section_start = match.start()
-                    msg = f"  Found confidence section header at position {confidence_section_start}"
-                    print(msg)
-                    f.write(msg + "\n")
-                    break
-            
-            # If we found the confidence section header, extract details and remove it
-            if confidence_section_start is not None:
-                confidence_details = extracted_text[confidence_section_start:].strip()
-                # Extract overall confidence score from the details
-                # Look for "TOTAL CONFIDENCE SCORE: 85" or similar in the details
-                total_match = re.search(r'TOTAL\s+CONFIDENCE\s+SCORE[:\s]+(\d+(?:\.\d+)?)', confidence_details, re.IGNORECASE)
-                if total_match:
-                    confidence_score = total_match.group(1)
-                else:
-                    # Try to find any overall confidence score pattern
-                    overall_patterns = [
-                        r'(?:TOTAL\s+)?confidence\s*(?:score)?[:\s]*(\d+(?:\.\d+)?)\s*(?:/|\s*out\s*of\s*)?\s*(?:100)?',
-                        r'(\d+(?:\.\d+)?)\s*(?:/|\s*out\s*of\s*)\s*100\s*(?:confidence|confidence\s*score)',
-                    ]
-                    for pattern in overall_patterns:
-                        match = re.search(pattern, confidence_details, re.IGNORECASE)
-                        if match:
-                            confidence_score = match.group(1)
-                            break
-                
-                # Remove the confidence section from extracted_text
-                extracted_text = extracted_text[:confidence_section_start].rstrip()
-                msg = f"  Removed confidence section (length: {len(confidence_details)} chars)"
-                print(msg)
-                f.write(msg + "\n")
-            else:
-                # Fallback: Look for confidence score patterns (usually at the end of the text)
-                # Check the last 800 characters for confidence mentions
-                end_section = extracted_text[-800:] if len(extracted_text) > 800 else extracted_text
-                
-                # Pattern 1: "TOTAL CONFIDENCE SCORE: 85" or "Confidence Score: 85" or "Confidence: 90"
-                confidence_match = re.search(r'(?:TOTAL\s+)?confidence\s*(?:score)?[:\s]*(\d+(?:\.\d+)?)\s*(?:/|\s*out\s*of\s*)?\s*(?:100)?', end_section, re.IGNORECASE)
-                if confidence_match:
-                    confidence_score = confidence_match.group(1)
-                    confidence_section_start = len(extracted_text) - len(end_section) + confidence_match.start()
-                    confidence_details = extracted_text[confidence_section_start:].strip()
-                
-                # Pattern 2: "85/100" or "90 out of 100" near "confidence"
-                if confidence_score == "N/A":
-                    confidence_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:/|\s*out\s*of\s*)\s*100\s*(?:confidence|confidence\s*score)', end_section, re.IGNORECASE)
-                    if confidence_match:
-                        confidence_score = confidence_match.group(1)
-                        confidence_section_start = len(extracted_text) - len(end_section) + confidence_match.start()
-                        confidence_details = extracted_text[confidence_section_start:].strip()
-                
-                # Pattern 3: Just a number followed by "confidence" or "confidence score"
-                if confidence_score == "N/A":
-                    confidence_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:%|percent)?\s*(?:confidence|confidence\s*score)', end_section, re.IGNORECASE)
-                    if confidence_match:
-                        confidence_score = confidence_match.group(1)
-                        confidence_section_start = len(extracted_text) - len(end_section) + confidence_match.start()
-                        confidence_details = extracted_text[confidence_section_start:].strip()
-                
-                # If we found a confidence section, remove everything from that point onward
-                if confidence_section_start is not None:
-                    extracted_text = extracted_text[:confidence_section_start].rstrip()
-            
-            # Note: Confidence score will be included in final JSON output
-            # Don't display it here, it will be shown at the end
-            
-            # Safety: If any remaining "CONFIDENCE SCORES" text slipped through, trim it here as well
-            fallback_conf_idx = extracted_text.upper().find("CONFIDENCE SCORES")
-            if fallback_conf_idx != -1:
-                msg = f"  Fallback removal: trimming text at position {fallback_conf_idx} due to 'CONFIDENCE SCORES' keyword"
-                print(msg)
-                f.write(msg + "\n")
-                confidence_details = extracted_text[fallback_conf_idx:].strip()
-                extracted_text = extracted_text[:fallback_conf_idx].rstrip()
-
-            # Optional: Extract images separately for extra-detailed vision model analysis
-            # Set to False to rely on inline document processing (recommended for maintaining layout)
-            use_separate_vision_analysis = False
-            
-            if use_separate_vision_analysis:
-                # Extract images from PDF and get detailed descriptions
-                print("\n" + "=" * 80)
-                print("STEP 1: Extracting and Analyzing Images from PDF with Vision Model")
-                print("=" * 80)
-                f.write("\n" + "=" * 80 + "\n")
-                f.write("STEP 1: Extracting and Analyzing Images from PDF with Vision Model\n")
-                f.write("=" * 80 + "\n\n")
-                
-                image_descriptions = extract_images_from_pdf(pdf_path, output_file=f)
-                
-                # Enhance the extracted text with detailed image descriptions
-                if image_descriptions:
-                    print("\n" + "=" * 80)
-                    print("STEP 2: Enhancing Text with Detailed Image Descriptions")
-                    print("=" * 80)
-                    f.write("\n" + "=" * 80 + "\n")
-                    f.write("STEP 2: Enhancing Text with Detailed Image Descriptions\n")
-                    f.write("=" * 80 + "\n\n")
-                    
-                    extracted_text = enhance_text_with_image_descriptions(
-                        extracted_text, 
-                        image_descriptions, 
-                        output_file=f
-                    )
-                    
-                    print("\nEnhanced text with image descriptions:")
-                    print("-" * 60)
-                    print(extracted_text)
-                    f.write("\nEnhanced text with image descriptions:\n")
-                    f.write("-" * 60 + "\n")
-                    f.write(extracted_text + "\n")
-            
-            # Parse questions and answers
-            print("\n" + "=" * 80)
-            print("STEP 1: Parsing Questions and Answers (Sequential Order Only)")
-            print("=" * 80)
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("STEP 1: Parsing Questions and Answers (Sequential Order Only)\n")
-            f.write("=" * 80 + "\n\n")
-            
-            questions_answers = parse_questions_and_answers(extracted_text, output_file=f)
-            
-            # Add confidence scores to each question
-            print("\n" + "=" * 80)
-            print("Adding Confidence Scores to Questions")
-            print("=" * 80)
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("Adding Confidence Scores to Questions\n")
-            f.write("=" * 80 + "\n\n")
-            
-            print(f"  Found {len(per_question_confidence)} confidence score(s) in extracted data")
-            print(f"  Processing {len(questions_answers)} question(s)")
-            f.write(f"  Found {len(per_question_confidence)} confidence score(s) in extracted data\n")
-            f.write(f"  Processing {len(questions_answers)} question(s)\n")
-            
-            if per_question_confidence:
-                print(f"  Confidence scores found for questions: {', '.join(per_question_confidence.keys())}")
-                f.write(f"  Confidence scores found for questions: {', '.join(per_question_confidence.keys())}\n")
-            
-            for qa in questions_answers:
-                question_num = qa['question_number']
-                # Get confidence score for this question, default to "N/A" if not found
-                confidence = per_question_confidence.get(question_num, "N/A")
-                qa['confidence_score'] = confidence
-                
-                msg = f"  Question {question_num}: confidence_score = {confidence}"
-                print(msg)
-                f.write(msg + "\n")
-            
-            # Create final output structure with questions and confidence score
-            final_output = {
-                'questions': questions_answers,
-                'confidence': {
-                    'score': confidence_score,
-                    'details': confidence_details
-                }
-            }
-            
-            # Print parsed results
-            print("\n" + "=" * 80)
-            print("STEP 2: Final JSON Output")
-            print("=" * 80)
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("STEP 2: Final JSON Output\n")
-            f.write("=" * 80 + "\n\n")
-            
-            json_output = json.dumps(final_output, indent=2, ensure_ascii=False)
-            print("\nParsed Questions and Answers with Confidence Score (JSON):")
-            print("-" * 50)
-            print(json_output)
-            f.write("\nParsed Questions and Answers with Confidence Score (JSON):\n")
-            f.write("-" * 50 + "\n")
-            f.write(json_output + "\n")
-            
-            print(f"\n\nTotal sequential questions found: {len(questions_answers)}")
-            print(f"Confidence Score: {confidence_score}")
-            print(f"Output saved to: {output_file}")
-            f.write(f"\n\nTotal sequential questions found: {len(questions_answers)}\n")
-            f.write(f"Confidence Score: {confidence_score}\n")
-            f.write(f"Output saved to: {output_file}\n")
-        
-        except Exception as e:
-            error_msg = f"Error: {e}"
-            print(error_msg)
-            f.write(error_msg + "\n")
-            import traceback
-            traceback.print_exc()
-            f.write(traceback.format_exc() + "\n")
-
-
-
 
 def split_into_qas_mistral(
     pdf_path: str,
@@ -1207,226 +915,3 @@ def split_into_qas_mistral(
         Dict with format: {"email": str or None, "answers": [{"question_number": str, "student_answer": str}, ...]}
     """
     return extract_handwritten_answers(pdf_path, answers_only=answers_only, mark_scheme_context=mark_scheme_context)
-
-
-# ==================== TESTING / CLI ENTRYPOINT ====================
-
-if __name__ == "__main__":
-    """
-    CLI usage (testing only, not used in the API):
-    
-    - Single PDF mode (backwards compatible):
-        python extraction_handwritten.py input.pdf [output.txt]
-    
-    - Folder mode (requested):
-        python extraction_handwritten.py input_folder [output_folder]
-    
-      For each *.pdf in input_folder, writes:
-        output_folder/<pdf_stem>_output.txt
-    """
-    import sys
-
-    # Configure logging for testing
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
-    script_dir = Path(__file__).parent
-
-    # No args → fall back to single default PDF for convenience
-    if len(sys.argv) == 1:
-        pdf_path = script_dir / "handwritten answersheet.pdf"
-        output_file = script_dir / "output.txt"
-
-        print("\n" + "=" * 80)
-        print("HANDWRITTEN ANSWER SHEET EXTRACTION (single PDF default)")
-        print("=" * 80)
-        print(f"Input PDF: {pdf_path}")
-        print(f"Output File: {output_file}")
-        print("=" * 80 + "\n")
-
-        try:
-            result = extract_handwritten_answers(str(pdf_path))
-
-            with open(output_file, "w", encoding="utf-8") as f:
-                f.write("=" * 80 + "\n")
-                f.write("EXTRACTION RESULTS\n")
-                f.write("=" * 80 + "\n\n")
-
-                f.write(f"Email: {result.get('email', 'None')}\n")
-                f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
-                f.write("=" * 80 + "\n\n")
-
-                for qa in result["answers"]:
-                    f.write(f"Question {qa['question_number']}:\n")
-                    f.write("-" * 40 + "\n")
-                    f.write(f"{qa['student_answer']}\n")
-                    f.write("\n" + "=" * 80 + "\n\n")
-
-                # Also write raw chat response so you can inspect the full model output
-                raw_chat = result.get("raw_chat_response", "")
-                if raw_chat:
-                    f.write("\n\n" + "=" * 80 + "\n")
-                    f.write("RAW CHAT RESPONSE\n")
-                    f.write("=" * 80 + "\n\n")
-                    f.write(raw_chat)
-
-                # Finally, write JSON without the raw_chat_response field
-                result_for_json = dict(result)
-                result_for_json.pop("raw_chat_response", None)
-                f.write("\n\n" + "=" * 80 + "\n")
-                f.write("JSON FORMAT\n")
-                f.write("=" * 80 + "\n")
-                f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
-
-            print(f"\n✅ Results written to: {output_file}")
-            print(f"✅ Total questions extracted: {len(result['answers'])}")
-
-        except FileNotFoundError:
-            print(f"\n❌ Error: File '{pdf_path}' not found!")
-            print("Please make sure the PDF file exists in the current directory.\n")
-        except Exception as e:
-            print(f"\n❌ Error during extraction: {e}\n")
-            import traceback
-
-            traceback.print_exc()
-
-        sys.exit(0)
-
-    # If first arg is a directory → folder mode
-    input_path = Path(sys.argv[1])
-
-    if input_path.is_dir():
-        input_folder = input_path
-        # Optional second arg = output folder; default: <input_folder>/handwritten_outputs
-        if len(sys.argv) > 2:
-            output_folder = Path(sys.argv[2])
-        else:
-            output_folder = input_folder / "handwritten_outputs"
-
-        output_folder.mkdir(parents=True, exist_ok=True)
-
-        print("\n" + "=" * 80)
-        print("HANDWRITTEN ANSWER SHEET EXTRACTION (folder mode)")
-        print("=" * 80)
-        print(f"Input folder:  {input_folder}")
-        print(f"Output folder: {output_folder}")
-        print("=" * 80 + "\n")
-
-        pdf_files = sorted(input_folder.glob("*.pdf"))
-        if not pdf_files:
-            print(f"❌ No PDF files found in folder: {input_folder}")
-            sys.exit(1)
-
-        for pdf_file in pdf_files:
-            try:
-                print("\n" + "-" * 80)
-                print(f"Processing PDF: {pdf_file.name}")
-                print("-" * 80)
-
-                result = extract_handwritten_answers(str(pdf_file))
-
-                out_path = output_folder / f"{pdf_file.stem}_output.txt"
-                with open(out_path, "w", encoding="utf-8") as f:
-                    f.write("=" * 80 + "\n")
-                    f.write("EXTRACTION RESULTS\n")
-                    f.write("=" * 80 + "\n\n")
-
-                    f.write(f"Email: {result.get('email', 'None')}\n")
-                    f.write(
-                        f"Total Questions Extracted: {len(result.get('answers', []))}\n\n"
-                    )
-                    f.write("=" * 80 + "\n\n")
-
-                    for qa in result.get("answers", []):
-                        f.write(f"Question {qa['question_number']}:\n")
-                        f.write("-" * 40 + "\n")
-                        f.write(f"{qa['student_answer']}\n")
-                        f.write("\n" + "=" * 80 + "\n\n")
-
-                    # Also write raw chat response so you can inspect the full model output
-                    raw_chat = result.get("raw_chat_response", "")
-                    if raw_chat:
-                        f.write("\n\n" + "=" * 80 + "\n")
-                        f.write("RAW CHAT RESPONSE\n")
-                        f.write("=" * 80 + "\n\n")
-                        f.write(raw_chat)
-
-                    # Finally, write JSON without the raw_chat_response field
-                    result_for_json = dict(result)
-                    result_for_json.pop("raw_chat_response", None)
-                    f.write("\n\n" + "=" * 80 + "\n")
-                    f.write("JSON FORMAT\n")
-                    f.write("=" * 80 + "\n")
-                    f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
-
-                print(f"✅ Wrote output to: {out_path}")
-
-            except Exception as e:
-                print(f"\n❌ Error during extraction for '{pdf_file}': {e}\n")
-                import traceback
-
-                traceback.print_exc()
-
-        print("\n" + "=" * 80)
-        print("FOLDER PROCESSING COMPLETE")
-        print("=" * 80 + "\n")
-
-    else:
-        # Backwards compatible single-file mode when a file path is provided
-        pdf_path = input_path
-        output_file = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("output.txt")
-
-        print("\n" + "=" * 80)
-        print("HANDWRITTEN ANSWER SHEET EXTRACTION (single PDF)")
-        print("=" * 80)
-        print(f"Input PDF: {pdf_path}")
-        print(f"Output File: {output_file}")
-        print("=" * 80 + "\n")
-
-        try:
-            result = extract_handwritten_answers(str(pdf_path))
-
-            with open(output_file, "w", encoding="utf-8") as f:
-                f.write("=" * 80 + "\n")
-                f.write("EXTRACTION RESULTS\n")
-                f.write("=" * 80 + "\n\n")
-
-                f.write(f"Email: {result.get('email', 'None')}\n")
-                f.write(f"Total Questions Extracted: {len(result['answers'])}\n\n")
-                f.write("=" * 80 + "\n\n")
-
-                for qa in result["answers"]:
-                    f.write(f"Question {qa['question_number']}:\n")
-                    f.write("-" * 40 + "\n")
-                    f.write(f"{qa['student_answer']}\n")
-                    f.write("\n" + "=" * 80 + "\n\n")
-
-                # Also write raw chat response so you can inspect the full model output
-                raw_chat = result.get("raw_chat_response", "")
-                if raw_chat:
-                    f.write("\n\n" + "=" * 80 + "\n")
-                    f.write("RAW CHAT RESPONSE\n")
-                    f.write("=" * 80 + "\n\n")
-                    f.write(raw_chat)
-
-                # Finally, write JSON without the raw_chat_response field
-                result_for_json = dict(result)
-                result_for_json.pop("raw_chat_response", None)
-                f.write("\n\n" + "=" * 80 + "\n")
-                f.write("JSON FORMAT\n")
-                f.write("=" * 80 + "\n")
-                f.write(json.dumps(result_for_json, indent=2, ensure_ascii=False))
-
-            print(f"\n✅ Results written to: {output_file}")
-            print(f"✅ Total questions extracted: {len(result['answers'])}")
-
-        except FileNotFoundError:
-            print(f"\n❌ Error: File '{pdf_path}' not found!")
-            print("Please make sure the PDF file exists in the current directory.\n")
-        except Exception as e:
-            print(f"\n❌ Error during extraction: {e}\n")
-            import traceback
-
-            traceback.print_exc()
