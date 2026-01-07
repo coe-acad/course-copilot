@@ -1,0 +1,30 @@
+{
+  "pages": [
+    {
+      "index": 0,
+      "markdown": "JASHAN\n\nQ1)\n\na) Population mean is 72 sample mean is 3, 6, 3\n\nb) null hypothesis Ho: new relaxation app doesn't reduce the average resting heart rate of regular user\n\nH0: $R_A \\neq R_H$\nallermative hypothesis H1: new relaxation app reduces the average resting heart rate of regular user\n\nH1: $R_A \\neq R_H$\n$R_A = R_H$\n\nc) $S_e = \\frac{\\sigma}{\\sqrt{n}} = \\frac{10}{\\sqrt{64}} = \\frac{50}{4\\sqrt{4}} \\frac{\\sqrt{5}}{2\\sqrt{4}} = 5 \\frac{\\sqrt{5}}{2\\sqrt{5}}$\n\nStandard error is the number of $\\sigma$-errors (claims) from the baseline to the mean.\n\nd) $z \\cdot \\text{score} = \\frac{72 - 64}{3 - 2} = \\frac{2 \\cdot \\sqrt{4}}{\\text{standard}} = \\frac{72 - 69}{2 \\cdot \\frac{\\sigma}{\\sqrt{n}}} = \\frac{3}{2.5} = \\frac{30}{25} = \\frac{16}{8} = 1.23$\n\ne) [Graph with two curves labeled 2.5%, 72, 69, 2.5% with two curves labeled 2.5%, 72, 69, 69, 1.5% with two curves labeled 1.5%, 72, 69, 69]\n\nwe reject null hypothesis",
+      "images": [],
+      "dimensions": {
+        "dpi": 200,
+        "height": 2338,
+        "width": 1654
+      }
+    },
+    {
+      "index": 1,
+      "markdown": "(Q2)\n\n$$\n\\begin{array}{l}\np(A) = 200.2 \\quad p(S) = 0.2 \\quad p(S) = 0.8 \\\\\np(A|S) = 0.9 \\quad p(A|B) = p(B|A) \\\\\np(\\text{os}|S) = 0.05 \\quad p(\\text{ns}/F) = 0.05 \\\\\n\\end{array}\n$$\n\na) Prior is $p(A)$, $p(A) = 20\\%$, $p(S) = 20\\%$\n\nb) Posterior probability is $p(A/B)$\nPosterior probability is the result of the probability which we need to find\n\nC)\n\n$$\np(F|S) = \\frac{0.9 \\cdot 0.2}{1.8 + 0.05 \\cdot 0.8} = \\frac{0.9 \\cdot 0.2}{1.8 + 0.4} = \\frac{1.8}{22} = \\frac{10}{22} = \\frac{9}{11}\n$$\n\n$$\n\\begin{array}{l}\np(B|A) = 0.9 \\quad p(B|A^m) = 0.05 \\\\\np(A) = 0.2 \\quad p(A^m) = 0.8 \\\\\n\\end{array}\n$$\n\nd) Yes, the posterior probability will be higher than the prior, as the prior is small now it has increased so it will be higher.",
+      "images": [],
+      "dimensions": {
+        "dpi": 200,
+        "height": 2338,
+        "width": 1654
+      }
+    }
+  ],
+  "model": "mistral-ocr-latest",
+  "usage_info": {
+    "pages_processed": 2,
+    "doc_size_bytes": 108521
+  },
+  "document_annotation": null
+}

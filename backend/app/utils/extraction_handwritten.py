@@ -1,4 +1,19 @@
 from mistralai import Mistral
+try:
+    from mistralai.models.ocr import DocumentBase64Chunk, ImageBase64Chunk
+except ImportError:
+    # Fallback for different SDK versions
+    try:
+        from mistralai import DocumentBase64Chunk, ImageBase64Chunk
+    except ImportError:
+        # If imports fail, we'll handle it in the code
+        DocumentBase64Chunk = None
+        ImageBase64Chunk = None
+
+try:
+    from mistralai.extra import response_format_from_pydantic_model
+except ImportError:
+    response_format_from_pydantic_model = None
 import sys
 import os
 from dotenv import load_dotenv
@@ -331,7 +346,7 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_s
     """
     High-level API used by the evaluation pipeline.
     
-    - Runs the Mistral multimodal model over the handwritten PDF
+    - Runs the Mistral OCR model over the handwritten PDF
     - Parses question/answer pairs in sequential order (1., 2., 3., ...)
     - Extracts per-question and overall confidence scores
     - Uses mark scheme context to improve extraction accuracy
@@ -350,17 +365,10 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_s
         answers_only: If True, returns simplified format with only answers
         mark_scheme_context: Optional mark scheme dictionary with 'mark_scheme' key for context
     """
-    # 1) Render PDF pages to high-res images and encode as base64
-    pdf_document = fitz.open(pdf_path)
-    pdf_images = []
-    for page_num in range(len(pdf_document)):
-        page = pdf_document[page_num]
-        mat = fitz.Matrix(3, 3)  # 300 DPI-ish
-        pix = page.get_pixmap(matrix=mat)
-        img_bytes = pix.tobytes("png")
-        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-        pdf_images.append(img_base64)
-    pdf_document.close()
+    # 1) Read PDF file and encode as base64 for OCR API
+    with open(pdf_path, "rb") as pdf_file:
+        pdf_bytes = pdf_file.read()
+        pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
     # 2) Get eval hints context if mark scheme is provided
     extracted_questions = ""
@@ -437,37 +445,146 @@ def extract_handwritten_answers(pdf_path: str, answers_only: bool = True, mark_s
     print(system_prompt)
     print("="*80 + "\n")
 
-    content_items = [
-        {
-            "type": "text",
-            "text": system_prompt,
-        }
-    ]
-
-    # Attach each rendered page as an image
-    for img_base64 in pdf_images:
-        content_items.append(
-            {
-                "type": "image_url",
-                "image_url": f"data:image/png;base64,{img_base64}",
-            }
+    # 4) Call Mistral OCR API with document annotation format
+    # Use OCR API with document_annotation_format to extract structured data
+    try:
+        # Convert the prompt into a format that can be used with OCR annotations
+        # The OCR API supports document_annotation_format for structured extraction
+        # Since the prompt is complex and requires specific text formatting,
+        # we'll use OCR to extract text first, then process it with document annotation
+        
+        # First, get basic OCR extraction
+        # Mistral OCR API accepts either:
+        # 1. HTTPS URL
+        # 2. Base64 encoded document in format: data:application/<format>;base64,<document-base64>
+        
+        # Use DocumentURLChunk with data URL format since Mistral OCR API
+        # accepts data URLs in format: data:application/<format>;base64,<base64>
+        # This works reliably for base64-encoded PDFs
+        from mistralai import DocumentURLChunk
+        data_url = f"data:application/pdf;base64,{pdf_base64}"
+        document_param = DocumentURLChunk(document_url=data_url)
+        
+        ocr_response = client.ocr.process(
+            model="mistral-ocr-latest",
+            document=document_param
         )
-
-    messages = [
-        {
-            "role": "user",
-            "content": content_items,
+        
+        # Extract text from OCR response (concatenate all pages)
+        ocr_extracted_text = ""
+        if hasattr(ocr_response, "pages") and ocr_response.pages:
+            for page in ocr_response.pages:
+                if hasattr(page, "text") and page.text:
+                    ocr_extracted_text += page.text + "\n\n"
+        elif hasattr(ocr_response, "text"):
+            ocr_extracted_text = ocr_response.text
+        
+        # Save raw OCR output to file
+        try:
+            # Create OCR outputs directory if it doesn't exist
+            ocr_output_dir = os.path.join(os.path.dirname(__file__), "ocr_raw_outputs")
+            os.makedirs(ocr_output_dir, exist_ok=True)
+            
+            # Generate filename from PDF path
+            pdf_basename = os.path.basename(pdf_path)
+            pdf_name_without_ext = os.path.splitext(pdf_basename)[0]
+            
+            # Save raw text output
+            raw_text_file = os.path.join(ocr_output_dir, f"{pdf_name_without_ext}_ocr_raw.txt")
+            with open(raw_text_file, "w", encoding="utf-8") as f:
+                f.write(f"Raw OCR Output from mistral-ocr-latest\n")
+                f.write(f"Source PDF: {pdf_path}\n")
+                f.write(f"Timestamp: {os.path.getmtime(pdf_path) if os.path.exists(pdf_path) else 'N/A'}\n")
+                f.write("=" * 80 + "\n\n")
+                f.write(ocr_extracted_text)
+            
+            logging.info(f"Saved raw OCR output to: {raw_text_file}")
+            
+            # Save full OCR response as JSON (if possible)
+            try:
+                # Try to serialize the full OCR response
+                ocr_json_file = os.path.join(ocr_output_dir, f"{pdf_name_without_ext}_ocr_response.json")
+                if hasattr(ocr_response, "model_dump"):
+                    # Pydantic model
+                    ocr_dict = ocr_response.model_dump()
+                elif hasattr(ocr_response, "dict"):
+                    ocr_dict = ocr_response.dict()
+                elif hasattr(ocr_response, "__dict__"):
+                    ocr_dict = ocr_response.__dict__
+                else:
+                    # Try to convert to dict manually
+                    ocr_dict = {
+                        "pages": [],
+                        "text": ocr_extracted_text
+                    }
+                    if hasattr(ocr_response, "pages") and ocr_response.pages:
+                        for i, page in enumerate(ocr_response.pages):
+                            page_dict = {"page_index": i}
+                            if hasattr(page, "text"):
+                                page_dict["text"] = page.text
+                            if hasattr(page, "model_dump"):
+                                page_dict.update(page.model_dump())
+                            elif hasattr(page, "__dict__"):
+                                page_dict.update(page.__dict__)
+                            ocr_dict["pages"].append(page_dict)
+                
+                with open(ocr_json_file, "w", encoding="utf-8") as f:
+                    json.dump(ocr_dict, f, indent=2, ensure_ascii=False, default=str)
+                
+                logging.info(f"Saved full OCR response JSON to: {ocr_json_file}")
+            except Exception as json_error:
+                logging.warning(f"Could not save OCR response as JSON: {str(json_error)}")
+                
+        except Exception as save_error:
+            logging.warning(f"Could not save raw OCR output to file: {str(save_error)}")
+        
+        # Now use document_annotation_format with a prompt-based approach
+        # Since document_annotation_format requires a structured schema and the
+        # current prompt expects free-form text output, we'll use OCR's document
+        # annotation feature with the prompt embedded
+        
+        # Create a combined prompt that includes the system prompt and OCR text
+        # Note: The OCR API's document_annotation_format uses structured schemas,
+        # so we'll need to adapt. For now, use OCR + chat completion with the OCR text
+        # but note that we've replaced the model with mistral-ocr-latest for OCR extraction
+        
+        # Use chat completion with the OCR-extracted text and our prompt
+        # to structure the output according to the expected format
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"{system_prompt}\n\n---\n\nBelow is the OCR-extracted text from the handwritten answer sheet (extracted using mistral-ocr-latest):\n\n{ocr_extracted_text}"
+                    }
+                ]
+            }
+        ]
+        
+        # Use a vision-capable model to structure the OCR output according to the prompt
+        # Note: We still need chat completion for structuring, but OCR extraction is now done with mistral-ocr-latest
+        chat_response = client.chat.complete(model="mistral-large-latest", messages=messages)
+        
+        extracted_text = ""
+        if hasattr(chat_response, "choices") and chat_response.choices:
+            for choice in chat_response.choices:
+                if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                    extracted_text += choice.message.content + "\n"
+        
+    except Exception as e:
+        logging.error(f"Error in OCR processing: {str(e)}")
+        traceback.print_exc()
+        # Fallback: if OCR fails, return empty structure
+        return {
+            "email": None,
+            "answers": [],
+            "confidence": {
+                "score": "N/A",
+                "details": f"OCR processing error: {str(e)}",
+            },
+            "raw_chat_response": "",
         }
-    ]
-
-    # 4) Call Mistral multimodal chat API
-    chat_response = client.chat.complete(model="mistral-large-latest", messages=messages)
-
-    extracted_text = ""
-    if hasattr(chat_response, "choices") and chat_response.choices:
-        for choice in chat_response.choices:
-            if hasattr(choice, "message") and hasattr(choice.message, "content"):
-                extracted_text += choice.message.content + "\n"
 
     # Preserve the full raw chat response before trimming confidence sections
     raw_chat_response = extracted_text
@@ -770,16 +887,121 @@ def describe_image_with_text(image_path: str, output_file=None):
         # Create the image URL for Mistral API
         image_url = f"data:{mime_type};base64,{image_data}"
         
-        # Use Mistral vision model to analyze the image
-        model = "mistral-large-latest"  # Mistral's multimodal model
+        # Use Mistral OCR API to analyze the image
+        # OCR API supports image processing
         
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Analyze this image carefully and provide:
+        print("\nSending image to Mistral OCR API...")
+        if output_file:
+            output_file.write("\nSending image to Mistral OCR API...\n")
+        
+        # Determine image type from file extension
+        image_type_map = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        img_type = image_type_map.get(file_extension, 'image/jpeg')
+        
+        try:
+            # Use OCR API to extract text from the image
+            # Try to use ImageBase64Chunk if available, otherwise use ImageURLChunk with data URL
+            if ImageBase64Chunk is not None:
+                document_param = ImageBase64Chunk(
+                    image_base64=image_data,
+                    image_type=img_type
+                )
+            else:
+                # Fallback: Use ImageURLChunk with data URL
+                from mistralai import ImageURLChunk
+                data_url = f"data:{img_type};base64,{image_data}"
+                # ImageURLChunk expects image_url parameter with url field
+                document_param = ImageURLChunk(image_url={"url": data_url})
+            
+            ocr_response = client.ocr.process(
+                model="mistral-ocr-latest",
+                document=document_param
+            )
+            
+            # Extract text from OCR response
+            ocr_text = ""
+            if hasattr(ocr_response, "pages") and ocr_response.pages:
+                for page in ocr_response.pages:
+                    if hasattr(page, "text") and page.text:
+                        ocr_text += page.text + "\n\n"
+            elif hasattr(ocr_response, "text"):
+                ocr_text = ocr_response.text
+            
+            # For detailed description, we still need to use chat completion
+            # with the OCR-extracted text, but OCR extraction is now done with mistral-ocr-latest
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"""Analyze this image carefully. Below is the OCR-extracted text from mistral-ocr-latest:
+
+{ocr_text}
+
+Provide a detailed analysis:
+
+1. A detailed, accurate description of what you see in the image
+2. Verify and enhance ALL text content (OCR extracted above)
+3. Describe the layout, formatting, and structure of the text
+4. Include any mathematical symbols, diagrams, charts, or special characters exactly as they appear
+5. Note the context and purpose of the image (e.g., is it a worksheet, diagram, form, etc.)
+
+Your response should be a perfect representation of all text and visual content in the image.
+
+Format your response as:
+
+**IMAGE DESCRIPTION:**
+[Provide a comprehensive description of the image]
+
+**EXTRACTED TEXT:**
+[Provide all text content exactly as it appears, maintaining formatting and structure]
+
+**VISUAL ELEMENTS:**
+[Describe any diagrams, charts, drawings, or non-text elements]
+
+**CONFIDENCE SCORE:**
+[Provide a confidence score from 0-100 for the accuracy of your extraction]"""
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": image_url
+                        }
+                    ]
+                }
+            ]
+            
+            # Use chat completion with a vision model to get detailed description
+            # OCR extraction is done with mistral-ocr-latest, but for detailed analysis
+            # we still need vision capabilities
+            chat_response = client.chat.complete(
+                model="mistral-large-latest",
+                messages=messages
+            )
+            
+            # Extract the response
+            response_text = ""
+            if hasattr(chat_response, 'choices') and chat_response.choices:
+                for choice in chat_response.choices:
+                    if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                        response_text += choice.message.content
+                        
+        except Exception as ocr_error:
+            logging.warning(f"OCR processing failed, falling back to vision model: {str(ocr_error)}")
+            # Fallback to vision model if OCR fails
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": """Analyze this image carefully and provide:
 
 1. A detailed, accurate description of what you see in the image
 2. Extract ALL text content visible in the image with perfect accuracy
@@ -802,31 +1024,25 @@ Format your response as:
 
 **CONFIDENCE SCORE:**
 [Provide a confidence score from 0-100 for the accuracy of your extraction]"""
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": image_url  # Already in format: data:image/jpeg;base64,...
-                    }
-                ]
-            }
-        ]
-        
-        print("\nSending image to Mistral Vision API...")
-        if output_file:
-            output_file.write("\nSending image to Mistral Vision API...\n")
-        
-        # Call the Mistral API
-        chat_response = client.chat.complete(
-            model=model,
-            messages=messages
-        )
-        
-        # Extract the response
-        response_text = ""
-        if hasattr(chat_response, 'choices') and chat_response.choices:
-            for choice in chat_response.choices:
-                if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
-                    response_text += choice.message.content
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": image_url
+                        }
+                    ]
+                }
+            ]
+            
+            chat_response = client.chat.complete(
+                model="mistral-large-latest",
+                messages=messages
+            )
+            
+            response_text = ""
+            if hasattr(chat_response, 'choices') and chat_response.choices:
+                for choice in chat_response.choices:
+                    if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                        response_text += choice.message.content
         
         print("\nImage Analysis Complete!")
         print("-" * 60)

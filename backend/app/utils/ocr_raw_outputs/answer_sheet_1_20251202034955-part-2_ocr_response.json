@@ -1,0 +1,40 @@
+{
+  "pages": [
+    {
+      "index": 0,
+      "markdown": "Name: P. Poojitha\nAU25UG1043\n\n(01)\n\na) Population mean = 72bpm\nSample mean = 69bpm.\n\nb) $H_0$: The new relaxation app does not reduces the average resting rate of regular users.\n$H_1$: The new relaxation app reduces the average resting rate of regular users.\n\nc) $\\frac{x - 4}{\\sqrt{n}} \\Rightarrow \\frac{69 - 72}{\\sqrt{64}} \\Rightarrow \\frac{-3}{8}$ = standard error.\n⇒ The no. of errors from the baseline to the mean.\n\nd) z-score = $\\frac{\\sigma}{se} \\Rightarrow \\frac{3}{-3/8}$\n⇒ $\\frac{24}{3} \\Rightarrow -8$\n\ne)\n\n![img-0.jpeg](img-0.jpeg)",
+      "images": [
+        {
+          "id": "img-0.jpeg",
+          "top_left_x": 215,
+          "top_left_y": 1444,
+          "bottom_right_x": 1245,
+          "bottom_right_y": 1900,
+          "image_base64": null,
+          "image_annotation": null
+        }
+      ],
+      "dimensions": {
+        "dpi": 200,
+        "height": 2338,
+        "width": 1654
+      }
+    },
+    {
+      "index": 1,
+      "markdown": "Q2)\n\na) $$ P(B|A) \\cdot P(A) $$\n= 20%\n\nb) $$ P(A|B) $$\nIf the message is not spam, the filter still marks it as \"spam\" with probability 0.05.\n\nc) $$ P(B) = P(B|A) \\cdot P(A) + P(B|\\sim A) \\cdot P(\\sim A) $$\n= $$ 0.95 \\times 0.2 + 0.05 \\times 0.1 $$\n\nd) Posterior probability is higher.",
+      "images": [],
+      "dimensions": {
+        "dpi": 200,
+        "height": 2338,
+        "width": 1654
+      }
+    }
+  ],
+  "model": "mistral-ocr-latest",
+  "usage_info": {
+    "pages_processed": 2,
+    "doc_size_bytes": 69937
+  },
+  "document_annotation": null
+}

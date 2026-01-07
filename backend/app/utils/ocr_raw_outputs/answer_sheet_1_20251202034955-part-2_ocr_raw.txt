@@ -1,0 +1,5 @@
+Raw OCR Output from mistral-ocr-latest
+Source PDF: local_storage/temp_evaluations/e435dcb2-d3c2-4e84-846b-88a23593996c/answer_sheet_1_20251202034955-part-2.pdf
+Timestamp: 1767767009.4841874
+================================================================================
+
