@@ -148,7 +148,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             input_variables_qp = construct_input_variables(course, file_names)
             parser_qp = PromptParser()
             prompt_qp = parser_qp.get_asset_prompt("qp-extraction", input_variables_qp)
-            
+            logger.info(f"Prompt for qp-extraction: {prompt_qp}")
             handler_qp = AssetChatStreamHandler(label="Question Extraction")
 
             try:

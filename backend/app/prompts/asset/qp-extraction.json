@@ -1,6 +1,6 @@
 {
     "id": "qp-extraction",
-    "prompt": "Extract the questions verbatim from {{file_names}}. Do not paraphrase. Continue a question until the next top-level number (^\\d+[.)-)\\s). Ignore headers/footers like 'Generated on… Page…'.  Also make sure to extract the marks given in the paper. If marks for each question is given use that if total marks is given divide that amongst the questions and give the marks for each question. Output only JSON: [{'Question number', 'Question text', 'Marks'}].",
+    "prompt": "Extract the questions verbatim from {{file_names}} without using any other resources or paraphrasing; continue each question until the next top-level number (\\d+[.)-]\\s); ignore headers and footers like Generated on… or Page…; extract marks exactly as given—if marks are per question use those, if only total marks are provided divide them appropriately per question; if a question has sub-parts (e.g., 1(a), 1(b), 1(c)) keep it as a single question, using exact sub-part marks where provided or allocating marks by judgement if only a total is given; output only valid JSON in the format [{'Question number','Question text','Marks'}].",
     "required_input_variables": [
         "file_names"
     ]
