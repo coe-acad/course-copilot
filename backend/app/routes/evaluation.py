@@ -45,6 +45,11 @@ class EditresultRequest(BaseModel):
     score: float
     feedback: str
 
+class UpdateStudentStatusRequest(BaseModel):
+    evaluation_id: str
+    file_id: str
+    status: str
+
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
     try:
@@ -445,6 +450,9 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             calculated_max = sum((a.get("max_score") or 0) for a in answers)
             student["total_score"] = calculated_total
             student["max_total_score"] = calculated_max
+            # Initialize status to "unopened" if not already set
+            if "status" not in student:
+                student["status"] = "unopened"
 
         # Calculate aggregate totals
         overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
@@ -626,10 +634,13 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
                         if answer.get("score") is not None
                     )
                     
-                    # Update the total score using MongoDB directly with proper positional operator
+                    # Update the total score and status using MongoDB directly with proper positional operator
                     db["evaluations"].update_one(
                         {"evaluation_id": request.evaluation_id, "evaluation_result.students.file_id": request.file_id},
-                        {"$set": {"evaluation_result.students.$.total_score": total_score}}
+                        {"$set": {
+                            "evaluation_result.students.$.total_score": total_score,
+                            "evaluation_result.students.$.status": "modified"
+                        }}
                     )
                     break
         
@@ -638,6 +649,31 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
         
         return {"message": "Results updated"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/evaluation/update-student-status")
+def update_student_status(request: UpdateStudentStatusRequest, user_id: str = Depends(verify_token)):
+    """Update the status of a specific student (e.g., 'unopened', 'opened', 'modified')"""
+    try:
+        # Validate status value
+        valid_statuses = ["unopened", "opened", "modified"]
+        if request.status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        
+        # Update student status in MongoDB
+        result = db["evaluations"].update_one(
+            {"evaluation_id": request.evaluation_id, "evaluation_result.students.file_id": request.file_id},
+            {"$set": {"evaluation_result.students.$.status": request.status}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        return {"message": f"Student status updated to '{request.status}'"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating student status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/evaluation/status/{evaluation_id}")

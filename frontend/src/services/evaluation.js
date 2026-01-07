@@ -232,6 +232,29 @@ export const evaluationService = {
     }
   },
 
+  async updateStudentStatus({ evaluationId, fileId, status }) {
+    try {
+      const user = getCurrentUser();
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+      
+      const res = await axiosInstance.put('/evaluation/update-student-status', {
+        evaluation_id: evaluationId,
+        file_id: fileId,
+        status: status
+      });
+      
+      return res.data; // { message: "Student status updated to 'opened'" }
+    } catch (error) {
+      console.error('Update student status error:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to update student status');
+    }
+  },
+
   async saveEvaluation(evaluationId, assetName, fileName) {
     try {
       const formData = new FormData();

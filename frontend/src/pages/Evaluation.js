@@ -337,6 +337,17 @@ export default function Evaluation() {
       
       // Update status to "opened" if it's currently "unopened"
       if (student.status === "unopened") {
+        // Update status in backend
+        try {
+          await evaluationService.updateStudentStatus({
+            evaluationId: evaluationResult.evaluation_id,
+            fileId: student.file_id,
+            status: "opened"
+          });
+        } catch (error) {
+          console.error('Failed to update student status:', error);
+          // Continue anyway - status update is not critical
+        }
         
         // Update status locally
         setEvaluationResult(prevState => {
