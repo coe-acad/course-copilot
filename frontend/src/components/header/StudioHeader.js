@@ -1,6 +1,7 @@
 import React from "react";
 import { FiLogOut } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import { getUserOrgName } from "../../services/auth";
 
 
 export default function StudioHeader({
@@ -8,7 +9,8 @@ export default function StudioHeader({
   onLogout,
   onBack
 }) {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
+  const orgName = getUserOrgName();
   return (
     <div
       style={{
@@ -21,20 +23,25 @@ export default function StudioHeader({
       }}
     >
       {/* Left: Brand */}
-      <div 
+      <div
         style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
         onClick={() => navigate('/courses')}
       >
-        <img 
-          src="/favicon.svg" 
-          alt="Course Copilot Logo" 
+        <img
+          src="/favicon.svg"
+          alt="Course Copilot Logo"
           style={{
             width: 40,
             height: 40,
             marginRight: 14,
           }}
         />
-        <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5, display: "block" }}>Course Copilot</span>
+          {orgName && (
+            <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 500 }}>{orgName}</span>
+          )}
+        </div>
       </div>
 
       {/* Right: Buttons */}

@@ -1,11 +1,12 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import { getCurrentUser } from "../../services/auth";
+import { getCurrentUser, getUserOrgName } from "../../services/auth";
 
 export default function AppHeader({ onAdd, onLogout, title = "Course Copilot" }) {
   const currentUser = getCurrentUser();
   const navigate = useNavigate();
+  const orgName = getUserOrgName();
   return (
     <div style={{
       height: 64,
@@ -21,20 +22,25 @@ export default function AppHeader({ onAdd, onLogout, title = "Course Copilot" })
       zIndex: 10,
       boxShadow: '0 2px 12px #2563eb0a',
     }}>
-      <div 
+      <div
         style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
         onClick={() => navigate('/courses')}
       >
-        <img 
-          src="/favicon.svg" 
-          alt="Course Copilot Logo" 
+        <img
+          src="/favicon.svg"
+          alt="Course Copilot Logo"
           style={{
             width: 40,
             height: 40,
             marginRight: 14,
           }}
         />
-        <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>{title}</span>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5, display: "block" }}>{title}</span>
+          {orgName && (
+            <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 500 }}>{orgName}</span>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         <button

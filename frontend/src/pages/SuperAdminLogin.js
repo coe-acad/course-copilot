@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { login, isSuperAdmin } from "../services/auth";
 
 export default function SuperAdminLogin() {
@@ -15,6 +16,41 @@ export default function SuperAdminLogin() {
         if (isSuperAdmin()) {
             navigate("/superadmin");
         }
+    }, [navigate]);
+
+    // Listen for messages from the Google login popup
+    useEffect(() => {
+        const handleMessage = (event) => {
+            if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
+                // Handle successful Google login
+                const userData = {
+                    id: event.data.user.userId,
+                    email: event.data.user.email,
+                    displayName: event.data.user.displayName,
+                    token: event.data.user.token,
+                    role: event.data.user.role || 'user',
+                    orgId: event.data.user.orgId || null,
+                    orgName: event.data.user.orgName || null,
+                    isSuperAdmin: event.data.user.isSuperAdmin || false,
+                };
+
+                localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('token', event.data.user.token);
+                localStorage.setItem('refresh_token', event.data.user.refreshToken);
+
+                if (userData.isSuperAdmin) {
+                    navigate("/superadmin");
+                } else {
+                    setError("This account does not have SuperAdmin access.");
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('refresh_token');
+                }
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
     }, [navigate]);
 
     const handleSubmit = async (e) => {
@@ -41,204 +77,172 @@ export default function SuperAdminLogin() {
         }
     };
 
+    const handleGoogleLogin = async () => {
+        try {
+            setLoading(true);
+            // Open Google login in a popup
+            const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login?login_type=superadmin`;
+            const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
+
+            if (!popup) {
+                setError("Popup blocked. Please allow popups for this site.");
+                setLoading(false);
+                return;
+            }
+
+            setLoading(false);
+        } catch (err) {
+            setError("Google login failed. Please try again.");
+            setLoading(false);
+        }
+    };
+
     return (
-        <div style={{
-            minHeight: "100vh",
-            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 20,
-        }}>
+        <div style={{ minHeight: "100vh", background: "#f7f7f7", display: "flex", justifyContent: "center", alignItems: "center" }}>
             <div style={{
-                background: "#1e293b",
-                borderRadius: 16,
-                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-                padding: 40,
-                width: "100%",
-                maxWidth: 420,
-                border: "1px solid #334155",
+                background: "#fff", borderRadius: 16, boxShadow: "0 4px 24px #0002", padding: 40,
+                minWidth: 370, maxWidth: 380, margin: 24, display: "flex", flexDirection: "column", alignItems: "center"
             }}>
-                {/* Header */}
-                <div style={{ textAlign: "center", marginBottom: 32 }}>
-                    <div style={{
-                        width: 64,
-                        height: 64,
-                        background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                        borderRadius: 16,
+                {/* Back Button */}
+                <button
+                    onClick={() => navigate("/login")}
+                    style={{
+                        alignSelf: "flex-start",
+                        marginBottom: 16,
+                        padding: "6px 12px",
+                        background: "#f3f4f6",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 6,
+                        fontSize: 14,
+                        cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        margin: "0 auto 16px",
-                        boxShadow: "0 10px 40px -10px rgba(59, 130, 246, 0.5)",
-                    }}>
-                        {/* Crown Icon */}
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                            <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" />
-                            <path d="M3 20h18" />
-                        </svg>
-                    </div>
-                    <h1 style={{
-                        fontSize: 24,
-                        fontWeight: 700,
-                        color: "#f1f5f9",
-                        margin: "0 0 8px",
-                    }}>SuperAdmin Portal</h1>
-                    <p style={{
-                        fontSize: 14,
-                        color: "#64748b",
-                        margin: 0,
-                    }}>Sign in to access system administration</p>
+                        gap: 6,
+                    }}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                </button>
+
+                {/* App Icon and Title */}
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+                    <img
+                        src={process.env.PUBLIC_URL + "/favicon.svg"}
+                        alt="Course Copilot Logo"
+                        style={{ width: 36, height: 36, borderRadius: 8, marginRight: 12, boxShadow: "0 2px 8px #0001" }}
+                    />
+                    <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>SuperAdmin Panel</span>
                 </div>
 
-                {/* Error Display */}
-                {error && (
-                    <div style={{
-                        padding: 12,
-                        background: "#7f1d1d",
-                        border: "1px solid #991b1b",
-                        borderRadius: 8,
-                        color: "#fca5a5",
-                        marginBottom: 20,
-                        fontSize: 14,
-                        textAlign: "center",
-                    }}>
-                        {error}
-                    </div>
-                )}
+                <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24, textAlign: "center" }}>
+                    Sign in with your superadmin credentials
+                </p>
 
-                {/* Login Form */}
-                <form onSubmit={handleSubmit}>
-                    <div style={{ marginBottom: 20 }}>
-                        <label style={{
-                            display: "block",
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "#94a3b8",
-                            marginBottom: 8,
-                        }}>Email Address</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            disabled={loading}
-                            placeholder="superadmin@example.com"
-                            style={{
-                                width: "100%",
-                                padding: "12px 16px",
-                                background: "#0f172a",
-                                border: "1px solid #334155",
-                                borderRadius: 8,
-                                color: "#f1f5f9",
-                                fontSize: 15,
-                                boxSizing: "border-box",
-                                transition: "border-color 0.2s",
-                            }}
-                            onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
-                            onBlur={(e) => e.target.style.borderColor = "#334155"}
-                        />
-                    </div>
+                {/* Google Sign-In */}
+                <button
+                    type="button"
+                    style={{
+                        width: "100%", background: "#fff", color: "#222", border: "1px solid #ddd",
+                        borderRadius: 6, padding: "10px 0", fontWeight: 500, fontSize: 16,
+                        cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 1px 2px #0001",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 24
+                    }}
+                    disabled={loading}
+                    onClick={handleGoogleLogin}
+                >
+                    <svg width="20" height="20" viewBox="0 0 48 48" style={{ marginRight: 8 }}>
+                        {/* Google Icon */}
+                        <g><path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C36.68 2.36 30.74 0 24 0 14.82 0 6.71 5.1 2.69 12.44l8.01 6.22C12.6 13.13 17.88 9.5 24 9.5z" />
+                            <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.6C43.93 37.13 46.1 31.36 46.1 24.55z" />
+                            <path fill="#FBBC05" d="M10.7 28.66c-1.01-2.99-1.01-6.33 0-9.32l-8.01-6.22C.68 17.1 0 20.47 0 24c0 3.53.68 6.9 2.69 10.88l8.01-6.22z" />
+                            <path fill="#EA4335" d="M24 48c6.48 0 11.92-2.15 15.89-5.86l-7.19-5.6c-2.01 1.35-4.6 2.16-8.7 2.16-6.12 0-11.4-3.63-13.3-8.88l-8.01 6.22C6.71 42.9 14.82 48 24 48z" />
+                            <path fill="none" d="M0 0h48v48H0z" />
+                        </g>
+                    </svg>
+                    Sign in with Google
+                </button>
 
-                    <div style={{ marginBottom: 24 }}>
-                        <label style={{
-                            display: "block",
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "#94a3b8",
-                            marginBottom: 8,
-                        }}>Password</label>
-                        <div style={{ position: "relative" }}>
+                {/* Divider */}
+                <div style={{ display: "flex", alignItems: "center", width: "100%", marginBottom: 20 }}>
+                    <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                    <span style={{ padding: "0 12px", fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>OR</span>
+                    <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                </div>
+
+                {/* Email/Password Form */}
+                {loading ? (
+                    <LoadingSpinner />
+                ) : (
+                    <form onSubmit={handleSubmit} style={{ width: "100%" }}>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontWeight: 500, fontSize: 14, color: "#444" }}>Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                required
+                                disabled={loading}
+                                placeholder="superadmin@example.com"
+                                style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15, boxSizing: "border-box" }}
+                            />
+                        </div>
+                        <div style={{ marginBottom: 8, position: "relative" }}>
+                            <label style={{ fontWeight: 500, fontSize: 14, color: "#444" }}>Password</label>
                             <input
                                 type={showPassword ? "text" : "password"}
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={e => setPassword(e.target.value)}
                                 required
                                 disabled={loading}
                                 placeholder="••••••••"
-                                style={{
-                                    width: "100%",
-                                    padding: "12px 50px 12px 16px",
-                                    background: "#0f172a",
-                                    border: "1px solid #334155",
-                                    borderRadius: 8,
-                                    color: "#f1f5f9",
-                                    fontSize: 15,
-                                    boxSizing: "border-box",
-                                    transition: "border-color 0.2s",
-                                }}
-                                onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
-                                onBlur={(e) => e.target.style.borderColor = "#334155"}
+                                style={{ width: "100%", height: 40, padding: "0 12px", border: "1px solid #ddd", borderRadius: 6, marginTop: 6, fontSize: 15, boxSizing: "border-box" }}
                             />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
+                            <span
                                 style={{
-                                    position: "absolute",
-                                    right: 12,
-                                    top: "50%",
-                                    transform: "translateY(-50%)",
-                                    background: "none",
-                                    border: "none",
-                                    color: "#64748b",
-                                    cursor: "pointer",
-                                    padding: 4,
+                                    position: "absolute", right: 12, top: 36, fontSize: 13, color: "#2563eb",
+                                    cursor: "pointer", userSelect: "none", fontWeight: 500
                                 }}
+                                onClick={() => setShowPassword(s => !s)}
                             >
-                                {showPassword ? (
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                                        <line x1="1" y1="1" x2="23" y2="23" />
-                                    </svg>
-                                ) : (
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                        <circle cx="12" cy="12" r="3" />
-                                    </svg>
-                                )}
-                            </button>
+                                {showPassword ? "HIDE" : "SHOW"}
+                            </span>
                         </div>
-                    </div>
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        style={{
-                            width: "100%",
-                            padding: "14px",
-                            background: loading
-                                ? "#475569"
-                                : "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 8,
-                            fontWeight: 600,
-                            fontSize: 16,
-                            cursor: loading ? "not-allowed" : "pointer",
-                            transition: "all 0.3s ease",
-                            boxShadow: loading ? "none" : "0 10px 40px -10px rgba(59, 130, 246, 0.5)",
-                        }}
-                    >
-                        {loading ? "Signing in..." : "Sign in to Dashboard"}
-                    </button>
-                </form>
+                        {/* Error Display */}
+                        {error && (
+                            <div style={{
+                                color: "#dc2626",
+                                marginBottom: 16,
+                                fontSize: 14,
+                                padding: "10px 12px",
+                                background: "#fef2f2",
+                                border: "1px solid #fecaca",
+                                borderRadius: 6,
+                            }}>
+                                {error}
+                            </div>
+                        )}
 
-                {/* Back Link */}
-                <div style={{ marginTop: 24, textAlign: "center" }}>
-                    <button
-                        onClick={() => navigate("/login")}
-                        style={{
-                            background: "none",
-                            border: "none",
-                            color: "#64748b",
-                            fontSize: 14,
-                            cursor: "pointer",
-                            textDecoration: "underline",
-                        }}
-                    >
-                        ← Back to main login
-                    </button>
-                </div>
+                        {/* Submit */}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            style={{
+                                width: "100%", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                color: "#fff",
+                                border: "none", borderRadius: 8, padding: "12px 0",
+                                fontWeight: 600, fontSize: 17,
+                                cursor: loading ? "not-allowed" : "pointer",
+                                boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
+                                marginTop: 8,
+                            }}
+                        >
+                            Sign in to SuperAdmin Panel
+                        </button>
+                    </form>
+                )}
             </div>
         </div>
     );

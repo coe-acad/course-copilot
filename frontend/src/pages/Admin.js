@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiUsers, FiFileText, FiTag, FiLogOut, FiDownload, FiTrash2, FiCreditCard, FiCheck } from "react-icons/fi";
 import { uploadAdminDocument, getAdminDocuments, downloadAdminDocument, deleteAdminDocument, getAllSettings, addSettingLabel, removeSettingLabel, getAllUsers, updateUserRole, createUser, deleteUser, getPaymentSummary, createPaymentOrder, verifyPayment, getPaymentHistory, getPaymentReceipt } from "../services/admin";
+import { getUserOrgName } from "../services/auth";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("users");
@@ -120,8 +121,8 @@ export default function Admin() {
               <div style={{ fontWeight: 600, fontSize: 18, color: "#111827" }}>
                 Admin Panel
               </div>
-              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                Course Copilot
+              <div style={{ fontSize: 12, color: "#2563eb", marginTop: 2, fontWeight: 500 }}>
+                {getUserOrgName() || "Organization"}
               </div>
             </div>
           </div>

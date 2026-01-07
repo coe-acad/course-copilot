@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { login } from "../services/auth";
@@ -12,6 +12,42 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Listen for messages from the Google login popup
+  useEffect(() => {
+    const handleMessage = async (event) => {
+      if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
+        // Handle successful Google login
+        localStorage.setItem('user', JSON.stringify({
+          id: event.data.user.userId,
+          email: event.data.user.email,
+          displayName: event.data.user.displayName,
+          token: event.data.user.token,
+          role: event.data.user.role || 'user',
+          orgId: event.data.user.orgId || null,
+          orgName: event.data.user.orgName || null,
+        }));
+        localStorage.setItem('token', event.data.user.token);
+        localStorage.setItem('refresh_token', event.data.user.refreshToken);
+
+        // Check if user has admin access
+        try {
+          await getAllSettings();
+          navigate("/admin");
+        } catch (adminError) {
+          if (adminError.response?.status === 403) {
+            setError("Access denied. You don't have admin privileges.");
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -20,7 +56,7 @@ export default function AdminLogin() {
     try {
       // Login user
       await login(email, password);
-      
+
       // Check if user has admin access
       try {
         await getAllSettings();
@@ -40,6 +76,26 @@ export default function AdminLogin() {
     } catch (err) {
       setError(err.detail || err.response?.data?.detail || "Login failed. Please check credentials.");
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true);
+      // Open Google login in a popup
+      const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login?login_type=admin`;
+      const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
+
+      if (!popup) {
+        setError("Popup blocked. Please allow popups for this site.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(false);
+    } catch (err) {
+      setError("Google login failed. Please try again.");
       setLoading(false);
     }
   };
@@ -68,7 +124,7 @@ export default function AdminLogin() {
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
           Back
         </button>
@@ -86,6 +142,37 @@ export default function AdminLogin() {
         <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24, textAlign: "center" }}>
           Sign in with your admin credentials
         </p>
+
+        {/* Google Sign-In */}
+        <button
+          type="button"
+          style={{
+            width: "100%", background: "#fff", color: "#222", border: "1px solid #ddd",
+            borderRadius: 6, padding: "10px 0", fontWeight: 500, fontSize: 16,
+            cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 1px 2px #0001",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 24
+          }}
+          disabled={loading}
+          onClick={handleGoogleLogin}
+        >
+          <svg width="20" height="20" viewBox="0 0 48 48" style={{ marginRight: 8 }}>
+            {/* Google Icon */}
+            <g><path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C36.68 2.36 30.74 0 24 0 14.82 0 6.71 5.1 2.69 12.44l8.01 6.22C12.6 13.13 17.88 9.5 24 9.5z" />
+              <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.42-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.64 7.02l7.19 5.6C43.93 37.13 46.1 31.36 46.1 24.55z" />
+              <path fill="#FBBC05" d="M10.7 28.66c-1.01-2.99-1.01-6.33 0-9.32l-8.01-6.22C.68 17.1 0 20.47 0 24c0 3.53.68 6.9 2.69 10.88l8.01-6.22z" />
+              <path fill="#EA4335" d="M24 48c6.48 0 11.92-2.15 15.89-5.86l-7.19-5.6c-2.01 1.35-4.6 2.16-8.7 2.16-6.12 0-11.4-3.63-13.3-8.88l-8.01 6.22C6.71 42.9 14.82 48 24 48z" />
+              <path fill="none" d="M0 0h48v48H0z" />
+            </g>
+          </svg>
+          Sign in with Google
+        </button>
+
+        {/* Divider */}
+        <div style={{ display: "flex", alignItems: "center", width: "100%", marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+          <span style={{ padding: "0 12px", fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+        </div>
 
         {/* Email/Password Form */}
         {loading ? (
@@ -126,9 +213,9 @@ export default function AdminLogin() {
 
             {/* Error Display */}
             {error && (
-              <div style={{ 
-                color: "#dc2626", 
-                marginBottom: 16, 
+              <div style={{
+                color: "#dc2626",
+                marginBottom: 16,
                 fontSize: 14,
                 padding: "10px 12px",
                 background: "#fef2f2",
@@ -148,7 +235,7 @@ export default function AdminLogin() {
                 color: "#fff",
                 border: "none", borderRadius: 8, padding: "12px 0",
                 fontWeight: 600, fontSize: 17,
-                cursor: loading ? "not-allowed" : "pointer", 
+                cursor: loading ? "not-allowed" : "pointer",
                 boxShadow: "0 2px 8px rgba(102, 126, 234, 0.25)",
                 marginTop: 8,
               }}
@@ -161,4 +248,3 @@ export default function AdminLogin() {
     </div>
   );
 }
-

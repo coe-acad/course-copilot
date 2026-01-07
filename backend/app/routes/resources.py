@@ -150,11 +150,24 @@ def list_resources(course_id: str, ctx: dict = Depends(get_user_org_context)):
     org_db_name = ctx.get("org_db_name")
     try:
         check_course_exists(course_id, org_db_name)
-        resources = get_resources_by_course_id(course_id, org_db_name)
+        
+        # Get course-specific resources
+        resources = get_resources_by_course_id(course_id, org_db_name) or []
         resource_list = [
             ResourceResponse(resourceName=data.get("resource_name", "Unknown Name"))
             for data in resources
         ]
+        
+        # Also include admin-uploaded documents from the organization
+        from ..services.mongo import get_all_admin_files
+        admin_files = get_all_admin_files(org_db_name) or []
+        for admin_file in admin_files:
+            # Use filename as resource name for admin documents
+            filename = admin_file.get("filename", admin_file.get("document_title", "Unknown"))
+            # Avoid duplicates - check if this filename already exists
+            if not any(r.resourceName == filename for r in resource_list):
+                resource_list.append(ResourceResponse(resourceName=filename))
+        
         return ResourceListResponse(resources=resource_list)
     except Exception as e:
         logger.error(f"Error listing resources: {str(e)}")
