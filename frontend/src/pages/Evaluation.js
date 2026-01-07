@@ -24,6 +24,7 @@ export default function Evaluation() {
   const [answerSheetsUploaded, setAnswerSheetsUploaded] = useState(false);
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
+  const [evaluationTypeFromBackend, setEvaluationTypeFromBackend] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
@@ -95,6 +96,9 @@ export default function Evaluation() {
           }
           if (status.status === 'completed' && status.evaluation_result) {
             setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
+            if (status.evaluation_type) {
+              setEvaluationTypeFromBackend(status.evaluation_type);
+            }
             setIsEvaluating(false);
           } else {
             setIsEvaluating(true);
@@ -1016,6 +1020,54 @@ export default function Evaluation() {
 
               <div style={{ marginBottom: '24px' }}>
                 <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
+                {/* Confidence Score Badge - only show if available */}
+                {student?.answers?.[selectedQuestionIndex]?.confidence_score && (
+                  <div style={{ marginBottom: '12px' }}>
+                    {(() => {
+                      const confScore = student.answers[selectedQuestionIndex].confidence_score;
+                      const confNum = parseInt(confScore);
+                      let badgeColor = '#1e40af'; // default blue
+                      let bgColor = '#e0f2fe'; // light blue
+                      let borderColor = '#bfdbfe'; // light blue border
+                      
+                      if (!isNaN(confNum)) {
+                        if (confNum >= 80) {
+                          // High confidence - darker blue
+                          badgeColor = '#1e40af';
+                          bgColor = '#dbeafe';
+                          borderColor = '#93c5fd';
+                        } else if (confNum >= 60) {
+                          // Medium confidence - medium blue
+                          badgeColor = '#2563eb';
+                          bgColor = '#e0f2fe';
+                          borderColor = '#bfdbfe';
+                        } else {
+                          // Low confidence (<60%) - red
+                          badgeColor = '#dc2626';
+                          bgColor = '#fee2e2';
+                          borderColor = '#fca5a5';
+                        }
+                      }
+                      
+                      return (
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          backgroundColor: bgColor,
+                          border: `1px solid ${borderColor}`,
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: badgeColor
+                        }}>
+                          <span style={{ marginRight: '6px', color: '#64748b', fontWeight: 500 }}>Extraction Confidence:</span>
+                          <span>{confScore}%</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
                 <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe', lineHeight: '1.6' }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -1325,7 +1377,7 @@ export default function Evaluation() {
             {/* Table Header */}
             <div style={{ 
               display: 'grid', 
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
+              gridTemplateColumns: (evaluationTypeFromBackend === 'handwritten' || evaluationType === 'handwritten') ? '2fr 1fr 1fr 1fr 1fr 80px' : '2fr 1fr 1fr 1fr 80px',
               background: '#f8f9fa',
               borderBottom: '1px solid #dee2e6',
               padding: '16px 20px',
@@ -1337,6 +1389,7 @@ export default function Evaluation() {
               <div>Marks</div>
               <div>Result</div>
               <div>Status</div>
+              {(evaluationTypeFromBackend === 'handwritten' || evaluationType === 'handwritten') && <div>Confidence</div>}
               <div style={{ textAlign: 'center' }}>Report</div>
             </div>
 
@@ -1346,7 +1399,7 @@ export default function Evaluation() {
                 key={index}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
+                  gridTemplateColumns: (evaluationTypeFromBackend === 'handwritten' || evaluationType === 'handwritten') ? '2fr 1fr 1fr 1fr 1fr 80px' : '2fr 1fr 1fr 1fr 80px',
                   padding: '16px 20px',
                   borderBottom: '1px solid #f1f3f4',
                   alignItems: 'center',
@@ -1433,6 +1486,58 @@ export default function Evaluation() {
                 }}>
                   {evaluationResult?.evaluation_result?.students?.[index]?.status === 'modified' ? 'modified' : 'unmodified'}
                 </div>
+
+                {/* Confidence Score - Only show for handwritten evaluations */}
+                {(evaluationTypeFromBackend === 'handwritten' || evaluationType === 'handwritten') && (
+                  <div style={{ 
+                    fontSize: '13px',
+                    fontWeight: 500
+                  }}>
+                    {evaluationResult?.evaluation_result?.students?.[index]?.average_confidence_score ? (
+                      (() => {
+                        const avgConf = parseInt(evaluationResult.evaluation_result.students[index].average_confidence_score);
+                        let badgeColor = '#1e40af';
+                        let bgColor = '#e0f2fe';
+                        let borderColor = '#bfdbfe';
+                        
+                        if (!isNaN(avgConf)) {
+                          if (avgConf >= 80) {
+                            badgeColor = '#1e40af';
+                            bgColor = '#dbeafe';
+                            borderColor = '#93c5fd';
+                          } else if (avgConf >= 60) {
+                            badgeColor = '#2563eb';
+                            bgColor = '#e0f2fe';
+                            borderColor = '#bfdbfe';
+                          } else {
+                            // Low confidence (<60%) - red
+                            badgeColor = '#dc2626';
+                            bgColor = '#fee2e2';
+                            borderColor = '#fca5a5';
+                          }
+                        }
+                        
+                        return (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            backgroundColor: bgColor,
+                            border: `1px solid ${borderColor}`,
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: badgeColor
+                          }}>
+                            {avgConf}%
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span style={{ color: '#9ca3af' }}>—</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Eye Button - View Individual Report */}
                 <div style={{ textAlign: 'center' }}>

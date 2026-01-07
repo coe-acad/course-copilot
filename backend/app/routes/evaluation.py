@@ -673,7 +673,8 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             return {
                 "status": "completed",
                 "evaluation_result": evaluation["evaluation_result"],
-                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
+                "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", []),
+                "evaluation_type": evaluation.get("evaluation_type", "digital")
             }
         else:
             logger.info(f"Evaluation {evaluation_id} exists but no evaluation_result yet, returning processing status")

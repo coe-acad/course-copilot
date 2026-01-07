@@ -258,12 +258,11 @@ def create_evaluation(evaluation_id: str, course_id: str,
         "evaluation_id": evaluation_id, 
         "course_id": course_id,
         "mark_scheme_path": mark_scheme_path,
-        "mark_scheme_file_id": mark_scheme_file_id,
         "answer_sheet_paths": answer_sheet_paths or [],
-        "answer_sheet_file_ids": answer_sheet_file_ids or [],
         "answer_sheet_filenames": answer_sheet_filenames or [],
         "evaluation_type": evaluation_type
     }
+    
     add_to_collection("evaluations", evaluation)
     return evaluation
 

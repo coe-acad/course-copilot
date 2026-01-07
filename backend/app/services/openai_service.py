@@ -221,6 +221,19 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
         if file_id and email:
             email_mapping[file_id] = email
 
+    # Store confidence score mapping (file_id -> question_number -> confidence_score) for restoration
+    confidence_mapping = {}
+    for sheet in answer_sheets_list:
+        file_id = sheet.get('file_id')
+        answers = sheet.get('answers', [])
+        if file_id and answers:
+            confidence_mapping[file_id] = {}
+            for answer in answers:
+                qnum = answer.get('question_number')
+                conf_score = answer.get('confidence_score')
+                if qnum and conf_score:
+                    confidence_mapping[file_id][qnum] = conf_score
+
     # Get evaluation
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
     if not evaluation:
@@ -339,12 +352,34 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             detail=f"Invalid JSON response from OpenAI: {str(e)}"
         )
 
-    # Restore emails to students from mapping
+    # Restore emails and confidence scores to students from mapping
     students = evaluation_result.get("students", [])
     for student in students:
         file_id = student.get('file_id')
         if file_id and file_id in email_mapping:
             student['email'] = email_mapping[file_id]
+        
+        # Restore confidence scores if available and calculate average
+        confidence_scores = []
+        if file_id and file_id in confidence_mapping:
+            file_confidence = confidence_mapping[file_id]
+            for answer in student.get('answers', []):
+                qnum = answer.get('question_number')
+                if qnum and qnum in file_confidence:
+                    conf_score = file_confidence[qnum]
+                    answer['confidence_score'] = conf_score
+                    # Collect valid confidence scores for average calculation
+                    try:
+                        conf_num = float(conf_score)
+                        if not (conf_num < 0 or conf_num > 100):
+                            confidence_scores.append(conf_num)
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid confidence scores
+        
+        # Calculate and add average confidence score if available
+        if confidence_scores:
+            average_confidence = round(sum(confidence_scores) / len(confidence_scores))
+            student['average_confidence_score'] = str(average_confidence)
 
     return {
         "evaluation_id": evaluation_id,
