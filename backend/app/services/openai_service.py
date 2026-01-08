@@ -223,16 +223,35 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
 
     # Store confidence score mapping (file_id -> question_number -> confidence_score) for restoration
     confidence_mapping = {}
+    # Store original student_answer mapping (file_id -> question_number -> student_answer) for restoration
+    student_answer_mapping = {}
     for sheet in answer_sheets_list:
         file_id = sheet.get('file_id')
         answers = sheet.get('answers', [])
         if file_id and answers:
             confidence_mapping[file_id] = {}
+            student_answer_mapping[file_id] = {}
             for answer in answers:
                 qnum = answer.get('question_number')
                 conf_score = answer.get('confidence_score')
+                student_answer = answer.get('student_answer')
                 if qnum and conf_score:
                     confidence_mapping[file_id][qnum] = conf_score
+                if qnum and student_answer:
+                    student_answer_mapping[file_id][qnum] = student_answer
+
+    # Store question_text mapping from mark scheme (question_number -> question_text) for restoration
+    question_text_mapping = {}
+    mark_scheme_list = extracted_mark_scheme.get('mark_scheme', [])
+    for question in mark_scheme_list:
+        # Handle different field name variations
+        qnum = question.get('questionnumber') or question.get('question_number')
+        qtext = question.get('question-text') or question.get('question_text') or question.get('questionText') or question.get('question')
+        if qnum:
+            # Convert to string for consistent matching
+            qnum_str = str(qnum)
+            if qtext:
+                question_text_mapping[qnum_str] = qtext
 
     # Get evaluation
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
@@ -352,12 +371,30 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
             detail=f"Invalid JSON response from OpenAI: {str(e)}"
         )
 
-    # Restore emails and confidence scores to students from mapping
+    # Restore emails, original student answers, and confidence scores to students from mapping
     students = evaluation_result.get("students", [])
     for student in students:
         file_id = student.get('file_id')
         if file_id and file_id in email_mapping:
             student['email'] = email_mapping[file_id]
+        
+        # Restore original student_answer from extracted answer sheets
+        if file_id and file_id in student_answer_mapping:
+            file_student_answers = student_answer_mapping[file_id]
+            for answer in student.get('answers', []):
+                qnum = answer.get('question_number')
+                if qnum and qnum in file_student_answers:
+                    # Restore the original extracted student_answer
+                    original_student_answer = file_student_answers[qnum]
+                    answer['student_answer'] = original_student_answer
+        
+        # Restore question_text from mark scheme (not from OpenAI's response)
+        for answer in student.get('answers', []):
+            qnum = answer.get('question_number')
+            if qnum and qnum in question_text_mapping:
+                # Restore the original question_text from mark scheme
+                original_question_text = question_text_mapping[qnum]
+                answer['question_text'] = original_question_text
         
         # Restore confidence scores if available and calculate average
         confidence_scores = []
