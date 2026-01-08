@@ -21,12 +21,11 @@ from ..services.master_db import (
     get_all_superadmins,
     get_superadmin_by_email,
     get_payment_config,
-    set_payment_config
-)
-from ..services.mongo import (
-    get_all_settings,
-    add_setting_label,
-    remove_setting_label
+    set_payment_config,
+    get_global_settings,
+    add_global_setting_label,
+    remove_global_setting_label,
+    initialize_global_settings
 )
 
 logger = logging.getLogger(__name__)
@@ -320,11 +319,13 @@ class AddLabelRequest(BaseModel):
 
 @router.get("/superadmin/settings")
 async def get_all_setting_labels(user_id: str = Depends(verify_super_admin)):
-    """Get all setting configurations"""
-    logger.info(f"SuperAdmin {user_id} fetching all settings")
+    """Get all global setting configurations"""
+    logger.info(f"SuperAdmin {user_id} fetching all global settings")
     
     try:
-        settings = get_all_settings()
+        # Initialize global settings if they don't exist
+        initialize_global_settings()
+        settings = get_global_settings()
         return {"settings": settings}
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -341,8 +342,8 @@ async def add_label_to_setting(
     logger.info(f"SuperAdmin {user_id} adding label '{request.label}' to category '{category}'")
     
     try:
-        add_setting_label(category, request.label)
-        return {"message": "Label added successfully", "category": category, "label": request.label}
+        add_global_setting_label(category, request.label)
+        return {"message": "Global label added successfully", "category": category, "label": request.label}
     except ValueError as ve:
         logger.warning(f"Validation error adding label: {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
@@ -361,8 +362,8 @@ async def remove_label_from_setting(
     logger.info(f"SuperAdmin {user_id} removing label '{label}' from category '{category}'")
     
     try:
-        remove_setting_label(category, label)
-        return {"message": "Label removed successfully", "category": category, "label": label}
+        remove_global_setting_label(category, label)
+        return {"message": "Global label removed successfully", "category": category, "label": label}
     except ValueError as ve:
         logger.warning(f"Validation error removing label: {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))

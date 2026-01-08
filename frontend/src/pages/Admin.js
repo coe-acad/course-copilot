@@ -1166,23 +1166,50 @@ function AddSettingLabels() {
                   {setting.label}
                 </h3>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {(setting.options || []).map((option) => (
-                    <div
-                      key={option}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "6px 12px",
-                        background: "#f3f4f6",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 6,
-                        fontSize: 14,
-                      }}
-                    >
-                      <span>{option}</span>
-                    </div>
-                  ))}
+                  {(setting.options || []).map((option, idx) => {
+                    // Handle both old format (string) and new format (object with label/source)
+                    const optionLabel = typeof option === 'object' ? option.label : option;
+                    const optionSource = typeof option === 'object' ? option.source : 'global';
+                    const isGlobal = optionSource === 'global';
+
+                    return (
+                      <div
+                        key={`${optionLabel}-${idx}`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 12px",
+                          background: isGlobal ? "#eff6ff" : "#f0fdf4",
+                          border: `1px solid ${isGlobal ? "#bfdbfe" : "#bbf7d0"}`,
+                          borderRadius: 6,
+                          fontSize: 14,
+                        }}
+                      >
+                        {isGlobal && (
+                          <span style={{ fontSize: 12 }} title="Global label (set by SuperAdmin)">🌐</span>
+                        )}
+                        <span>{optionLabel}</span>
+                        {!isGlobal && (
+                          <button
+                            onClick={() => handleRemoveLabel(setting.category, optionLabel)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#dc2626",
+                              cursor: "pointer",
+                              padding: 2,
+                              display: "flex",
+                              marginLeft: 4,
+                            }}
+                            title="Remove org-specific label"
+                          >
+                            <FiTrash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

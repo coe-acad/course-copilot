@@ -106,10 +106,12 @@ def create_organization(org_name: str, admin_email: str, admin_password: str = N
     db_result = create_new_organization_database(org_name, org_id)
     
     # Create admin user in Firebase
+    # Store the actual password used (either provided or generated)
+    actual_password = admin_password or str(uuid4())[:12]
     try:
         firebase_user = firebase_auth.create_user(
             email=admin_email,
-            password=admin_password or str(uuid4())[:12],  # Generate random password if not provided
+            password=actual_password,
             display_name=f"{org_name} Admin"
         )
         admin_user_id = firebase_user.uid
@@ -153,7 +155,8 @@ def create_organization(org_name: str, admin_email: str, admin_password: str = N
         "org_name": org_name,
         "database_name": db_name,
         "admin_user_id": admin_user_id,
-        "admin_email": admin_email
+        "admin_email": admin_email,
+        "admin_password": actual_password
     }
 
 
@@ -304,3 +307,109 @@ def set_payment_config(price_per_user_paise: int, currency: str = "INR") -> dict
     logger.info(f"Updated payment config: ₹{price_per_user_paise / 100} per user")
     return config_data
 
+
+# ============== GLOBAL SETTING LABELS ==============
+
+# Global settings collection in master database (visible to ALL organizations)
+global_settings_collection = master_db["global_settings"]
+
+
+def initialize_global_settings():
+    """Initialize default global settings if they don't exist"""
+    default_settings = [
+        {
+            "_id": "setting-course-level",
+            "type": "setting",
+            "category": "course_level",
+            "label": "Course level",
+            "options": ["Year 1", "Year 2", "Year 3", "Year 4"]
+        },
+        {
+            "_id": "setting-study-area",
+            "type": "setting",
+            "category": "study_area",
+            "label": "Study area",
+            "options": [
+                "AI & Decentralised Technologies",
+                "Life Sciences",
+                "Energy Sciences",
+                "eMobility",
+                "Climate Change",
+                "Connected Intelligence"
+            ]
+        },
+        {
+            "_id": "setting-pedagogical",
+            "type": "setting",
+            "category": "pedagogical_components",
+            "label": "Pedagogical Components",
+            "options": [
+                "Theory",
+                "Project",
+                "Research",
+                "Laboratory Experiments",
+                "Unplugged Activities",
+                "Programming Activities"
+            ]
+        }
+    ]
+    
+    for setting in default_settings:
+        existing = global_settings_collection.find_one({"_id": setting["_id"]})
+        if not existing:
+            global_settings_collection.insert_one(setting)
+            logger.info(f"Initialized global setting: {setting['category']}")
+
+
+def get_global_settings() -> List[dict]:
+    """Get all global setting configurations from master database"""
+    docs = []
+    for doc in global_settings_collection.find({"type": "setting"}):
+        if '_id' in doc:
+            doc['_id'] = str(doc['_id'])
+        docs.append(doc)
+    return docs
+
+
+def get_global_setting_by_category(category: str) -> Optional[dict]:
+    """Get a specific global setting by category"""
+    doc = global_settings_collection.find_one({"type": "setting", "category": category})
+    if doc and '_id' in doc:
+        doc['_id'] = str(doc['_id'])
+    return doc
+
+
+def add_global_setting_label(category: str, label: str):
+    """Add a label to a global setting category's options array"""
+    setting = get_global_setting_by_category(category)
+    if not setting:
+        raise ValueError(f"Setting category '{category}' not found")
+    
+    options = setting.get("options", [])
+    if label in options:
+        raise ValueError(f"Label '{label}' already exists in category '{category}'")
+    
+    options.append(label)
+    global_settings_collection.update_one(
+        {"_id": setting["_id"]},
+        {"$set": {"options": options}}
+    )
+    logger.info(f"Added global label '{label}' to category '{category}'")
+
+
+def remove_global_setting_label(category: str, label: str):
+    """Remove a label from a global setting category's options array"""
+    setting = get_global_setting_by_category(category)
+    if not setting:
+        raise ValueError(f"Setting category '{category}' not found")
+    
+    options = setting.get("options", [])
+    if label not in options:
+        raise ValueError(f"Label '{label}' not found in category '{category}'")
+    
+    options.remove(label)
+    global_settings_collection.update_one(
+        {"_id": setting["_id"]},
+        {"$set": {"options": options}}
+    )
+    logger.info(f"Removed global label '{label}' from category '{category}'")

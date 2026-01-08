@@ -784,51 +784,113 @@ def get_configurations_by_type(config_type: str):
     configs.sort(key=lambda x: x.get("order", 999))
     return configs
 
-def get_setting_by_category(category: str):
+def get_setting_by_category(category: str, org_db_name: str = None):
     """Get a specific setting by category (e.g., course_level, study_area, pedagogical_components)"""
-    return get_one_from_collection("system_configurations", {"type": "setting", "category": category})
+    return get_one_from_collection("system_configurations", {"type": "setting", "category": category}, org_db_name)
 
-def get_all_settings():
-    """Get all setting configurations"""
-    return get_many_from_collection("system_configurations", {"type": "setting"})
+def get_all_settings(org_db_name: str = None):
+    """Get all setting configurations from org database"""
+    return get_many_from_collection("system_configurations", {"type": "setting"}, org_db_name)
 
-def create_configuration(config_data: dict):
+def create_configuration(config_data: dict, org_db_name: str = None):
     """Create a new system configuration"""
-    add_to_collection("system_configurations", config_data)
+    add_to_collection("system_configurations", config_data, org_db_name)
 
-def update_configuration(config_id: str, config_data: dict):
+def update_configuration(config_id: str, config_data: dict, org_db_name: str = None):
     """Update a system configuration"""
-    update_in_collection("system_configurations", {"_id": config_id}, config_data)
+    update_in_collection("system_configurations", {"_id": config_id}, config_data, org_db_name)
 
-def delete_configuration(config_id: str):
+def delete_configuration(config_id: str, org_db_name: str = None):
     """Delete a system configuration"""
-    delete_from_collection("system_configurations", {"_id": config_id})
+    delete_from_collection("system_configurations", {"_id": config_id}, org_db_name)
 
-def add_setting_label(category: str, label: str):
-    """Add a label to a setting category's options array"""
-    setting = get_setting_by_category(category)
+def add_setting_label(category: str, label: str, org_db_name: str = None):
+    """Add a label to an org-specific setting category's options array"""
+    setting = get_setting_by_category(category, org_db_name)
+    
+    # If setting doesn't exist in org DB, create it first
     if not setting:
-        raise ValueError(f"Setting category '{category}' not found")
+        # Create a new org-specific setting for this category
+        setting_data = {
+            "_id": f"org-setting-{category}",
+            "type": "setting",
+            "category": category,
+            "label": category.replace("_", " ").title(),
+            "options": []
+        }
+        create_configuration(setting_data, org_db_name)
+        setting = setting_data
     
     options = setting.get("options", [])
     if label in options:
         raise ValueError(f"Label '{label}' already exists in category '{category}'")
     
     options.append(label)
-    update_configuration(setting["_id"], {"options": options})
+    update_configuration(setting["_id"], {"options": options}, org_db_name)
 
-def remove_setting_label(category: str, label: str):
-    """Remove a label from a setting category's options array"""
-    setting = get_setting_by_category(category)
+def remove_setting_label(category: str, label: str, org_db_name: str = None):
+    """Remove a label from an org-specific setting category's options array"""
+    setting = get_setting_by_category(category, org_db_name)
     if not setting:
-        raise ValueError(f"Setting category '{category}' not found")
+        raise ValueError(f"Setting category '{category}' not found in this organization")
     
     options = setting.get("options", [])
     if label not in options:
         raise ValueError(f"Label '{label}' not found in category '{category}'")
     
     options.remove(label)
-    update_configuration(setting["_id"], {"options": options})
+    update_configuration(setting["_id"], {"options": options}, org_db_name)
+
+def get_merged_settings(org_db_name: str = None):
+    """
+    Get merged settings: global labels from master DB + org-specific labels.
+    Each option is tagged with its source ('global' or 'org').
+    """
+    from .master_db import get_global_settings, initialize_global_settings
+    
+    # Initialize and get global settings
+    initialize_global_settings()
+    global_settings = get_global_settings()
+    
+    # Get org-specific settings
+    org_settings = get_all_settings(org_db_name) if org_db_name else []
+    
+    # Build a map of org settings by category
+    org_settings_map = {s.get("category"): s for s in org_settings}
+    
+    # Merge settings
+    merged = []
+    for global_setting in global_settings:
+        category = global_setting.get("category")
+        merged_setting = {
+            "_id": global_setting.get("_id"),
+            "type": "setting",
+            "category": category,
+            "label": global_setting.get("label"),
+            "options": []
+        }
+        
+        # Add global options with source tag
+        for option in global_setting.get("options", []):
+            merged_setting["options"].append({
+                "label": option,
+                "source": "global"
+            })
+        
+        # Add org-specific options if any
+        if category in org_settings_map:
+            org_setting = org_settings_map[category]
+            for option in org_setting.get("options", []):
+                # Check if not already in global
+                if option not in global_setting.get("options", []):
+                    merged_setting["options"].append({
+                        "label": option,
+                        "source": "org"
+                    })
+        
+        merged.append(merged_setting)
+    
+    return merged
 
 # GridFS File Storage Functions
 def store_pdf_in_mongo(file_content: bytes, filename: str, metadata: dict = None, org_db_name: str = None) -> str:

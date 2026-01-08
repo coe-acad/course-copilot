@@ -1,14 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import List, Optional
 from ..services.mongo import (
     get_configurations_by_type,
     get_setting_by_category,
     get_all_settings,
+    get_merged_settings,
     create_configuration,
     update_configuration,
     delete_configuration
 )
+from ..utils.verify_token import get_user_org_context
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,13 +60,23 @@ async def get_assessment_configurations():
         logger.error(f"Error fetching assessment configurations: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/configurations/settings", response_model=List[ConfigurationResponse])
-async def get_all_setting_configurations():
-    """Get all setting configurations (course_level, study_area, pedagogical_components)"""
+@router.get("/configurations/settings")
+async def get_all_setting_configurations(ctx: dict = Depends(get_user_org_context)):
+    """Get all setting configurations (merged: global + org-specific) with flattened options"""
+    org_db_name = ctx.get("org_db_name")
     try:
-        logger.info("Fetching all setting configurations")
-        configs = get_all_settings()
-        return configs
+        logger.info(f"Fetching all setting configurations for org: {org_db_name}")
+        # Get merged settings
+        merged = get_merged_settings(org_db_name)
+        
+        # Flatten options for dropdown compatibility (just return label strings)
+        for setting in merged:
+            setting["options"] = [
+                opt["label"] if isinstance(opt, dict) else opt
+                for opt in setting.get("options", [])
+            ]
+        
+        return merged
     except Exception as e:
         logger.error(f"Error fetching setting configurations: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

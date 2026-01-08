@@ -14,6 +14,7 @@ from ..services.mongo import (
     get_all_settings,
     add_setting_label,
     remove_setting_label,
+    get_merged_settings,
     get_one_from_collection,
     update_user_role,
     create_user,
@@ -326,11 +327,13 @@ async def delete_admin_document(file_id: str, ctx: dict = Depends(verify_admin_w
 
 # Setting Labels Management
 @router.get("/admin/settings")
-def get_all_setting_labels(user_id: str = Depends(verify_admin)):
-    """Get all setting configurations"""
+def get_all_setting_labels(ctx: dict = Depends(verify_admin_with_org_context)):
+    """Get all setting configurations (merged: global + org-specific)"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
-        logger.info(f"User {user_id} fetching all setting labels")
-        settings = get_all_settings()
+        logger.info(f"User {user_id} fetching all setting labels for org: {org_db_name}")
+        settings = get_merged_settings(org_db_name)
         return {"settings": settings}
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -340,12 +343,14 @@ def get_all_setting_labels(user_id: str = Depends(verify_admin)):
 def add_label_to_setting(
     category: str, 
     request: AddLabelRequest,
-    user_id: str = Depends(verify_admin)
+    ctx: dict = Depends(verify_admin_with_org_context)
 ):
-    """Add a label to a setting category"""
+    """Add a label to an org-specific setting category"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
     try:
-        logger.info(f"User {user_id} adding label '{request.label}' to category '{category}'")
-        add_setting_label(category, request.label)
+        logger.info(f"User {user_id} adding label '{request.label}' to category '{category}' in org: {org_db_name}")
+        add_setting_label(category, request.label, org_db_name)
         logger.info(f"Successfully added label '{request.label}' to category '{category}'")
         return {"message": "Label added successfully", "category": category, "label": request.label}
     except ValueError as ve:
@@ -355,7 +360,26 @@ def add_label_to_setting(
         logger.error(f"Error adding label: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error adding label: {str(e)}")
 
-# Note: Delete label endpoint removed - only SuperAdmin can remove labels
+@router.delete("/admin/settings/{category}/labels/{label}")
+def remove_label_from_setting(
+    category: str,
+    label: str,
+    ctx: dict = Depends(verify_admin_with_org_context)
+):
+    """Remove an org-specific label from a setting category (cannot remove global labels)"""
+    user_id = ctx["user_id"]
+    org_db_name = ctx.get("org_db_name")
+    try:
+        logger.info(f"User {user_id} removing label '{label}' from category '{category}' in org: {org_db_name}")
+        remove_setting_label(category, label, org_db_name)
+        logger.info(f"Successfully removed label '{label}' from category '{category}'")
+        return {"message": "Label removed successfully", "category": category, "label": label}
+    except ValueError as ve:
+        logger.warning(f"Validation error removing label: {str(ve)}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error removing label: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error removing label: {str(e)}")
 
 
 # ============== PAYMENT MANAGEMENT ==============

@@ -329,7 +329,7 @@ export default function SuperAdmin() {
                             }
                         }}
                     >
-                        <FiDollarSign style={{ fontSize: 20, marginRight: 12 }} /> Payment Config
+                        <FiDollarSign style={{ fontSize: 20, marginRight: 12 }} /> Payment Configuration
                     </div>
                     <div
                         onClick={() => { setActiveTab("settings"); loadSettings(); }}
@@ -743,8 +743,23 @@ export default function SuperAdmin() {
                                         <div style={{ color: "#111827", fontWeight: 500 }}>{createdOrg.admin_email}</div>
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Database</div>
-                                        <div style={{ color: "#2563eb", fontFamily: "monospace", fontSize: 13 }}>{createdOrg.database_name}</div>
+                                        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Password</div>
+                                        <div style={{ color: "#2563eb", fontFamily: "monospace", fontSize: 13, background: "#f3f4f6", padding: "8px 12px", borderRadius: 6 }}>{createdOrg.admin_password}</div>
+                                    </div>
+                                </div>
+                                <div style={{
+                                    padding: 12,
+                                    background: "#fef3c7",
+                                    border: "1px solid #fcd34d",
+                                    borderRadius: 8,
+                                    marginBottom: 16,
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    gap: 8
+                                }}>
+                                    <span style={{ fontSize: 16 }}>⚠️</span>
+                                    <div style={{ fontSize: 13, color: "#92400e" }}>
+                                        <strong>Important:</strong> Please save this password securely. It will not be shown again.
                                     </div>
                                 </div>
                                 <p style={{ color: "#6b7280", fontSize: 14, marginBottom: 20, textAlign: "center" }}>
