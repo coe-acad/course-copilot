@@ -165,6 +165,16 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         question_count = len(extracted_mark_scheme.get('mark_scheme', []))
         logger.info(f"Mark scheme extracted: {extracted_mark_scheme}")
         
+        # ERROR CHECK: Stop if mark scheme extraction failed
+        if question_count == 0:
+            error_msg = (
+                "Failed to extract any questions from the mark scheme. "
+                "Please ensure the mark scheme follows a supported format "
+                "(e.g., 'Question number: 1', 'Question 1:', with 'Marking scheme' sections)."
+            )
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        
         # Extract answer sheets
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
@@ -190,6 +200,15 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
                 continue
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
+
+        # ERROR CHECK: Stop if no answer sheets were successfully extracted
+        if not extracted_answer_sheets:
+            error_msg = (
+                f"Failed to extract Q&A from any of the {len(answer_sheet_paths)} answer sheet(s). "
+                "Please ensure answer sheets follow the expected format: 'Question 1. ... Answer: ...' or similar patterns."
+            )
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
         # Determine batch size based on question count
         total_sheets = len(extracted_answer_sheets)

@@ -35,10 +35,17 @@ def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
         if text_questions:
             logger.info(f"Extracted {len(text_questions)} questions using structured text format")
             return text_questions
+        else:
+            logger.debug("Structured text format found 0 questions, trying basic format...")
         
         # Fallback: Try to parse as basic question format
         basic_questions = _extract_basic_question_format(full_text)
         logger.info(f"Extracted {len(basic_questions)} questions using basic format")
+        
+        # Log preview of text if no questions found (for debugging)
+        if not basic_questions:
+            logger.warning(f"No questions found. Text preview (first 500 chars): {full_text[:500]}")
+        
         return basic_questions
         
     except Exception as e:
@@ -197,20 +204,33 @@ def _extract_structured_text_format(text: str) -> List[Dict[str, Any]]:
         B (Y): description
         C (Z): description
     
-    Also supports legacy format with question-text and markingscheme with brackets.
+    Also supports:
+    - "Question number: 1" format with space
+    - "Question text:" sections
+    - "Marking scheme (Total = X) —" format
     """
     questions = []
     
-    # Split by question blocks - look for questionnumber pattern (allow space)
-    question_blocks = re.split(r'\n(?=(?:question\s*number|"question\s*number")\s*:\s*\d+)', text, flags=re.IGNORECASE)
+    # Split by question blocks - look for various question number patterns
+    # Supports: "question number: 1", "Question number: Q1", "questionnumber: 1"
+    question_blocks = re.split(
+        r'\n(?=(?:question\s*number|"question\s*number")\s*[:=]\s*Q?\d+)',
+        text,
+        flags=re.IGNORECASE
+    )
     
-    for block in question_blocks:
+    logger.debug(f"Split text into {len(question_blocks)} potential question blocks")
+    
+    for i, block in enumerate(question_blocks):
         if not block.strip():
             continue
+        
+        logger.debug(f"Processing block {i+1}, length: {len(block)} chars, preview: {block[:100]}...")
         
         question_data = _parse_question_block(block)
         if question_data and question_data.get('questionnumber'):
             questions.append(question_data)
+            logger.debug(f"Successfully parsed question {question_data.get('questionnumber')}")
     
     return questions
 
@@ -224,16 +244,17 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
         "markingscheme": []
     }
     
-    # Extract question number (allow space)
-    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*:\s*(\d+)', block, re.IGNORECASE)
+    # Extract question number (allow space between "question" and "number")
+    # Supports: "Question number: 1" or "Question number: Q1"
+    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*[:=]\s*Q?(\d+)', block, re.IGNORECASE)
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
     
-    # Extract question text (support both "question:" and "question-text:")
-    # Extract question text (support "question:", "question-text:", "Question text:")
-    # Look ahead for either answertemplate OR markingscheme (including Total = X variation)
+    # Extract question text - support multiple formats:
+    # - "question-text:", "Question text:", "question:"
+    # Look ahead for answertemplate, markingscheme, or marking scheme
     qtext_match = re.search(
-        r'(?:question-text|"question-text"|question\s*text|"question\s*text"|question|"question")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|"answertemplate"|markingscheme|"markingscheme"|marking\s*scheme\(.*?\)|marking\s*scheme|$))',
+        r'(?:question[-\s]*text|question)\s*[:=]\s*["\']?(.*?)(?=["\']?\s*(?:answertemplate|answer\s*template|markingscheme|marking\s*scheme|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
@@ -242,14 +263,14 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     
     # Extract answertemplate (Optional now)
     answer_match = re.search(
-        r'(?:answertemplate|"answertemplate")\s*:\s*["\']?(.*?)(?=["\']?\s*(?:markingscheme|"markingscheme"|marking\s*scheme\(.*?\)|marking\s*scheme|$))',
+        r'(?:answertemplate|answer\s*template)\s*[:=]\s*["\']?(.*?)(?=["\']?\s*(?:markingscheme|marking\s*scheme|$))',
         block,
         re.DOTALL | re.IGNORECASE
     )
     if answer_match:
         question_data["answertemplate"] = _clean_text(answer_match.group(1))
     
-    # Extract markingscheme - try both array format and indented format
+    # Extract markingscheme - try multiple formats
     # First try array format with brackets
     marking_match = re.search(
         r'(?:markingscheme|"markingscheme")\s*:\s*\[(.*?)\]',
@@ -259,12 +280,10 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     if marking_match:
         question_data["markingscheme"] = _extract_array_items(marking_match.group(1))
     else:
-        # Try indented format without brackets (new format)
-        # Handle "Marking scheme (Total = X):" or just "Marking scheme:"
-        # usage of [:=] allows for both : and = separators
-        # We want to capture EVERYTHING until the end of the block
+        # Try text format: "Marking scheme (Total = X) —" or "Marking scheme:"
+        # Handle em-dash (—), en-dash (–), hyphen (-), colon (:), or equals (=) as separators
         marking_match = re.search(
-            r'(?:markingscheme|"markingscheme"|marking\s*scheme.*?)[:=]\s*(.*)',
+            r'(?:markingscheme|marking\s*scheme)(?:\s*\([^)]*\))?\s*[—–\-:=]?\s*(.*)',
             block,
             re.DOTALL | re.IGNORECASE
         )
@@ -280,19 +299,23 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
     """
     Fallback: Extract questions in basic format.
     Looks for patterns like:
-    Question 1: ... Answer: ... Mark Scheme: ... Deductions: ... Notes: ...
+    Question 1: ... Question text: ... Marking scheme: ...
+    Question number: 1 ... Question text: ... Marking scheme (Total = X) — ...
     """
     questions = []
     
-    # Pattern to match Question X blocks
+    # Pattern to match Question blocks - supports multiple formats:
+    # - "Question 1:" or "Question 1."
+    # - "Question number: 1" or "Question number: Q1"
+    # - "questionnumber: 1"
     question_pattern = re.compile(
-        r'(?:Question\s+(\d+)|questionnumber\s*[:=]?\s*(\d+))(.*?)(?=(?:Question\s+\d+|questionnumber\s*[:=]?\s*\d+|$))',
+        r'(?:Question\s+number\s*[:=]\s*Q?(\d+)|Question\s+Q?(\d+)[.:,]?|question\s*number\s*[:=]?\s*Q?(\d+))(.*?)(?=(?:Question\s+number\s*[:=]\s*Q?\d+|Question\s+Q?\d+[.:,]?|question\s*number\s*[:=]?\s*Q?\d+|$))',
         re.DOTALL | re.IGNORECASE
     )
     
     for match in question_pattern.finditer(text):
-        qnum = match.group(1) or match.group(2)
-        content = match.group(3)
+        qnum = match.group(1) or match.group(2) or match.group(3)
+        content = match.group(4)
         
         if not qnum:
             continue
@@ -304,27 +327,30 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
             "markingscheme": []
         }
         
-        # Extract question text (before answer/template)
+        # Extract question text - handle "Question text:" format
         qtext_match = re.search(
-            r'^(.*?)(?=(?:answer\s*template|answer\s*:|correct\s*answer|marking|mark\s+scheme))',
+            r'(?:Question\s*text\s*[:=]\s*)?(.*?)(?=(?:answer\s*template|answer\s*:|correct\s*answer|marking\s*scheme|mark\s+scheme|$))',
             content,
             re.DOTALL | re.IGNORECASE
         )
         if qtext_match:
-            question_data["question-text"] = _clean_text(qtext_match.group(1))
+            qtext = qtext_match.group(1)
+            # If it starts with "Question text:", extract after that
+            qtext_clean = re.sub(r'^Question\s*text\s*[:=]\s*', '', qtext, flags=re.IGNORECASE)
+            question_data["question-text"] = _clean_text(qtext_clean)
         
         # Extract answer template
         answer_match = re.search(
-            r'(?:answer\s*template|correct\s*answer|answer)\s*[:=]?\s*(.*?)(?=(?:marking|mark\s+scheme|$))',
+            r'(?:answer\s*template|correct\s*answer|answer)\s*[:=]?\s*(.*?)(?=(?:marking\s*scheme|mark\s+scheme|$))',
             content,
             re.DOTALL | re.IGNORECASE
         )
         if answer_match:
             question_data["answertemplate"] = _clean_text(answer_match.group(1))
         
-        # Extract marking scheme
+        # Extract marking scheme - handle "Marking scheme (Total = X) —" format
         marking_match = re.search(
-            r'(?:marking\s*scheme|mark\s*scheme)\s*[:=]?\s*(.*?)$',
+            r'(?:marking\s*scheme|mark\s*scheme)(?:\s*\([^)]*\))?\s*[—\-:=]?\s*(.*?)$',
             content,
             re.DOTALL | re.IGNORECASE
         )
@@ -386,7 +412,7 @@ def _extract_indented_items(indented_text: str) -> List[str]:
 def _extract_bullet_points(text: str) -> List[str]:
     """
     Extract bullet points from text.
-    Handles various bullet point formats: -, *, •, numbers, etc.
+    Handles various bullet point formats: -, *, •, numbers, [X] marks notation, etc.
     """
     bullets = []
     
@@ -397,8 +423,31 @@ def _extract_bullet_points(text: str) -> List[str]:
     for line in lines:
         line = line.strip()
         
-        # Check if line starts with bullet pattern
-        if re.match(r'^[-*•▪►]\s+', line) or re.match(r'^\(\d+\s*marks?\)', line, re.IGNORECASE):
+        # Skip empty lines, "Total Marks Verification", or lines that are just marks totals
+        if not line or re.match(r'^Total\s*Marks?\s*Verification', line, re.IGNORECASE):
+            if current_bullet:
+                bullets.append(_clean_text(current_bullet))
+                current_bullet = ""
+            continue
+        
+        # Check if line is a marking criterion (ends with [X] or [X marks])
+        is_marking_item = re.search(r'\[\d+\s*(?:marks?)?\]\s*$', line, re.IGNORECASE)
+        
+        # Check if line starts with bullet pattern or sub-question marker (a), b), 1), etc.)
+        is_bullet_start = (
+            re.match(r'^[-*•▪►]\s+', line) or 
+            re.match(r'^\(\d+\s*marks?\)', line, re.IGNORECASE) or
+            re.match(r'^[a-z]\)\s+', line, re.IGNORECASE) or  # a) b) c)
+            re.match(r'^\d+\)\s+', line)  # 1) 2) 3)
+        )
+        
+        if is_marking_item:
+            # This is a marking scheme item ending with [X]
+            if current_bullet:
+                bullets.append(_clean_text(current_bullet))
+            bullets.append(_clean_text(line))
+            current_bullet = ""
+        elif is_bullet_start:
             # Save previous bullet if exists
             if current_bullet:
                 bullets.append(_clean_text(current_bullet))
@@ -637,8 +686,23 @@ def extract_text_from_mark_scheme(pdf_path: str) -> Dict[str, Any]:
         
     Returns:
         Dictionary with 'mark_scheme' key containing list of questions
+        
+    Raises:
+        ValueError: If no questions could be extracted from the mark scheme
     """
     questions = extract_mark_scheme_from_pdf(pdf_path)
+    
+    # ERROR CHECK: Fail if no questions were extracted
+    if not questions:
+        error_msg = (
+            "Failed to extract any questions from the mark scheme. "
+            "The document format may not be supported. "
+            "Expected formats: 'Question number: X', 'Question X:', or similar patterns "
+            "with 'Marking scheme' sections."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
     return {"mark_scheme": questions}
 
 
