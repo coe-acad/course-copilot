@@ -144,10 +144,22 @@ def _stitch_full_text(pages_content):
     return "\n".join(parts), offsets
 
 def _qa_pattern():
+    # Primary pattern: "Question X" followed by optional period, colon, space, or nothing
+    # Supports: "Question 1.", "Question 1:", "Question 1 ", "Question 1" (nothing after)
     return re.compile(
-        r"(Question\s*\d+\..*?)(?:\n| )Answer:\s*(.*?)(?=(?:\n?Question\s*\d+\.|$))",
-        re.DOTALL
+        r"(Question\s*\d+[.:\s]?\s*.*?)(?:\n)Answer:\s*(.*?)(?=(?:\n?Question\s*\d+[.:\s]?|$))",
+        re.DOTALL | re.IGNORECASE
     )
+
+def _qa_pattern_alt():
+    # Alternative patterns for different formats
+    patterns = [
+        # "Q1. ... Answer: ..." or "Q1: ... Answer: ..." or "Q1 ..." or "Q1" (nothing after)
+        re.compile(r"(Q\s*\d+[.:\s]?\s*.*?)(?:\n| )Answer:\s*(.*?)(?=(?:\n?Q\s*\d+[.:\s]?|$))", re.DOTALL | re.IGNORECASE),
+        # "1. ... Answer: ..." (numbered questions)
+        re.compile(r"(\d+\.\s+.*?)(?:\n| )Answer:\s*(.*?)(?=(?:\n?\d+\.\s+|$))", re.DOTALL),
+    ]
+    return patterns
 
 def _qa_matches_to_results(matches):
     return [{
@@ -156,10 +168,31 @@ def _qa_matches_to_results(matches):
     } for m in matches]
 
 def _is_question_line(ln):
-    return re.match(r"\s*Question\s*\d+\.", ln["text"] or "") is not None
+    text = ln["text"] or ""
+    # Match various question formats with optional period, colon, space, or nothing after number
+    # Supports: "Question 1.", "Question 1:", "Question 1 ", "Question 1", "Q1.", "Q1:", "Q1", "1."
+    patterns = [
+        r"\s*Question\s*\d+[.:\s]?",  # "Question 1." or "Question 1:" or "Question 1 " or "Question 1"
+        r"\s*Q\s*\d+[.:\s]?",         # "Q1." or "Q1:" or "Q1 " or "Q1"
+        r"^\s*\d+\.\s+",              # "1. " at start of line
+    ]
+    for pattern in patterns:
+        if re.match(pattern, text, re.IGNORECASE):
+            return True
+    return False
 
 def _is_answer_line(ln):
-    return re.match(r"\s*Answer:\s*", ln["text"] or "") is not None
+    text = ln["text"] or ""
+    # Match various answer formats: "Answer:", "Ans:", "A:"
+    patterns = [
+        r"\s*Answer:\s*",
+        r"\s*Ans:\s*",
+        r"\s*A:\s*",
+    ]
+    for pattern in patterns:
+        if re.match(pattern, text, re.IGNORECASE):
+            return True
+    return False
 
 def _collect_line_anchors(pages_content):
     q_anchors, a_anchors = [], []  # tuples of (page_idx, y)
@@ -321,8 +354,12 @@ def upload_image_to_openai(image_data, filename_prefix="image"):
         return None
 
 
-def _assign_images_to_questions(images, q_anchors, results, pages_content):
-    """Attach images to the correct question based on position."""
+def _assign_images_to_questions(images, q_anchors, results, pages_content, a_anchors=None):
+    """Attach images to the correct question based on position.
+    
+    Only includes images that appear AFTER the "Answer:" line for each question,
+    to avoid including question diagrams as part of the student's answer.
+    """
     if not images or not q_anchors:
         logger.debug("No images or question anchors available for assignment")
         return results
@@ -330,6 +367,8 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
     logger.info(f"Assigning {len(images)} images to {len(q_anchors)} questions")
     
     assigned_count = 0
+    skipped_question_images = 0
+    
     for img_index, img in enumerate(images):
         try:
             page, (x0, top, x1, bottom) = img["page"], img["bbox"]
@@ -356,6 +395,15 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
                         target = idx
                         logger.debug(f"Image {img_index + 1} matches question {idx + 1}: page {qp} y={qy:.1f} -> next page {next_p} y={next_y:.1f}")
                         break
+
+            # Check if image is in the ANSWER area (after "Answer:" line), not the question area
+            if target is not None and a_anchors and target < len(a_anchors):
+                answer_page, answer_y = a_anchors[target]
+                # Image must be at or below the "Answer:" line to be part of the student's answer
+                if page < answer_page or (page == answer_page and yc < answer_y):
+                    logger.debug(f"Skipping image {img_index + 1} - appears in question area (above Answer: line) for question {target + 1}")
+                    skipped_question_images += 1
+                    continue  # Skip this image - it's part of the question, not the answer
 
             if target is not None:
                 question_text = results[target].get("question", "Unknown question")[:100]
@@ -390,6 +438,8 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content):
             logger.error(f"Error processing image {img_index + 1}: {e}")
             continue
 
+    if skipped_question_images > 0:
+        logger.info(f"Skipped {skipped_question_images} images that were in question areas (not student answers)")
     logger.info(f"Successfully assigned {assigned_count}/{len(images)} images to questions")
     return results
 
@@ -417,11 +467,21 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
         except Exception as e:
             logger.warning(f"Failed to extract email: {e}")
     
-    # 1) Global Q&A from stitched text
+    # 1) Global Q&A from stitched text - try primary pattern first
     full_text, page_offsets = _stitch_full_text(pages_content)
     qa_pat = _qa_pattern()
     qa_matches = list(qa_pat.finditer(full_text))
     results = _qa_matches_to_results(qa_matches)
+    
+    # 1b) If primary pattern fails, try alternative patterns
+    if not results:
+        logger.info("Primary Q&A pattern found no matches, trying alternative patterns...")
+        for alt_pattern in _qa_pattern_alt():
+            qa_matches = list(alt_pattern.finditer(full_text))
+            if qa_matches:
+                results = _qa_matches_to_results(qa_matches)
+                logger.info(f"Alternative pattern found {len(results)} Q&A pairs")
+                break
 
     # 2) Build ordered anchors from page lines
     q_anchors, a_anchors = _collect_line_anchors(pages_content)
@@ -432,22 +492,61 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
     # 4) Attach tables by locating table center inside spans
     _attach_tables_to_spans(results, pages_content, spans)
 
-    # 5) (NEW) Attach images and descriptions if pdf_path is provided
+    # 5) Extract images from PDF if path is provided
+    images = []
     if pdf_path:
         try:
             logger.info(f"Starting image extraction from PDF: {pdf_path}")
             images = extract_images_from_pdf(pdf_path)
             if images:
-                results = _assign_images_to_questions(images, q_anchors, results, pages_content)
-                logger.info(f"Image extraction completed successfully")
+                logger.info(f"Found {len(images)} images in PDF")
             else:
                 logger.info("No images found in PDF")
         except Exception as e:
             logger.error(f"Image extraction failed: {e}")
-            # Continue without images rather than failing the entire extraction
             logger.warning("Continuing without image extraction due to error")
 
-    # 6) If answers_only mode, convert to simplified format
+    # 5b) Fallback for image-only answer sheets: if no Q&A pairs found but we have images
+    if not results and images:
+        logger.warning("No text-based Q&A found but images exist - creating image-only entries")
+        # Create one entry per image, assuming each image is a separate answer
+        for img_idx, img in enumerate(images):
+            # Upload image to OpenAI
+            file_id = upload_image_to_openai(img["data"], f"answer_img_{img_idx + 1}")
+            if file_id:
+                results.append({
+                    "question": f"Question {img_idx + 1}",
+                    "answer": [{"type": "image", "file_id": file_id}]
+                })
+                logger.info(f"Created image-only entry for question {img_idx + 1} (file_id: {file_id})")
+            else:
+                # Fallback to base64
+                b64_image = base64.b64encode(img["data"]).decode("utf-8")
+                results.append({
+                    "question": f"Question {img_idx + 1}",
+                    "answer": [{"type": "image", "image_data": b64_image}]
+                })
+                logger.info(f"Created image-only entry for question {img_idx + 1} (base64 fallback)")
+        # Update q_anchors for image assignment consistency
+        q_anchors = [(img["page"], img["bbox"][1]) for img in images]
+        logger.info(f"Created {len(results)} image-only Q&A entries")
+    elif results and images and q_anchors:
+        # Normal case: assign images to existing questions
+        # Pass a_anchors to filter out images that are part of the question (not the answer)
+        results = _assign_images_to_questions(images, q_anchors, results, pages_content, a_anchors)
+        logger.info(f"Image extraction completed successfully")
+
+    # 6) ERROR CHECK: If still no Q&A pairs found after all attempts, raise an error
+    if not results:
+        error_msg = (
+            "Failed to extract any Q&A pairs from the answer sheet. "
+            "The document format may not be supported. "
+            "Expected formats: 'Question 1. ... Answer: ...' or 'Question 1: ... Answer: ...' or similar patterns."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+    # 7) If answers_only mode, convert to simplified format
     if answers_only:
         logger.info(f"Converting {len(results)} Q&A pairs to answers-only format")
         answers_only_results = []
