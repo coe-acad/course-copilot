@@ -15,7 +15,22 @@ from pathlib import Path
 import csv
 import io
 from ..utils.verify_token import verify_token
-from app.services.mongo import create_evaluation, get_evaluation_by_evaluation_id, update_evaluation_with_result, update_question_score_feedback, update_evaluation, get_evaluations_by_course_id, create_asset, db, get_email_by_user_id, create_ai_feedback, get_ai_feedback_by_evaluation_id, update_ai_feedback, get_user_display_name
+from app.services.mongo import (
+    create_evaluation,
+    get_evaluation_by_evaluation_id,
+    update_evaluation_with_result,
+    update_question_score_feedback,
+    update_evaluation,
+    get_evaluations_by_course_id,
+    create_asset,
+    db,
+    get_email_by_user_id,
+    create_ai_feedback,
+    get_ai_feedback_by_evaluation_id,
+    update_ai_feedback,
+    get_user_display_name,
+    get_asset_by_course_id_and_asset_name,
+)
 from app.services.openai_service import evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
@@ -448,7 +463,7 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
     try:
         # Update the question score and feedback
         update_question_score_feedback(request.evaluation_id, request.file_id, request.question_number, request.score, request.feedback)
-        
+
         # Get current evaluation to calculate new total score
         evaluation = get_evaluation_by_evaluation_id(request.evaluation_id)
         if evaluation and "evaluation_result" in evaluation:
@@ -460,11 +475,17 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
                         for answer in student.get("answers", [])
                         if answer.get("score") is not None
                     )
-                    
-                    # Update the total score using MongoDB directly with proper positional operator
+
+                    # Update the total score and mark this student as modified
+                    # using MongoDB directly with proper positional operator
                     db["evaluations"].update_one(
                         {"evaluation_id": request.evaluation_id, "evaluation_result.students.file_id": request.file_id},
-                        {"$set": {"evaluation_result.students.$.total_score": total_score}}
+                        {
+                            "$set": {
+                                "evaluation_result.students.$.total_score": total_score,
+                                "evaluation_result.students.$.status": "modified",
+                            }
+                        },
                     )
                     break
         
@@ -530,6 +551,16 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         if not evaluation:
             raise HTTPException(status_code=404, detail="Evaluation not found")
 
+        # Ensure asset_name is unique per course by appending (n) if needed
+        base_name = asset_name.strip()
+        course_id = evaluation["course_id"]
+        unique_name = base_name
+        suffix = 1
+        # Loop until we find a name that does not exist yet
+        while get_asset_by_course_id_and_asset_name(course_id, unique_name):
+            unique_name = f"{base_name} ({suffix})"
+            suffix += 1
+
         # Get user's display name for the asset
         user_display_name = get_user_display_name(user_id)
         if not user_display_name:
@@ -539,8 +570,8 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         # This enables listing a card and opening the live Evaluation UI by ID
         logger.info(f"Saving evaluation reference {evaluation_id}")
         create_asset(
-            course_id=evaluation["course_id"],
-            asset_name=asset_name,
+            course_id=course_id,
+            asset_name=unique_name,
             asset_category="evaluation",
             asset_type="evaluation",
             asset_content=evaluation_id,
@@ -549,7 +580,7 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
             created_by_user_id=user_id
         )
         
-        return {"message": "Evaluation saved successfully", "asset_name": asset_name}
+        return {"message": "Evaluation saved successfully", "asset_name": unique_name}
     except HTTPException:
         raise
     except Exception as e:

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import CoursesLayout from "../layouts/CoursesLayout";
 import CourseModal from "../components/CourseModal";
 import ShareCourseModal from "../components/ShareCourseModal";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { useCourses } from "../hooks/useCourses";
 import { fetchCourses, createCourse,  deleteCourse } from "../services/course";
 import { useRef } from "react";
@@ -18,6 +19,7 @@ export default function Courses() {
   } = useCourses();
 
   const [savedCourses, setSavedCourses] = useState([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
   const navigate = useNavigate();
   const [menuOpenIndex, setMenuOpenIndex] = useState(null);
   const menuRef = useRef();
@@ -26,6 +28,7 @@ export default function Courses() {
 
   const loadCourses = useCallback(async () => {
     try {
+      setLoadingCourses(true);
       const coursesFromAPI = await fetchCourses();
       setSavedCourses(coursesFromAPI);
     } catch (err) {
@@ -34,6 +37,8 @@ export default function Courses() {
         // Redirect to login if user is not authenticated
         navigate("/login");
       }
+    } finally {
+      setLoadingCourses(false);
     }
   }, [navigate]);
 
@@ -300,27 +305,46 @@ export default function Courses() {
         onAddCourse={() => setShowModal(true)}
         onLogout={handleLogout}
       >
-        {/* ✅ Course Cards go here */}
-        <div
-          className="courses-grid"
-          style={{
-            padding: "24px 5vw",
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "40px",
-            justifyItems: "center",
-            alignItems: "stretch",
-            minHeight: "120px",
-            maxWidth: "100%",
-            overflow: "hidden"
-          }}
-        >
-          {savedCourses.length > 0 ? (
-            savedCourses.map(renderCourseCard)
-          ) : (
-            <div style={{ color: "#888", fontSize: 16, gridColumn: "1 / -1" }}>No courses created yet.</div>
-          )}
-        </div>
+        {/* ✅ Course Cards / Loading State */}
+        {loadingCourses ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "40px 5vw",
+              minHeight: "240px",
+              gap: 16,
+            }}
+          >
+            <LoadingSpinner />
+            <div style={{ fontSize: 16, color: "#6b7280", fontWeight: 500 }}>
+              Loading your courses...
+            </div>
+          </div>
+        ) : (
+          <div
+            className="courses-grid"
+            style={{
+              padding: "24px 5vw",
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "40px",
+              justifyItems: "center",
+              alignItems: "stretch",
+              minHeight: "120px",
+              maxWidth: "100%",
+              overflow: "hidden"
+            }}
+          >
+            {savedCourses.length > 0 ? (
+              savedCourses.map(renderCourseCard)
+            ) : (
+              <div style={{ color: "#888", fontSize: 16, gridColumn: "1 / -1" }}>No courses created yet.</div>
+            )}
+          </div>
+        )}
       </CoursesLayout>
 
       {/* ✅ Create Course Modal */}
