@@ -1,28 +1,45 @@
 import React from "react";
 
-const spinnerStyle = {
+const containerStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   minHeight: "40vh",
 };
 
-const circleStyle = {
-  width: 48,
-  height: 48,
-  border: "6px solid #e0e0e0",
-  borderTop: "6px solid #222",
-  borderRadius: "50%",
-  animation: "spin 1s linear infinite"
+const dotsWrapperStyle = {
+  display: "flex",
+  gap: 10,
 };
 
-const keyframes = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+const dotBaseStyle = {
+  width: 10,
+  height: 10,
+  borderRadius: "999px",
+  background: "#2563eb",
+  opacity: 0.25,
+  animation: "blink 1.1s ease-in-out infinite",
+};
+
+const keyframes = `
+@keyframes blink {
+  0% { transform: translateY(0); opacity: 0.25; }
+  25% { transform: translateY(-6px); opacity: 1; }
+  50% { transform: translateY(0); opacity: 0.6; }
+  100% { transform: translateY(0); opacity: 0.25; }
+}
+`;
 
 export default function LoadingSpinner() {
   return (
-    <div style={spinnerStyle}>
+    <div style={containerStyle} aria-label="Loading">
       <style>{keyframes}</style>
-      <div style={circleStyle} aria-label="Loading" />
+      <div style={dotsWrapperStyle}>
+        <div style={{ ...dotBaseStyle, animationDelay: "0s" }} />
+        <div style={{ ...dotBaseStyle, animationDelay: "0.15s" }} />
+        <div style={{ ...dotBaseStyle, animationDelay: "0.3s" }} />
+        <div style={{ ...dotBaseStyle, animationDelay: "0.45s" }} />
+      </div>
     </div>
   );
-} 
+}
