@@ -7,6 +7,7 @@ export default function Header({
   onLogout,
   onSettings,
   onExport,
+  onExportSprintPlan,
   onGridView,
   onListView,
   isGridView = true,
@@ -168,6 +169,26 @@ export default function Header({
             onClick={onExport}
           >
             Export to LMS
+          </button>
+        )}
+        
+        {/* Export Sprint Plan Button - Show when onExportSprintPlan is provided */}
+        {onExportSprintPlan && (
+          <button
+            style={{
+              height: 38,
+              padding: "0 22px",
+              borderRadius: 8,
+              border: "none",
+              background: "#16a34a",
+              fontWeight: 500,
+              fontSize: 16,
+              color: "#fff",
+              cursor: "pointer"
+            }}
+            onClick={onExportSprintPlan}
+          >
+            Sprint Plan
           </button>
         )}
         

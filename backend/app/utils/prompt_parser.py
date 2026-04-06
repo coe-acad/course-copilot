@@ -27,20 +27,29 @@ class PromptParser:
             # if it's actually a file path, load its content
             with open(prompt_template, 'r', encoding='utf-8') as f:
                 prompt_template = f.read()
-        required_vars = data.get('required_input_variables', [])
-        optional_vars = data.get('optional_input_variables', [])
 
-        # Validate required variables
-        missing = [var for var in required_vars if var not in input_variables]
-        if missing:
-            raise ValueError(f"Missing required input variables for prompt: {missing}")
+        required_vars = data.get('required_input_variables') if 'required_input_variables' in data else None
+        optional_vars = data.get('optional_input_variables') if 'optional_input_variables' in data else None
 
-        # Only retrieve the required & optional variables for this prompt from the input_variables dict
-        context = {
-            variable_name: variable_value
-            for variable_name, variable_value in input_variables.items()
-            if variable_name in required_vars or variable_name in optional_vars
-        }
+        # If the prompt file does not declare any input variable lists, use all provided variables.
+        if required_vars is None and optional_vars is None:
+            context = input_variables
+        else:
+            required_vars = required_vars or []
+            optional_vars = optional_vars or []
+
+            # Validate required variables
+            missing = [var for var in required_vars if var not in input_variables]
+            if missing:
+                raise ValueError(f"Missing required input variables for prompt: {missing}")
+
+            # Only retrieve the required & optional variables for this prompt from the input_variables dict
+            context = {
+                variable_name: variable_value
+                for variable_name, variable_value in input_variables.items()
+                if variable_name in required_vars or variable_name in optional_vars
+            }
+
         template = Template(prompt_template)
         return template.render(**context)
     

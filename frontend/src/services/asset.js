@@ -21,12 +21,13 @@ export const assetService = {
   },
 
   // Create initial asset chat with selected files (async with polling)
-  createAssetChat: async (courseId, assetTypeName, fileNames) => {
+  createAssetChat: async (courseId, assetTypeName, fileNames, courseDescription = null) => {
     try {
-      // Start the background task
-      const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`,
-        { file_names: fileNames }
-      );
+      const payload = { file_names: fileNames };
+      if (courseDescription !== null) {
+        payload.course_description = courseDescription;
+      }
+      const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, payload);
       const taskData = res.data; // { task_id, status, message }
 
       // Poll for completion

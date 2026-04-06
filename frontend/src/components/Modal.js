@@ -25,20 +25,22 @@ const overlayStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  padding: "20px",
+  overflowY: "hidden",
   zIndex: 1000,
 };
 
 const modalStyle = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 2px 16px #0002",
-  padding: "32px 32px 40px 32px",
-  minWidth: 600,
-  maxWidth: 700,
-  width: "100%",
-  maxHeight: "90vh",
+  borderRadius: 16,
+  boxShadow: "0 24px 48px rgba(0,0,0,0.12)",
+  padding: "24px",
+  minWidth: 560,
+  maxWidth: 720,
+  width: "min(720px, 100%)",
+  maxHeight: "calc(100vh - 40px)",
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
-  justifyContent: "center"
+  justifyContent: "flex-start"
 }; 

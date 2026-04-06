@@ -17,6 +17,7 @@ import assessmentOptions from "../config/assessmentsOptions";
 import AddResourceModal from '../components/AddReferencesModal';
 import SettingsPromptModal from '../components/SettingsPromptModal';
 import ExportAssetsModal from "../components/ExportAssetsModal";
+import ExportSprintPlanModal from "../components/ExportSprintPlanModal";
 import LMSLoginModal from "../components/LMSLoginModal";
 import LMSCoursesModal from "../components/LMSCoursesModal";
 import LMSModulesModal from "../components/LMSModulesModal";
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [showLMSModulesModal, setShowLMSModulesModal] = useState(false);
   const [showActivitiesModal, setShowActivitiesModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportSprintPlanModal, setShowExportSprintPlanModal] = useState(false);
   const [selectedLMSCourse, setSelectedLMSCourse] = useState(null);
   const [selectedLMSModule, setSelectedLMSModule] = useState(null);
   const navigate = useNavigate();
@@ -420,6 +422,7 @@ export default function Dashboard() {
           onLogout={handleLogout}
           onSettings={() => setShowSettingsModal(true)}
           onExport={() => setShowLMSLoginModal(true)}
+          onExportSprintPlan={() => setShowExportSprintPlanModal(true)}
           onGridView={() => setIsGridView(true)}
           onListView={() => setIsGridView(false)}
           isGridView={isGridView}
@@ -785,6 +788,12 @@ export default function Dashboard() {
             console.log('Selected assets to export:', selected);
             console.log('Target LMS course:', selectedLMSCourse);
           }}
+        />
+
+        {/* Export Sprint Plan Modal */}
+        <ExportSprintPlanModal
+          open={showExportSprintPlanModal}
+          onClose={() => setShowExportSprintPlanModal(false)}
         />
       </div>
     </>

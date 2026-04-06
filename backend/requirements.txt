@@ -3,6 +3,7 @@ uvicorn[standard]==0.24.0
 requests>=2.19.1,<2.30
 python-dotenv==1.0.0
 pyrebase4==4.7.1
+pyrebase
 firebase-admin==6.2.0
 python-multipart==0.0.6
 openai==1.97.0

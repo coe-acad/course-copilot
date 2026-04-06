@@ -12,7 +12,7 @@ from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_user_display_name
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name
 from ..services.openai_service import clean_text
 from ..services.task_manager import task_manager, TaskStatus
 
@@ -33,6 +33,7 @@ class AssetPromptRequest(BaseModel):
 
 class AssetRequest(BaseModel):
     file_names: list[str]
+    course_description: Optional[str] = None
 
 class AssetResponse(BaseModel):
     response: str
@@ -114,17 +115,18 @@ class AssetChatStreamHandler:
             print(f"\n[stream error]{label_suffix} {event.error}")
 
 
-def construct_input_variables(course: dict, file_names: list[str]) -> dict:
+def construct_input_variables(course: dict, file_names: list[str], course_description: Optional[str] = None) -> dict:
     input_variables = {
         "course_name": course.get("name", ""),
         "course_level": course.get("settings", {}).get("course_level", ""),
         "study_area": course.get("settings", {}).get("study_area", ""),
         "pedagogical_components": course.get("settings", {}).get("pedagogical_components", ""),
-        "file_names": file_names
+        "file_names": file_names,
+        "course_description": course_description or ""
     }
     return input_variables
 
-def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, user_id: str):
+def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, course_description: Optional[str], user_id: str):
     """Background task to process asset chat generation"""
     try:
         task_manager.mark_processing(task_id)
@@ -175,8 +177,19 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 # Don't fail the entire task - continue without extracted questions
                 extracted_questions = ""
 
+        # If sprint-plan is generating and no course description text was provided, try to resolve it from the course or resources.
+        if asset_type_name == "sprint-plan" and not course_description:
+            course_description = course.get("description", "") or course_description
+            if not course_description:
+                for file_name in file_names:
+                    if file_name and "Course_Description" in file_name:
+                        resource = get_resource_by_course_id_and_resource_name(course_id, file_name)
+                        if resource and resource.get("content"):
+                            course_description = resource["content"]
+                            break
+
         # Prepare prompt
-        input_variables = construct_input_variables(course, file_names)
+        input_variables = construct_input_variables(course, file_names, course_description)
         
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
@@ -210,7 +223,12 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
 
         # Get complete response from handler
         complete_response = handler.response_text.strip()
-        
+
+        if asset_type_name == "sprint-plan" and course_description:
+            normalized_description = course_description.strip()
+            if normalized_description and not complete_response.startswith(normalized_description) and not complete_response.startswith("Sprint Description"):
+                complete_response = f"Sprint Description:\n{normalized_description}\n\n{complete_response}"
+
         if not complete_response:
             raise Exception("No response available from stream handler")
 
@@ -266,6 +284,7 @@ async def create_asset_chat(course_id: str, asset_type_name: str, request: Asset
             course_id,
             asset_type_name,
             request.file_names,
+            request.course_description,
             user_id
         )
 
@@ -381,6 +400,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         "course-outcomes": "curriculum",
         "concept-plan": "curriculum",
         "modules": "curriculum",
+        "sprint-plan": "curriculum",
         "lecture": "curriculum",
         "course-notes": "curriculum",
         "project": "assessments",
@@ -392,12 +412,11 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     }
     # Default to a safe category so saving never fails due to unmapped type
     asset_category = category_map.get(asset_type, "content")
-    #this text should go to openai and get cleaned up and than use the text to create the asset
-    #TODO: do the cleaning for all except for mark-scheme
-    if asset_type != "mark-scheme":
-        cleaned_text = clean_text(request.content)
-    else:
+    # For generated assets that need exact content ordering, do not apply extra cleaning.
+    if asset_type in ["mark-scheme", "sprint-plan"]:
         cleaned_text = request.content
+    else:
+        cleaned_text = clean_text(request.content)
     
     # Get user's display name for the asset
     user_display_name = get_user_display_name(user_id)

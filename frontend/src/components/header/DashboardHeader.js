@@ -1,5 +1,5 @@
 import React from "react";
-import { FiGrid, FiList, FiSettings, FiUploadCloud, FiLogOut } from "react-icons/fi";
+import { FiGrid, FiList, FiSettings, FiUploadCloud, FiLogOut, FiDownload } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
 export default function DashboardHeader({
@@ -8,6 +8,7 @@ export default function DashboardHeader({
   onListView,
   onSettings,
   onExport,
+  onExportSprintPlan,
   onLogout,
 }) {
   const navigate = useNavigate();
@@ -54,7 +55,7 @@ export default function DashboardHeader({
           <FiSettings />
         </button>
 
-        {/* Export */}
+        {/* Export to LMS */}
         <button
           title="Export to LMS"
           onClick={onExport}
@@ -71,6 +72,25 @@ export default function DashboardHeader({
         >
           <FiUploadCloud style={{ marginRight: 6, marginTop: -2 }} />
           Export to LMS
+        </button>
+
+        {/* Export Sprint Plan */}
+        <button
+          title="Export Sprint Plan"
+          onClick={onExportSprintPlan}
+          style={{
+            background: "#16a34a",
+            color: "#fff",
+            borderRadius: 6,
+            padding: "8px 14px",
+            fontWeight: 500,
+            fontSize: 14,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          <FiDownload style={{ marginRight: 6, marginTop: -2 }} />
+          Sprint Plan
         </button>
 
         {/* Logout */}

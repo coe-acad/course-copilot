@@ -76,15 +76,17 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         #name of the pdf should be the title
         resource_name = os.path.basename(pdf_path)
 
-        # Create resource in MongoDB
-        create_resource(course_id, resource_name)
+        # Get course information to extract description text
+        course_name = course.get('name', 'Unknown Course')
+        course_description = course.get('description', 'No description available')
+        
+        # Store the course description text in database (not the PDF binary)
+        create_resource(course_id, resource_name, course_description)
 
         # Upload the PDF to OpenAI (open as binary stream)
-        with open(pdf_path, "rb") as f:
-            content = f.read()
-            file_obj = io.BytesIO(content)
-            file_obj.name = resource_name  # ✅ Required for OpenAI
-            openai_file_id = create_file(file_obj)
+        file_obj = io.BytesIO(pdf_content)
+        file_obj.name = resource_name  # ✅ Required for OpenAI
+        openai_file_id = create_file(file_obj)
         
         # Check if vector store exists, if not create one
         vector_store_id = course.get('vector_store_id')

@@ -30,6 +30,7 @@ class CourseSettingsRequest(BaseModel):
 class CourseResponse(BaseModel):
     name: str
     id: str
+    description: Optional[str] = None
     is_owner: bool = True
     is_shared: bool = False
     owner_email: Optional[str] = None
@@ -114,6 +115,43 @@ def save_course_settings(course_id: str, request: CourseSettingsRequest, user_id
 
     except Exception as e:
         logger.error(f"Error updating settings for course {course_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/courses/{course_id}")
+def get_course_by_id(course_id: str, user_id: str = Depends(verify_token)):
+    try:
+        # Check if user has access to this course
+        if not is_course_accessible(course_id, user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        course = get_course(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+        
+        # Get owner email
+        owner_email = get_email_by_user_id(course.get("user_id"))
+        
+        # Check if this is a shared course
+        is_shared = course.get("user_id") != user_id
+        
+        # Get share count
+        shares = get_course_shares(course_id)
+        shared_count = len(shares) if shares else 0
+        
+        return CourseResponse(
+            name=course.get("name", ""),
+            id=course_id,
+            description=course.get("description", ""),
+            is_owner=course.get("user_id") == user_id,
+            is_shared=is_shared,
+            owner_email=owner_email,
+            shared_count=shared_count
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting course {course_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/courses/{course_id}/settings")
