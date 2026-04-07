@@ -12,6 +12,7 @@ from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
+from ..utils.text_to_docx import text_to_docx
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name
 from ..services.openai_service import clean_text
 from ..services.task_manager import task_manager, TaskStatus
@@ -75,6 +76,10 @@ class ImageResponse(BaseModel):
     image_url: str
 
 class TextToPdfRequest(BaseModel):
+    content: str
+    filename: Optional[str] = None
+
+class TextToDocxRequest(BaseModel):
     content: str
     filename: Optional[str] = None
 
@@ -452,6 +457,29 @@ def generate_asset_pdf(
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+@router.post("/courses/{course_id}/assets/docx")
+def generate_asset_docx(
+    course_id: str,
+    request: TextToDocxRequest,
+    user_id: str = Depends(verify_token),
+):
+    """Generate a DOCX from provided text content and stream it back to the client."""
+    if not course_id:
+        raise HTTPException(status_code=400, detail="Course ID is required")
+
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Content must not be empty")
+
+    docx_bytes = text_to_docx(content)
+    filename = request.filename or f"{course_id}-asset.docx"
+
+    return StreamingResponse(
+        BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

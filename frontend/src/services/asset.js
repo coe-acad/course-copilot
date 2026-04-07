@@ -134,7 +134,7 @@ export const assetService = {
     }
   },
 
-  // Download asset by streaming the backend text-to-pdf endpoint
+  // Download asset as DOCX by streaming the backend text-to-docx endpoint
   downloadAsset: async (courseId, assetName, contentOverride = null) => {
     try {
       if (!courseId || !assetName) {
@@ -156,15 +156,15 @@ export const assetService = {
         resolvedName = asset.asset_name || assetName;
       }
 
-      const filename = `${resolvedName}.pdf`;
+      const filename = `${resolvedName}.docx`;
 
       const response = await axiosInstance.post(
-        `/courses/${courseId}/assets/pdf`,
+        `/courses/${courseId}/assets/docx`,
         { content, filename, asset_name: assetName },
         { responseType: 'blob' }
       );
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

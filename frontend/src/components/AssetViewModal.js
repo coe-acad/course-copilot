@@ -157,7 +157,7 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = '#2563eb';
               }}
-              title="Download as PDF"
+              title="Download as DOCX"
             >
               <FiDownload size={16} />
               Download
