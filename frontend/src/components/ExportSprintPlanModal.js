@@ -181,19 +181,7 @@ export default function ExportSprintPlanModal({
       const generatedText = response?.response || response;
 
       if (generatedText && typeof generatedText === "string") {
-        const normalizedDescription = courseDescriptionContent.trim();
-        let finalSprintText = generatedText.trim();
-
-        // Remove any existing leading Sprint Description section so we can replace it with the extracted description.
-        const sprintDescriptionRegex = /^Sprint Description:[\s\S]*?(?=\r?\n(?:2\. Course Outcomes Table:|Course Outcomes Table:|Course Outcomes|Module Descriptions:|CO-PO-PSO Mapping Table:|3\. Textbook Titles:|4\.|5\.|6\.|$))/i;
-        if (sprintDescriptionRegex.test(finalSprintText)) {
-          finalSprintText = finalSprintText.replace(sprintDescriptionRegex, "").trim();
-        }
-
-        if (normalizedDescription) {
-          finalSprintText = `Sprint Description:\n${normalizedDescription}\n\n${finalSprintText}`.trim();
-        }
-
+        const finalSprintText = generatedText.trim();
         const timestamp = new Date().toISOString().slice(0, 10);
         const sprintPlanName = `Sprint Plan ${timestamp}`;
 

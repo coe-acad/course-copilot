@@ -229,10 +229,22 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         # Get complete response from handler
         complete_response = handler.response_text.strip()
 
-        if asset_type_name == "sprint-plan" and course_description:
-            normalized_description = course_description.strip()
-            if normalized_description and not complete_response.startswith(normalized_description) and not complete_response.startswith("Sprint Description"):
-                complete_response = f"Sprint Description:\n{normalized_description}\n\n{complete_response}"
+        if asset_type_name == "sprint-plan":
+            course_name = course.get("name", "")
+            cover_table = (
+                f"| Name of the Sprint | {course_name} |\n"
+                f"|---|---|\n"
+                f"| Sprint code | To be filled by Academic Operations |\n"
+                f"| CoE Offering it | |\n"
+                f"| Number of Credits | 4 |\n"
+                f"| Credit Structure (Lecture:Tutorial:Practical:Self-study) | To be filled by Academic Operations |\n"
+                f"| Total Hours | 72 |\n"
+                f"| Number of Weeks in a Sprint | 3 |\n"
+                f"| Total Course Marks | 200 |\n"
+                f"| Pass Criteria | As per academic regulations |\n"
+                f"| Attendance Criteria | As per academic regulations |\n"
+            )
+            complete_response = f"{cover_table}\n\n{complete_response}"
 
         if not complete_response:
             raise Exception("No response available from stream handler")
