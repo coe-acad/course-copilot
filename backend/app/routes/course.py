@@ -63,7 +63,6 @@ def get_courses(user_id: str = Depends(verify_token)):
             CourseResponse(
                 name=course["name"],
                 id=course["_id"],
-                description=course.get("description", ""),
                 is_owner=course.get("is_owner", True),
                 is_shared=course.get("is_shared", False),
                 owner_email=course.get("owner_email"),

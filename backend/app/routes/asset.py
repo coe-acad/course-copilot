@@ -7,7 +7,7 @@ from ..config.settings import settings
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
@@ -195,17 +195,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
 
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names, course_description)
-
-        # For sprint-plan: CO and Modules assets live in MongoDB, not the vector store.
-        # Inject their content directly into the prompt variables.
-        if asset_type_name == "sprint-plan":
-            all_assets = get_assets_by_course_id(course_id) or []
-            co_content = next((a.get("asset_content", "") for a in all_assets if a.get("asset_name") in file_names and a.get("asset_type") == "course-outcomes"), "")
-            modules_content = next((a.get("asset_content", "") for a in all_assets if a.get("asset_name") in file_names and a.get("asset_type") == "modules"), "")
-            input_variables["co_content"] = co_content
-            input_variables["modules_content"] = modules_content
-            logger.info(f"Sprint-plan: co_content={len(co_content)} chars, modules_content={len(modules_content)} chars")
-
+        
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
             input_variables["extracted_questions"] = extracted_questions
@@ -451,7 +441,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         user_display_name = "Unknown User"
     
     try:
-        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now(timezone.utc).isoformat(), user_id)
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
     except ValueError as e:
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))

@@ -187,13 +187,17 @@ def get_resource_content(course_id: str, resource_name: str, user_id: str = Depe
         
         # 2. Get resource from database
         resource = get_resource_by_course_id_and_resource_name(course_id, resource_name)
+        print(resource)
+        print(resource_name)
+        print(resource["content"])
         if not resource:
-            raise HTTPException(status_code=404, detail="Resource not found")
-
-        # 3. Check if content exists (user-uploaded files have no stored text content)
+            raise HTTPException(status_code=404, detail="Uploaded resources can't be viewed")
+        
+        # 3. Check if content exists
         content = resource.get("content")
+        logger.info(f"Content found: {content is not None}, Length: {len(content) if content else 0}")
         if not content:
-            raise HTTPException(status_code=404, detail="No text content available for this resource")
+            raise HTTPException(status_code=404, detail="Uploaded resources can't be viewed")
         
         # 4. Return resource content
         return ResourceViewResponse(resource_name=resource_name, content=content)
