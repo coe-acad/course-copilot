@@ -196,47 +196,16 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names, course_description)
 
-        # For sprint-plan: assets (CO, Modules) are stored in MongoDB, not the vector store.
-        # Fetch their content directly and inject into the prompt so the AI has the actual data.
+        # For sprint-plan: CO and Modules assets live in MongoDB, not the vector store.
+        # Inject their content directly into the prompt variables.
         if asset_type_name == "sprint-plan":
-            co_content = ""
-            modules_content = ""
-            # file_names contains a mix of asset names and resource filenames.
-            # Try exact name lookup first; if that misses, fall back to searching all
-            # course assets and matching by asset_type so order/casing doesn't matter.
-            for file_name in file_names:
-                if not file_name:
-                    continue
-                asset_doc = get_asset_by_course_id_and_asset_name(course_id, file_name)
-                if not asset_doc:
-                    continue
-                asset_type_val = asset_doc.get("asset_type", "")
-                asset_text = asset_doc.get("asset_content", "")
-                if asset_type_val == "course-outcomes" and not co_content:
-                    co_content = asset_text
-                    logger.info(f"Sprint-plan: resolved CO content from asset '{file_name}' ({len(co_content)} chars)")
-                elif asset_type_val == "modules" and not modules_content:
-                    modules_content = asset_text
-                    logger.info(f"Sprint-plan: resolved Modules content from asset '{file_name}' ({len(modules_content)} chars)")
-
-            # Fallback: if still missing, pick the most recently updated asset of that type
-            if not co_content or not modules_content:
-                all_assets = get_assets_by_course_id(course_id) or []
-                for asset_doc in all_assets:
-                    atype = asset_doc.get("asset_type", "")
-                    atext = asset_doc.get("asset_content", "")
-                    aname = asset_doc.get("asset_name", "")
-                    if atype == "course-outcomes" and not co_content:
-                        co_content = atext
-                        logger.info(f"Sprint-plan fallback: using CO asset '{aname}'")
-                    elif atype == "modules" and not modules_content:
-                        modules_content = atext
-                        logger.info(f"Sprint-plan fallback: using Modules asset '{aname}'")
-
+            all_assets = get_assets_by_course_id(course_id) or []
+            co_content = next((a.get("asset_content", "") for a in all_assets if a.get("asset_name") in file_names and a.get("asset_type") == "course-outcomes"), "")
+            modules_content = next((a.get("asset_content", "") for a in all_assets if a.get("asset_name") in file_names and a.get("asset_type") == "modules"), "")
             input_variables["co_content"] = co_content
             input_variables["modules_content"] = modules_content
-            logger.info(f"Sprint-plan input — co_content length: {len(co_content)}, modules_content length: {len(modules_content)}")
-        
+            logger.info(f"Sprint-plan: co_content={len(co_content)} chars, modules_content={len(modules_content)} chars")
+
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
             input_variables["extracted_questions"] = extracted_questions
