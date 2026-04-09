@@ -222,12 +222,24 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         # For sprint-plan, build deterministically from selected content (no LLM dependency)
         if asset_type_name == "sprint-plan":
             course_name = course.get("name", "")
+
+            # DEBUG: Log what content we're working with
+            co_content = sprint_plan_sources.get("course_outcomes_content", "")
+            modules_content = sprint_plan_sources.get("modules_content", "")
+            po_pso_content = sprint_plan_sources.get("po_pso_content", "")
+
+            logger.info(f"[SPRINT_PLAN_DEBUG] CO content length: {len(co_content)}")
+            logger.info(f"[SPRINT_PLAN_DEBUG] Modules content length: {len(modules_content)}")
+            logger.info(f"[SPRINT_PLAN_DEBUG] PO-PSO content length: {len(po_pso_content)}")
+            logger.info(f"[SPRINT_PLAN_DEBUG] CO content preview: {co_content[:200] if co_content else 'EMPTY'}")
+            logger.info(f"[SPRINT_PLAN_DEBUG] Modules content preview: {modules_content[:200] if modules_content else 'EMPTY'}")
+
             sprint_plan_text = build_sprint_plan(
                 course_name=course_name,
                 course_description=course_description or "",
-                course_outcomes_content=sprint_plan_sources.get("course_outcomes_content", ""),
-                modules_content=sprint_plan_sources.get("modules_content", ""),
-                po_pso_content=sprint_plan_sources.get("po_pso_content", ""),
+                course_outcomes_content=co_content,
+                modules_content=modules_content,
+                po_pso_content=po_pso_content,
             )
             # Fill CO-PO-PSO mapping + textbooks + references using LLM only for those sections
             try:
