@@ -195,6 +195,26 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
 
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names, course_description)
+
+        # For sprint-plan: assets (CO, Modules) are stored in MongoDB, not the vector store.
+        # Fetch their content directly and inject into the prompt so the AI has the actual data.
+        if asset_type_name == "sprint-plan":
+            co_content = ""
+            modules_content = ""
+            for file_name in file_names:
+                if not file_name:
+                    continue
+                asset_doc = get_asset_by_course_id_and_asset_name(course_id, file_name)
+                if not asset_doc:
+                    continue
+                asset_type_val = asset_doc.get("asset_type", "")
+                asset_text = asset_doc.get("asset_content", "")
+                if asset_type_val == "course-outcomes" and not co_content:
+                    co_content = asset_text
+                elif asset_type_val == "modules" and not modules_content:
+                    modules_content = asset_text
+            input_variables["co_content"] = co_content
+            input_variables["modules_content"] = modules_content
         
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
