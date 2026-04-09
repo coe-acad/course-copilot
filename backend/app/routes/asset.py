@@ -194,6 +194,9 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                         if resource and resource.get("content"):
                             course_description = resource["content"]
                             break
+                # If still no description, use course name as fallback
+                if not course_description:
+                    course_description = course.get("name", "Course") + " - Course Description"
 
         # For sprint-plan, resolve selected assets/resources to raw content so the model can actually use them.
         sprint_plan_sources = {}
