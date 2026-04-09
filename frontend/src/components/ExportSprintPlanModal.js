@@ -240,9 +240,6 @@ export default function ExportSprintPlanModal({
     (name) => name !== courseDescription
   );
   const isComplete = courseDescription && selectedCO && selectedModules && hasSelectedAdditionalResource;
-  const selectedAdditionalResources = selectedResourceNames.filter(
-    (name) => name !== courseDescription
-  );
   const canGeneratePlan = isComplete && !exporting && !generationStatus;
 
   return (
