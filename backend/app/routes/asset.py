@@ -429,14 +429,15 @@ async def create_asset_chat(course_id: str, asset_type_name: str, request: Asset
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
-        # Create task
+        # Create task with creation timestamp
         task_id = task_manager.create_task(
             task_type="asset_chat_create",
             metadata={
                 "course_id": course_id,
                 "asset_type_name": asset_type_name,
                 "user_id": user_id,
-                "file_count": len(request.file_names)
+                "file_count": len(request.file_names),
+                "created_at": datetime.now().strftime("%d %B %Y %H:%M:%S")
             }
         )
 
@@ -585,7 +586,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     user_display_name = get_user_display_name(user_id)
     if not user_display_name:
         user_display_name = "Unknown User"
-    
+
     try:
         if asset_type == "sprint-plan":
             delete_asset_from_db(course_id, asset_name)

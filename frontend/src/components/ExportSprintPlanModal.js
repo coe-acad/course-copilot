@@ -205,7 +205,7 @@ export default function ExportSprintPlanModal({
       if (generatedText && typeof generatedText === "string") {
         setGenerationStatus("Saving sprint plan...");
         const finalSprintText = generatedText.trim();
-        const timestamp = new Date().toISOString().slice(0, 10);
+        const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
         const sprintPlanName = `Sprint Plan ${timestamp}`;
 
         // Save the generated sprint plan as an asset
