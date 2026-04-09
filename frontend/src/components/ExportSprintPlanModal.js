@@ -7,9 +7,11 @@ import { getCourse } from "../services/course";
 export default function ExportSprintPlanModal({
   open,
   onClose,
+  onSprintPlanCreated,
 }) {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState(""); // Track current generation phase
   const [error, setError] = useState("");
   const [allAssets, setAllAssets] = useState([]);
   const [courseDescription, setCourseDescription] = useState(null);
@@ -21,6 +23,7 @@ export default function ExportSprintPlanModal({
   useEffect(() => {
     if (!open) return;
     setError("");
+    setGenerationStatus("");
     setSelectedCO(null);
     setSelectedModules(null);
     setSelectedPOPSO([]);
@@ -135,19 +138,48 @@ export default function ExportSprintPlanModal({
     try {
       setExporting(true);
       setError("");
+      setGenerationStatus("");
 
+      // Validate course description
       if (!courseDescription) {
         setError("Course description not found. Please ensure the course was created properly.");
         setExporting(false);
         return;
       }
 
-      if (!selectedCO || !selectedModules || !hasSelectedAdditionalResource) {
-        setError("Please select one Course Outcome, one Modules document, and one PO-PSO document");
+      // Validate course description content
+      if (!courseDescriptionContent || courseDescriptionContent === "Course description not available") {
+        setError("Course description is not ready. Please wait until it loads fully before creating the sprint plan.");
         setExporting(false);
         return;
       }
 
+      // Validate selections
+      if (!selectedCO) {
+        setError("Please select a Course Outcome document");
+        setExporting(false);
+        return;
+      }
+
+      if (!selectedModules) {
+        setError("Please select a Modules document");
+        setExporting(false);
+        return;
+      }
+
+      // Calculate selected additional resources (PO-PSO)
+      const selectedResourceNames = selectedPOPSO || [];
+      const selectedAdditionalResources = selectedResourceNames.filter(
+        (name) => name !== courseDescription
+      );
+
+      if (selectedAdditionalResources.length === 0) {
+        setError("Please select a PO-PSO document");
+        setExporting(false);
+        return;
+      }
+
+      const selectedPoPsoFile = selectedAdditionalResources[0];
       const courseId = localStorage.getItem("currentCourseId");
       if (!courseId) {
         setError("Course ID not found");
@@ -155,32 +187,23 @@ export default function ExportSprintPlanModal({
         return;
       }
 
+      // Prepare file names in order: Course Description, CO, Modules, PO-PSO
+      const fileNames = [courseDescription, selectedCO, selectedModules, selectedPoPsoFile];
+
       console.log("Generating sprint plan with selected documents:", {
         courseDescription,
         co: selectedCO,
         modules: selectedModules,
-        poPso: selectedPOPSO,
+        poPso: selectedPoPsoFile,
       });
 
-      // Pass the course description first, then the selected asset names to the backend
-      // Order: Course Description, CO Asset, Modules Asset, PO-PSO Resource
-      const selectedAdditionalResources = selectedResourceNames.filter(
-        (name) => name !== courseDescription
-      );
-      const selectedPoPsoFile = selectedAdditionalResources[0];
-      const fileNames = [courseDescription, selectedCO, selectedModules, selectedPoPsoFile];
-
-      if (!courseDescriptionContent || courseDescriptionContent === "Course description not available") {
-        setError("Course description is not ready. Please wait until it loads fully before creating the sprint plan.");
-        setExporting(false);
-        return;
-      }
-
       // Call createAssetChat to trigger sprint-plan generation via the backend
+      setGenerationStatus("Generating sprint plan...");
       const response = await assetService.createAssetChat(courseId, "sprint-plan", fileNames, courseDescriptionContent);
       const generatedText = response?.response || response;
 
       if (generatedText && typeof generatedText === "string") {
+        setGenerationStatus("Saving sprint plan...");
         const finalSprintText = generatedText.trim();
         const timestamp = new Date().toISOString().slice(0, 10);
         const sprintPlanName = `Sprint Plan ${timestamp}`;
@@ -188,8 +211,13 @@ export default function ExportSprintPlanModal({
         // Save the generated sprint plan as an asset
         await assetService.saveAsset(courseId, sprintPlanName, "sprint-plan", finalSprintText);
 
-        alert("Sprint plan created successfully!");
-        onClose?.();
+        setGenerationStatus("Sprint plan created successfully!");
+        // Trigger callback to refresh assets in parent component
+        onSprintPlanCreated?.();
+
+        setTimeout(() => {
+          onClose?.();
+        }, 1500);
       } else {
         setError("Failed to generate sprint plan content");
       }
@@ -206,11 +234,16 @@ export default function ExportSprintPlanModal({
   const moduleAssets = allAssets.filter((a) => a.type === "modules");
   const poPoResources = allAssets.filter((a) => a.source === "resource");
 
+  // Calculate selected resources and validation state
   const selectedResourceNames = selectedPOPSO || [];
   const hasSelectedAdditionalResource = selectedResourceNames.some(
     (name) => name !== courseDescription
   );
   const isComplete = courseDescription && selectedCO && selectedModules && hasSelectedAdditionalResource;
+  const selectedAdditionalResources = selectedResourceNames.filter(
+    (name) => name !== courseDescription
+  );
+  const canGeneratePlan = isComplete && !exporting && !generationStatus;
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -466,39 +499,75 @@ export default function ExportSprintPlanModal({
               </div>
             )}
 
+            {/* Status Message */}
+            {generationStatus && (
+              <div
+                style={{
+                  padding: "12px 16px",
+                  background: "#e3f2fd",
+                  color: "#1976d2",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  border: "1px solid #90caf9",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span style={{
+                  display: "inline-block",
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  background: "#1976d2",
+                  animation: "pulse 1.5s infinite"
+                }}></span>
+                ℹ️ {generationStatus}
+              </div>
+            )}
+
             {/* Actions */}
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button
                 onClick={onClose}
+                disabled={exporting || !!generationStatus}
                 style={{
                   padding: "10px 20px",
                   borderRadius: 6,
                   border: "1px solid #ddd",
                   background: "#fff",
-                  cursor: "pointer",
+                  cursor: exporting || generationStatus ? "not-allowed" : "pointer",
                   fontWeight: 500,
                   fontSize: 14,
+                  opacity: exporting || generationStatus ? 0.6 : 1,
                 }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleExport}
-                disabled={exporting || !isComplete}
+                disabled={!canGeneratePlan}
                 style={{
                   padding: "10px 20px",
                   borderRadius: 6,
                   border: "none",
-                  background: exporting || !isComplete ? "#ccc" : "#16a34a",
+                  background: canGeneratePlan ? "#16a34a" : "#ccc",
                   color: "#fff",
-                  cursor: exporting || !isComplete ? "not-allowed" : "pointer",
+                  cursor: canGeneratePlan ? "pointer" : "not-allowed",
                   fontWeight: 500,
                   fontSize: 14,
                 }}
               >
-                {exporting ? "Creating..." : "Create Sprint Plan"}
+                {exporting || generationStatus ? "Creating..." : "Create Sprint Plan"}
               </button>
             </div>
+
+            <style>{`
+              @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+              }
+            `}</style>
           </>
         )}
       </div>

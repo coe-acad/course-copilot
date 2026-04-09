@@ -1,4 +1,5 @@
 import logging
+import re
 import asyncio
 import time
 from io import BytesIO
@@ -13,6 +14,7 @@ from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
+from ..utils.sprint_plan import build_sprint_plan
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name
 from ..services.openai_service import clean_text
 from ..services.task_manager import task_manager, TaskStatus
@@ -93,31 +95,25 @@ class AssetChatStreamHandler:
         self.response_text = ""
         self.response_id = None
         self.label = label
-        if self.label:
-            print(f"\n--- Starting stream: {self.label} ---")
-
-    def on_text_delta(self, delta, snapshot):
-        """Legacy method kept for compatibility (not actively used)."""
-        print(delta.value, end="", flush=True)
-        self.response_text += delta.value
 
     def handle(self, event):
         if event.type == "response.created":
             self.response_id = event.response.id
-            logger.info(f"Response created with ID: {self.response_id}")
 
         elif event.type == "response.output_text.delta":
-            print(event.delta, end="", flush=True)
             self.response_text += event.delta
 
+        elif event.type == "response.output_text.done":
+            # ✅ capture final assembled text
+            self.response_text += event.output_text
+
         elif event.type == "response.completed":
-            self.response_id = event.response.id
-            label_suffix = f" ({self.label})" if self.label else ""
-            print(f"\n\n--- stream completed{label_suffix} ---")
+            # fallback safety
+            if hasattr(event.response, "output_text"):
+                self.response_text += event.response.output_text or ""
 
         elif event.type == "response.error":
-            label_suffix = f" ({self.label})" if self.label else ""
-            print(f"\n[stream error]{label_suffix} {event.error}")
+            print(f"[ERROR] {event.error}")
 
 
 def construct_input_variables(course: dict, file_names: list[str], course_description: Optional[str] = None) -> dict:
@@ -138,10 +134,16 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         logger.info(f"Starting background task {task_id} for asset '{asset_type_name}'")
         
         course = get_course(course_id)
+        logger.info(f"[DEBUG] Course ID: {course_id}")
+        logger.info(f"[DEBUG] Asset Type: {asset_type_name}")
+        logger.info(f"[DEBUG] File Names: {file_names}")
+        logger.info(f"[DEBUG] Course Description Present: {bool(course_description)}")
+
         if not course:
             task_manager.mark_failed(task_id, "Course not found")
             return
         vector_store_id = course.get("vector_store_id")
+        logger.info(f"[DEBUG] Vector Store ID: {vector_store_id}")
         if not vector_store_id:
             task_manager.mark_failed(task_id, "Vector store ID not found")
             return
@@ -193,8 +195,111 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                             course_description = resource["content"]
                             break
 
+        # For sprint-plan, resolve selected assets/resources to raw content so the model can actually use them.
+        sprint_plan_sources = {}
+        if asset_type_name == "sprint-plan":
+            def _resolve_source_content(source_name: Optional[str]) -> str:
+                if not source_name:
+                    return ""
+                resource = get_resource_by_course_id_and_resource_name(course_id, source_name)
+                if resource and resource.get("content"):
+                    return resource["content"]
+                asset = get_asset_by_course_id_and_asset_name(course_id, source_name)
+                if asset and asset.get("asset_content"):
+                    return asset["asset_content"]
+                return ""
+
+            course_outcomes_name = file_names[1] if len(file_names) > 1 else None
+            modules_name = file_names[2] if len(file_names) > 2 else None
+            po_pso_name = file_names[3] if len(file_names) > 3 else None
+
+            sprint_plan_sources = {
+                "course_outcomes_content": _resolve_source_content(course_outcomes_name),
+                "modules_content": _resolve_source_content(modules_name),
+                "po_pso_content": _resolve_source_content(po_pso_name),
+            }
+
+        # For sprint-plan, build deterministically from selected content (no LLM dependency)
+        if asset_type_name == "sprint-plan":
+            course_name = course.get("name", "")
+            sprint_plan_text = build_sprint_plan(
+                course_name=course_name,
+                course_description=course_description or "",
+                course_outcomes_content=sprint_plan_sources.get("course_outcomes_content", ""),
+                modules_content=sprint_plan_sources.get("modules_content", ""),
+                po_pso_content=sprint_plan_sources.get("po_pso_content", ""),
+            )
+            # Fill CO-PO-PSO mapping + textbooks + references using LLM only for those sections
+            try:
+                ai_prompt = PromptParser().render_prompt(
+                    "app/prompts/asset/sprint-plan-ai.json",
+                    {
+                        "course_name": course_name,
+                        "course_description": course_description or "",
+                        "course_outcomes_content": sprint_plan_sources.get("course_outcomes_content", ""),
+                        "modules_content": sprint_plan_sources.get("modules_content", ""),
+                        "po_pso_content": sprint_plan_sources.get("po_pso_content", ""),
+                    },
+                )
+                ai_response = client.responses.create(
+                    model=settings.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": systemPrompt},
+                        {"role": "user", "content": ai_prompt},
+                    ],
+                    temperature=0.3,
+                )
+                ai_text = (ai_response.output_text or "").strip()
+            except Exception as ai_error:
+                logger.error(f"Sprint plan AI section generation failed: {ai_error}")
+                ai_text = ""
+
+            if ai_text:
+                def _section(text: str, header: str) -> str:
+                    pattern = rf"\\*\\*{re.escape(header)}\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)"
+                    match = re.search(pattern, text, re.IGNORECASE)
+                    return match.group(1).strip() if match else ""
+
+                mapping_section = _section(ai_text, "CO-PO-PSO Mapping Table:")
+                textbooks_section = _section(ai_text, "3 Textbook Titles:")
+                references_section = _section(ai_text, "3 Reference Books:")
+
+                if mapping_section:
+                    sprint_plan_text = sprint_plan_text.replace("<<AI_CO_PO_PSO_TABLE>>", mapping_section)
+                if textbooks_section:
+                    sprint_plan_text = sprint_plan_text.replace("<<AI_TEXTBOOKS>>", textbooks_section)
+                if references_section:
+                    sprint_plan_text = sprint_plan_text.replace("<<AI_REFERENCES>>", references_section)
+
+            # Fallbacks if AI sections are still missing
+            if "<<AI_CO_PO_PSO_TABLE>>" in sprint_plan_text:
+                blank_headers = ["Course", "PO1", "PO2", "PO3", "PO4", "PO5", "PO6", "PO7", "PO8", "PO9", "PO10", "PO11", "PO12", "PSO1", "PSO2", "PSO3"]
+                blank_table = [
+                    "| " + " | ".join(blank_headers) + " |",
+                    "|" + "|".join(["---"] * len(blank_headers)) + "|",
+                    "| CO1 | " + " | ".join([""] * (len(blank_headers) - 1)) + " |",
+                    "| CO2 | " + " | ".join([""] * (len(blank_headers) - 1)) + " |",
+                    "| CO3 | " + " | ".join([""] * (len(blank_headers) - 1)) + " |",
+                    "| CO4 | " + " | ".join([""] * (len(blank_headers) - 1)) + " |",
+                ]
+                sprint_plan_text = sprint_plan_text.replace("<<AI_CO_PO_PSO_TABLE>>", "\n".join(blank_table))
+            if "<<AI_TEXTBOOKS>>" in sprint_plan_text:
+                sprint_plan_text = sprint_plan_text.replace("<<AI_TEXTBOOKS>>", "1. \n2. \n3. ")
+            if "<<AI_REFERENCES>>" in sprint_plan_text:
+                sprint_plan_text = sprint_plan_text.replace("<<AI_REFERENCES>>", "1. \n2. \n3. ")
+
+            result = {
+                "response": sprint_plan_text.strip(),
+                "response_id": None
+            }
+            task_manager.mark_completed(task_id, result)
+            logger.info(f"Completed background task {task_id} for asset '{asset_type_name}'")
+            return
+
         # Prepare prompt
         input_variables = construct_input_variables(course, file_names, course_description)
+        if sprint_plan_sources:
+            input_variables.update(sprint_plan_sources)
         
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
@@ -202,7 +307,10 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
-        logger.info(f"Prompt for asset '{asset_type_name}': {prompt}")
+        print("\n\n===== FINAL PROMPT SENT TO LLM =====\n")
+        print(prompt)
+        print("\n===== END PROMPT =====\n")
+
 
         # Stream run with proper error handling
         handler = AssetChatStreamHandler(label=f"Asset Generation: {asset_type_name}")
@@ -226,10 +334,33 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             logger.warning(f"Stream interrupted in task {task_id}, but continuing to retrieve response: {stream_error}")
             # Continue - we can still get the response from thread messages even if stream was interrupted
 
+        # DEBUG: print raw response BEFORE stripping
+        print("\n\n===== RAW LLM RESPONSE =====\n")
+        print(handler.response_text)
+        print("\n===== END RAW RESPONSE =====\n")
         # Get complete response from handler
         complete_response = handler.response_text.strip()
 
+        # Fallback: if streaming returned nothing, retry with non-streaming call once
+        if not complete_response:
+            logger.warning(f"No response text received for task {task_id}. Retrying with non-streaming response.")
+            try:
+                response = client.responses.create(
+                    model=settings.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": systemPrompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temp,
+                    tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+                )
+                complete_response = (response.output_text or "").strip()
+            except Exception as retry_error:
+                logger.error(f"Non-stream retry failed for task {task_id}: {retry_error}")
+
         if asset_type_name == "sprint-plan":
+            if not complete_response:
+                raise Exception("No sprint plan content returned from model")
             course_name = course.get("name", "")
             cover_table = (
                 f"| Name of the Sprint | {course_name} |\n"
@@ -441,6 +572,8 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         user_display_name = "Unknown User"
     
     try:
+        if asset_type == "sprint-plan":
+            delete_asset_from_db(course_id, asset_name)
         create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
     except ValueError as e:
         # Duplicate asset name or other validation errors
@@ -614,5 +747,3 @@ async def cancel_task(task_id: str, user_id: str = Depends(verify_token)):
     
     task_manager.mark_cancelled(task_id)
     return {"message": f"Task {task_id} cancelled"}
-
-

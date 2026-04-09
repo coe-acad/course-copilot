@@ -57,6 +57,41 @@ export default function Dashboard() {
 
   // Get current user for display name logic
   const currentUser = getCurrentUser();
+  // Helper to refresh assets list
+  const refreshAssets = async () => {
+    try {
+      const courseId = localStorage.getItem('currentCourseId');
+      if (!courseId) return;
+
+      const data = await assetService.getAssets(courseId);
+      const assetsList = data.assets || [];
+
+      // Group assets by category
+      const groupedAssets = {
+        curriculum: [],
+        assessments: [],
+        evaluation: []
+      };
+
+      assetsList.forEach(asset => {
+        const category = asset.asset_category;
+        if (groupedAssets.hasOwnProperty(category)) {
+          groupedAssets[category].push({
+            name: asset.asset_name,
+            type: asset.asset_type,
+            timestamp: asset.asset_last_updated_at,
+            updatedBy: asset.asset_last_updated_by,
+            createdByUserId: asset.created_by_user_id
+          });
+        }
+      });
+
+      setAssets(groupedAssets);
+    } catch (error) {
+      console.error('Error refreshing assets:', error);
+    }
+  };
+
   // Helper to view asset
   const handleViewAsset = async (category, asset) => {
     const courseId = localStorage.getItem('currentCourseId');
@@ -270,6 +305,13 @@ export default function Dashboard() {
 
   const handleCurriculumSubmit = (selected) => {
     setShowCurriculumModal(false);
+
+    // Special handling for sprint-plan: use dedicated modal instead of asset studio
+    if (selected.url === 'sprint-plan') {
+      setShowExportSprintPlanModal(true);
+      return;
+    }
+
     setSelectedComponent(selected.url);
     setShowKBModal(true);
   };
@@ -794,6 +836,7 @@ export default function Dashboard() {
         <ExportSprintPlanModal
           open={showExportSprintPlanModal}
           onClose={() => setShowExportSprintPlanModal(false)}
+          onSprintPlanCreated={refreshAssets}
         />
       </div>
     </>

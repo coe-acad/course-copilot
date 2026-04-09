@@ -11,6 +11,7 @@ from ..services.openai_service import create_file, connect_file_to_vector_store,
 from ..utils.course_pdf_utils import generate_course_pdf
 from ..utils.verify_token import verify_token
 from fastapi.responses import FileResponse
+from PyPDF2 import PdfReader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,7 +85,13 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         create_resource(course_id, resource_name, course_description)
 
         # Upload the PDF to OpenAI (open as binary stream)
-        file_obj = io.BytesIO(pdf_content)
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        file_obj = io.BytesIO(pdf_bytes)
+        file_obj.name = resource_name
+
+        # file_obj = io.BytesIO(pdf_content)
         file_obj.name = resource_name  # ✅ Required for OpenAI
         openai_file_id = create_file(file_obj)
         
@@ -147,7 +154,19 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
 
         # Create resource records with the possibly renamed filenames
         for file in files:
-            create_resource(course_id, file.filename)
+            # create_resource(course_id, file.filename)
+            content = ""
+
+            if file.filename.endswith(".pdf"):
+                pdf_reader = PdfReader(file.file)
+                for page in pdf_reader.pages:
+                    content += page.extract_text() or ""
+
+            else:
+                content = file.file.read().decode("utf-8", errors="ignore")
+
+            create_resource(course_id, file.filename, content)
+
 
         return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
