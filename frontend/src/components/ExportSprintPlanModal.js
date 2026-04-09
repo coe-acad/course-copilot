@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { assetService } from "../services/asset";
 import { getAllResources, viewResource } from "../services/resources";
-import { getCourse } from "../services/course";
+import { fetchCourses } from "../services/course";
 
 export default function ExportSprintPlanModal({
   open,
@@ -74,24 +74,27 @@ export default function ExportSprintPlanModal({
             setCourseDescriptionContent(courseDescriptionText);
           } catch (resourceError) {
             console.warn("Could not load course description from resource:", resourceError);
-            // Fallback to course API if resource content cannot be read
+            // Fallback: find the current course from the courses list
             try {
-              const courseData = await getCourse(courseId);
-              courseDescriptionText = courseData.description || "Course description not available";
+              const allCourses = await fetchCourses();
+              const currentCourse = allCourses.find((c) => c.id === courseId);
+              courseDescriptionText = currentCourse?.description || "Course description not available";
               setCourseDescriptionContent(courseDescriptionText);
             } catch (courseError) {
-              console.warn("Could not load course description from API:", courseError);
+              console.warn("Could not load course description from courses list:", courseError);
               courseDescriptionText = "Course description not available";
               setCourseDescriptionContent(courseDescriptionText);
             }
           }
         } else {
+          // No Course_Description resource — get description from courses list
           try {
-            const courseData = await getCourse(courseId);
-            courseDescriptionText = courseData.description || "Course description not available";
+            const allCourses = await fetchCourses();
+            const currentCourse = allCourses.find((c) => c.id === courseId);
+            courseDescriptionText = currentCourse?.description || "Course description not available";
             setCourseDescriptionContent(courseDescriptionText);
           } catch (courseError) {
-            console.warn("Could not load course description from API:", courseError);
+            console.warn("Could not load course description from courses list:", courseError);
             courseDescriptionText = "Course description not available";
             setCourseDescriptionContent(courseDescriptionText);
           }
