@@ -7,7 +7,7 @@ from ..config.settings import settings
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 from ..utils.verify_token import verify_token
 from ..utils.prompt_parser import PromptParser
 from ..utils.openai_client import client
@@ -201,6 +201,9 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         if asset_type_name == "sprint-plan":
             co_content = ""
             modules_content = ""
+            # file_names contains a mix of asset names and resource filenames.
+            # Try exact name lookup first; if that misses, fall back to searching all
+            # course assets and matching by asset_type so order/casing doesn't matter.
             for file_name in file_names:
                 if not file_name:
                     continue
@@ -211,10 +214,28 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 asset_text = asset_doc.get("asset_content", "")
                 if asset_type_val == "course-outcomes" and not co_content:
                     co_content = asset_text
+                    logger.info(f"Sprint-plan: resolved CO content from asset '{file_name}' ({len(co_content)} chars)")
                 elif asset_type_val == "modules" and not modules_content:
                     modules_content = asset_text
+                    logger.info(f"Sprint-plan: resolved Modules content from asset '{file_name}' ({len(modules_content)} chars)")
+
+            # Fallback: if still missing, pick the most recently updated asset of that type
+            if not co_content or not modules_content:
+                all_assets = get_assets_by_course_id(course_id) or []
+                for asset_doc in all_assets:
+                    atype = asset_doc.get("asset_type", "")
+                    atext = asset_doc.get("asset_content", "")
+                    aname = asset_doc.get("asset_name", "")
+                    if atype == "course-outcomes" and not co_content:
+                        co_content = atext
+                        logger.info(f"Sprint-plan fallback: using CO asset '{aname}'")
+                    elif atype == "modules" and not modules_content:
+                        modules_content = atext
+                        logger.info(f"Sprint-plan fallback: using Modules asset '{aname}'")
+
             input_variables["co_content"] = co_content
             input_variables["modules_content"] = modules_content
+            logger.info(f"Sprint-plan input — co_content length: {len(co_content)}, modules_content length: {len(modules_content)}")
         
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
@@ -461,7 +482,7 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
         user_display_name = "Unknown User"
     
     try:
-        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now(timezone.utc).isoformat(), user_id)
     except ValueError as e:
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))
