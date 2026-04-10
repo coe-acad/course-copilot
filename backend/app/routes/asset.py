@@ -58,6 +58,7 @@ class AssetCreateResponse(BaseModel):
 
 class AssetCreateRequest(BaseModel):
     content: str
+    created_at: Optional[str] = None
 
 class Asset(BaseModel):
     asset_name: str
@@ -590,7 +591,9 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     try:
         if asset_type == "sprint-plan":
             delete_asset_from_db(course_id, asset_name)
-        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, datetime.now().strftime("%d %B %Y %H:%M:%S"), user_id)
+        # Use provided created_at from task metadata, or fall back to current time
+        asset_created_at = request.created_at or datetime.now().strftime("%d %B %Y %H:%M:%S")
+        create_asset(course_id, asset_name, asset_category, asset_type, cleaned_text, user_display_name, asset_created_at, user_id)
     except ValueError as e:
         # Duplicate asset name or other validation errors
         raise HTTPException(status_code=409, detail=str(e))
