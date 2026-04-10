@@ -209,8 +209,6 @@ export default function ExportSprintPlanModal({
       }
 
       // Poll for task completion
-      let taskStatus = null;
-      let taskMetadata = null;
       let maxAttempts = 600; // 10 minutes with 1 second intervals
       let attempt = 0;
 
@@ -218,9 +216,28 @@ export default function ExportSprintPlanModal({
         try {
           const statusResponse = await assetService.getTaskStatus(taskId);
           if (statusResponse.status === "completed") {
-            taskStatus = statusResponse;
-            taskMetadata = statusResponse.metadata;
-            break;
+            const generatedText = statusResponse.result?.response;
+            if (generatedText && typeof generatedText === "string") {
+              setGenerationStatus("Saving sprint plan...");
+              const finalSprintText = generatedText.trim();
+              const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+              const sprintPlanName = `Sprint Plan ${timestamp}`;
+
+              // Save the generated sprint plan as an asset
+              await assetService.saveAsset(courseId, sprintPlanName, "sprint-plan", finalSprintText);
+
+              setGenerationStatus("Sprint plan created successfully!");
+              // Trigger callback to refresh assets in parent component
+              onSprintPlanCreated?.();
+
+              setTimeout(() => {
+                onClose?.();
+              }, 1500);
+            } else {
+              setError("Failed to generate sprint plan content");
+              setExporting(false);
+            }
+            return;
           } else if (statusResponse.status === "failed") {
             setError(statusResponse.error || "Sprint plan generation failed");
             setExporting(false);
@@ -236,35 +253,8 @@ export default function ExportSprintPlanModal({
         }
       }
 
-      if (!taskStatus || taskStatus.status !== "completed") {
-        setError("Sprint plan generation timed out");
-        setExporting(false);
-        return;
-      }
-
-      const generatedText = taskStatus.result?.response;
-      if (generatedText && typeof generatedText === "string") {
-        setGenerationStatus("Saving sprint plan...");
-        const finalSprintText = generatedText.trim();
-        const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-        const sprintPlanName = `Sprint Plan ${timestamp}`;
-
-        // Extract created_at from task metadata (when the task was created)
-        const createdAt = taskMetadata?.created_at;
-
-        // Save the generated sprint plan as an asset with the task creation time
-        await assetService.saveAsset(courseId, sprintPlanName, "sprint-plan", finalSprintText, createdAt);
-
-        setGenerationStatus("Sprint plan created successfully!");
-        // Trigger callback to refresh assets in parent component
-        onSprintPlanCreated?.();
-
-        setTimeout(() => {
-          onClose?.();
-        }, 1500);
-      } else {
-        setError("Failed to generate sprint plan content");
-      }
+      setError("Sprint plan generation timed out");
+      setExporting(false);
     } catch (error) {
       console.error("Export error:", error);
       setError(error.message || "Failed to create sprint plan");

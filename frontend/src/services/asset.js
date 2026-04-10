@@ -107,14 +107,10 @@ export const assetService = {
   },
 
   // Save asset to database
-  saveAsset: async (courseId, assetName, assetType, content, createdAt = null) => {
+  saveAsset: async (courseId, assetName, assetType, content) => {
     try {
-      const body = { content: content };
-      if (createdAt) {
-        body.created_at = createdAt;
-      }
       const res = await axiosInstance.post(`/courses/${courseId}/assets`,
-        body,
+        { content: content },
         {
           params: {
             asset_name: assetName,
@@ -183,7 +179,7 @@ export const assetService = {
   },
 
   // Generate a PDF from raw markdown/text content using backend text_to_pdf utility
-  downloadContentAsPdf: async (title, content, meta = {}) => {
+  downloadContentAsPdf: async (title, content) => {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) {
@@ -627,7 +623,7 @@ export const assetService = {
     }
   },
   // Generate a PDF Blob from raw markdown/text content using backend text_to_pdf utility
-  generateContentPdfBlob: async (title, content, meta = {}) => {
+  generateContentPdfBlob: async (title, content) => {
     try {
       const courseId = localStorage.getItem('currentCourseId');
       if (!courseId) {
