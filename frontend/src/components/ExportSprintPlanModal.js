@@ -199,17 +199,61 @@ export default function ExportSprintPlanModal({
 
       // Call createAssetChat to trigger sprint-plan generation via the backend
       setGenerationStatus("Generating sprint plan...");
-      const response = await assetService.createAssetChat(courseId, "sprint-plan", fileNames, courseDescriptionContent);
-      const generatedText = response?.response || response;
+      const taskResponse = await assetService.createAssetChat(courseId, "sprint-plan", fileNames, courseDescriptionContent);
+      const taskId = taskResponse?.task_id;
 
+      if (!taskId) {
+        setError("Failed to start sprint plan generation");
+        setExporting(false);
+        return;
+      }
+
+      // Poll for task completion
+      let taskStatus = null;
+      let taskMetadata = null;
+      let maxAttempts = 600; // 10 minutes with 1 second intervals
+      let attempt = 0;
+
+      while (attempt < maxAttempts) {
+        try {
+          const statusResponse = await assetService.getTaskStatus(taskId);
+          if (statusResponse.status === "completed") {
+            taskStatus = statusResponse;
+            taskMetadata = statusResponse.metadata;
+            break;
+          } else if (statusResponse.status === "failed") {
+            setError(statusResponse.error || "Sprint plan generation failed");
+            setExporting(false);
+            return;
+          }
+          // Still processing, wait before next poll
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          attempt++;
+        } catch (pollError) {
+          console.error("Error polling task status:", pollError);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          attempt++;
+        }
+      }
+
+      if (!taskStatus || taskStatus.status !== "completed") {
+        setError("Sprint plan generation timed out");
+        setExporting(false);
+        return;
+      }
+
+      const generatedText = taskStatus.result?.response;
       if (generatedText && typeof generatedText === "string") {
         setGenerationStatus("Saving sprint plan...");
         const finalSprintText = generatedText.trim();
         const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
         const sprintPlanName = `Sprint Plan ${timestamp}`;
 
-        // Save the generated sprint plan as an asset
-        await assetService.saveAsset(courseId, sprintPlanName, "sprint-plan", finalSprintText);
+        // Extract created_at from task metadata (when the task was created)
+        const createdAt = taskMetadata?.created_at;
+
+        // Save the generated sprint plan as an asset with the task creation time
+        await assetService.saveAsset(courseId, sprintPlanName, "sprint-plan", finalSprintText, createdAt);
 
         setGenerationStatus("Sprint plan created successfully!");
         // Trigger callback to refresh assets in parent component

@@ -107,10 +107,14 @@ export const assetService = {
   },
 
   // Save asset to database
-  saveAsset: async (courseId, assetName, assetType, content) => {
+  saveAsset: async (courseId, assetName, assetType, content, createdAt = null) => {
     try {
+      const body = { content: content };
+      if (createdAt) {
+        body.created_at = createdAt;
+      }
       const res = await axiosInstance.post(`/courses/${courseId}/assets`,
-        { content: content },
+        body,
         {
           params: {
             asset_name: assetName,
