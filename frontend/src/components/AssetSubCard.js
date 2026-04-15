@@ -313,18 +313,22 @@ export default function AssetSubCard({
           }}>
             {displayName === "You" ? "Created by You" : `Created by ${displayName}`}
           </div>
-          <div style={{ 
+          <div style={{
             textAlign: "right",
             fontSize: 12,
             color: "#999"
           }}>
             {timestamp
-              ? new Date(timestamp).toLocaleString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })
+              ? (() => {
+                  const date = new Date(timestamp);
+                  return new Intl.DateTimeFormat("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }).format(date);
+                })()
               : ""}
           </div>
         </div>
