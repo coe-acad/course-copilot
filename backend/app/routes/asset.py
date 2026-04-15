@@ -257,22 +257,25 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                         "po_pso_content": sprint_plan_sources.get("po_pso_content", ""),
                     },
                 )
-                ai_response = client.responses.create(
+                ai_response = client.chat.completions.create(
                     model=settings.OPENAI_MODEL,
-                    input=[
+                    messages=[
                         {"role": "system", "content": systemPrompt},
                         {"role": "user", "content": ai_prompt},
                     ],
                     temperature=0.3,
                 )
-                ai_text = (ai_response.output_text or "").strip()
+                ai_text = (ai_response.choices[0].message.content or "").strip()
+                logger.info(f"Sprint plan AI response length: {len(ai_text)} chars")
+                if not ai_text:
+                    logger.warning("Sprint plan AI response is empty")
             except Exception as ai_error:
-                logger.error(f"Sprint plan AI section generation failed: {ai_error}")
+                logger.error(f"Sprint plan AI section generation failed: {ai_error}", exc_info=True)
                 ai_text = ""
 
             if ai_text:
                 def _section(text: str, header: str) -> str:
-                    pattern = rf"\\*\\*{re.escape(header)}\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)"
+                    pattern = rf"\*\*{re.escape(header)}\*\*\s*([\s\S]*?)(?=\*\*|$)"
                     match = re.search(pattern, text, re.IGNORECASE)
                     return match.group(1).strip() if match else ""
 
