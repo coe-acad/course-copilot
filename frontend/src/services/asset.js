@@ -30,8 +30,8 @@ export const assetService = {
       const res = await axiosInstance.post(`/courses/${courseId}/asset_chat/${assetTypeName}`, payload);
       const taskData = res.data; // { task_id, status, message }
 
-      // Poll for completion
-      return await assetService.pollTaskUntilComplete(taskData.task_id);
+      // Return task data immediately so caller can handle polling
+      return taskData;
     } catch (error) {
       handleAxiosError(error);
     }

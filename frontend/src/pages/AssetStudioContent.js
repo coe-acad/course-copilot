@@ -200,14 +200,20 @@ export default function AssetStudioContent() {
         console.log('Chosen files:', chosen);
         console.log('File names being sent:', fileNames);
 
-        const response = await assetService.createAssetChat(courseId, option, fileNames);
-        if (response && response.response) {
-          const normalizedResponse = normalizeEscapes(response.response);
-          const formattedResponse = option === 'mark-scheme'
-            ? formatMarkSchemeResponse(normalizedResponse)
-            : normalizedResponse;
-          setChatMessages(prev => [...prev, { type: "bot", text: formattedResponse }]);
-          setLastResponseId(response.response_id);
+        const taskResponse = await assetService.createAssetChat(courseId, option, fileNames);
+        const taskId = taskResponse?.task_id;
+
+        if (taskId) {
+          // Poll for task completion
+          const completedTask = await assetService.getTaskStatus(taskId);
+          if (completedTask && completedTask.result && completedTask.result.response) {
+            const normalizedResponse = normalizeEscapes(completedTask.result.response);
+            const formattedResponse = option === 'mark-scheme'
+              ? formatMarkSchemeResponse(normalizedResponse)
+              : normalizedResponse;
+            setChatMessages(prev => [...prev, { type: "bot", text: formattedResponse }]);
+            setLastResponseId(completedTask.result.response_id);
+          }
         }
       } catch (error) {
         console.error("Error creating initial message:", error);
