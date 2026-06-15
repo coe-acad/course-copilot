@@ -104,14 +104,8 @@ class AssetChatStreamHandler:
         elif event.type == "response.output_text.delta":
             self.response_text += event.delta
 
-        elif event.type == "response.output_text.done":
-            # ✅ capture final assembled text
-            self.response_text += event.output_text
-
         elif event.type == "response.completed":
-            # fallback safety
-            if hasattr(event.response, "output_text"):
-                self.response_text += event.response.output_text or ""
+            self.response_id = event.response.id
 
         elif event.type == "response.error":
             print(f"[ERROR] {event.error}")
