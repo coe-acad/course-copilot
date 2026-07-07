@@ -1,3 +1,4 @@
+from logging import log
 import logging
 import re
 import asyncio
@@ -16,7 +17,7 @@ from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.sprint_plan import build_sprint_plan
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name
-from ..services.openai_service import clean_text
+from ..services.openai_service import clean_text, create_file, connect_file_to_vector_store
 from ..services.task_manager import task_manager, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -151,7 +152,8 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             input_variables_qp = construct_input_variables(course, file_names)
             parser_qp = PromptParser()
             prompt_qp = parser_qp.get_asset_prompt("qp-extraction", input_variables_qp)
-            
+            logger.info(f"[DEBUG] qp-extraction prompt_qp:\n{prompt_qp}")
+
             handler_qp = AssetChatStreamHandler(label="Question Extraction")
 
             try:
@@ -719,7 +721,22 @@ def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreate
         logger.info(f"Saving resource: {asset_name} with content length: {len(content)}")
         create_resource(course_id, asset_name, content)
         logger.info(f"Resource saved successfully: {asset_name}")
-        
+
+        # 6. Also add the resource to the course vector store so it is searchable (e.g. file_search)
+        try:
+            course = get_course(course_id)
+            vector_store_id = course.get("vector_store_id") if course else None
+            if vector_store_id:
+                file_obj = BytesIO(content.encode("utf-8"))
+                file_obj.name = f"{asset_name}.txt"
+                openai_file_id = create_file(file_obj)
+                connect_file_to_vector_store(vector_store_id, openai_file_id)
+                logger.info(f"Resource '{asset_name}' added to vector store {vector_store_id}")
+            else:
+                logger.warning(f"No vector store for course {course_id}; resource '{asset_name}' not indexed")
+        except Exception as vs_error:
+            logger.error(f"Failed to add resource '{asset_name}' to vector store: {vs_error}")
+
         return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{asset_name}' successfully")
     except HTTPException:
         raise

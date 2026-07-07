@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiEye, FiTrash2, FiSave } from "react-icons/fi";
 import { assetService } from "../services/asset";
@@ -44,6 +44,7 @@ export default function AssetSubCard({
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingAsResource, setIsSavingAsResource] = useState(false);
+  const isSavingAsResourceRef = useRef(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -103,7 +104,9 @@ export default function AssetSubCard({
 
   const handleSaveAsResource = async () => {
     if (!courseId || !name) return;
-    
+    if (isSavingAsResourceRef.current || isSavingAsResource) return;
+
+    isSavingAsResourceRef.current = true;
     setIsSavingAsResource(true);
     try {
       console.log('Starting save as resource for:', name);
@@ -145,6 +148,7 @@ export default function AssetSubCard({
       console.error('Error saving asset as resource:', error);
       alert(`Failed to save asset as resource: ${error.message}`);
     } finally {
+      isSavingAsResourceRef.current = false;
       setIsSavingAsResource(false);
     }
   };

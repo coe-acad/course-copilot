@@ -140,6 +140,7 @@ export default function AssetStudioContent() {
   const [resourceSaveMessage, setResourceSaveMessage] = useState("");
   const hasInitializedRef = useRef(false);
   const isSendingRef = useRef(false);
+  const isSavingResourceRef = useRef(false);
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -364,7 +365,8 @@ export default function AssetStudioContent() {
   };
 
   const handleSaveResourceConfirm = async () => {
-    if (isSavingResource) return;
+    if (isSavingResourceRef.current || isSavingResource) return;
+    isSavingResourceRef.current = true;
     setIsSavingResource(true);
     try {
       const courseId = localStorage.getItem('currentCourseId');
@@ -400,6 +402,7 @@ export default function AssetStudioContent() {
       console.error('Failed to save to resources', e);
       alert(`Failed to save to resources: ${e.message}`);
     } finally {
+      isSavingResourceRef.current = false;
       setIsSavingResource(false);
     }
   };
