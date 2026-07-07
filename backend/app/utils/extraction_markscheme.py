@@ -357,7 +357,11 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
         if marking_match:
             marking_text = marking_match.group(1)
             question_data["markingscheme"] = _extract_bullet_points(marking_text)
-        
+
+        # Extract max_score from marking scheme
+        max_score = _extract_max_score_from_markingscheme(question_data["markingscheme"])
+        question_data["max_score"] = max_score
+
         questions.append(question_data)
     
     return questions
@@ -476,18 +480,54 @@ def _clean_text(text: str) -> str:
     """Clean and normalize text"""
     if not text:
         return ""
-    
+
     # Remove quotes at start/end
     text = text.strip()
     text = re.sub(r'^["\']|["\']$', '', text)
-    
+
     # Remove excessive whitespace
     text = re.sub(r'\s+', ' ', text)
-    
+
     # Remove trailing commas and semicolons
     text = re.sub(r'[,;]\s*$', '', text)
-    
+
     return text.strip()
+
+
+def _extract_max_score_from_markingscheme(marking_scheme: List[str]) -> int:
+    """
+    Extract the maximum score from a marking scheme list.
+    Looks for patterns like [2], (2 marks), etc.
+    Returns the highest score found, or 1 as fallback.
+    """
+    if not marking_scheme or not isinstance(marking_scheme, list):
+        return 1
+
+    scores = []
+    for item in marking_scheme:
+        if not isinstance(item, str):
+            continue
+
+        # Pattern 1: [N] or [N marks] at end of string
+        match = re.search(r'\[(\d+)\s*(?:marks?)?\]\s*$', item, re.IGNORECASE)
+        if match:
+            scores.append(int(match.group(1)))
+            continue
+
+        # Pattern 2: (N marks) or (N) at end of string
+        match = re.search(r'\((\d+)\s*(?:marks?)?\)\s*$', item, re.IGNORECASE)
+        if match:
+            scores.append(int(match.group(1)))
+            continue
+
+        # Pattern 3: N marks at end
+        match = re.search(r'(\d+)\s+marks?\s*$', item, re.IGNORECASE)
+        if match:
+            scores.append(int(match.group(1)))
+
+    if scores:
+        return max(scores)
+    return 1
 
 
 def _normalize_question_format(item: Dict[str, Any]) -> Dict[str, Any]:

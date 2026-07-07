@@ -551,33 +551,39 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
         logger.info(f"Converting {len(results)} Q&A pairs to answers-only format")
         answers_only_results = []
         for idx, qa in enumerate(results):
-            # Extract answer content from the answer array
-            answer_content = ""
+            # Extract answer content from the answer array - preserve structured data (images, tables)
+            answer_items = []
             if qa.get("answer") and isinstance(qa["answer"], list):
                 for ans_item in qa["answer"]:
                     if isinstance(ans_item, dict) and ans_item.get("type") == "text":
-                        answer_content += ans_item.get("content", "")
+                        content = ans_item.get("content", "")
+                        if content:
+                            answer_items.append({"type": "text", "content": content})
                     elif isinstance(ans_item, dict) and ans_item.get("type") == "table":
-                        # Format table data as readable text
+                        # Keep table structure intact
                         table_data = ans_item.get("content", [])
                         if table_data and isinstance(table_data, list):
-                            answer_content += "\n[Table]:\n"
-                            for row in table_data:
-                                if row:  # Skip empty rows
-                                    # Join cells with | separator
-                                    row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                                    answer_content += row_text + "\n"
-                            answer_content += "[End Table]\n"
+                            answer_items.append({"type": "table", "content": table_data})
                     elif isinstance(ans_item, dict) and ans_item.get("type") == "image":
-                        # Include image reference in answer content
+                        # Preserve image structure as JSON (NOT plain text)
                         file_id = ans_item.get("file_id", "")
                         if file_id:
-                            answer_content += f"\n[Image: {file_id}]\n"
-            
+                            answer_items.append({"type": "image", "file_id": file_id})
+
+            # Convert answer items to JSON string to preserve structure
+            student_answer = None
+            if answer_items:
+                if len(answer_items) == 1 and answer_items[0].get("type") == "text":
+                    # Single text answer - just use the content for readability
+                    student_answer = answer_items[0].get("content")
+                else:
+                    # Multiple items or mixed types - preserve as JSON array
+                    student_answer = json.dumps(answer_items)
+
             # Store only answer with question number (NO question text)
             answer_only = {
                 "question_number": str(idx + 1),
-                "student_answer": answer_content if answer_content else None
+                "student_answer": student_answer
             }
             answers_only_results.append(answer_only)
         

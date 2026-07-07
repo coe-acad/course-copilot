@@ -13,6 +13,55 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
+
+def _validate_question_numbers(mark_scheme: dict, answer_sheets: list) -> None:
+    """
+    Validate that student answer question numbers match the mark scheme.
+    Warns if there are discrepancies.
+
+    Args:
+        mark_scheme: Dict with 'mark_scheme' key containing list of question dicts
+        answer_sheets: List of student answer sheet dicts
+    """
+    mark_scheme_list = mark_scheme.get("mark_scheme", [])
+    if not mark_scheme_list:
+        logger.warning("No mark scheme questions found for validation")
+        return
+
+    # Extract expected question numbers from mark scheme
+    expected_questions = set()
+    for question in mark_scheme_list:
+        q_num = question.get("questionnumber")
+        if q_num is not None:
+            expected_questions.add(str(q_num))
+
+    if not expected_questions:
+        logger.warning("Could not extract question numbers from mark scheme")
+        return
+
+    # Check each student's answers
+    for sheet in answer_sheets:
+        student_answers = sheet.get("answers", [])
+        student_questions = set()
+        for answer in student_answers:
+            q_num = answer.get("question_number")
+            if q_num:
+                student_questions.add(str(q_num))
+
+        # Compare
+        missing_questions = expected_questions - student_questions
+        extra_questions = student_questions - expected_questions
+
+        if missing_questions:
+            logger.warning(
+                f"Student {sheet.get('email', sheet.get('file_id'))} missing answers for questions: {missing_questions}"
+            )
+        if extra_questions:
+            logger.warning(
+                f"Student {sheet.get('email', sheet.get('file_id'))} has answers for unexpected questions: {extra_questions}"
+            )
+
+
 def create_file(file_obj):
     try:
         openai_file = client.files.create(file=file_obj, purpose="assistants")
@@ -195,16 +244,16 @@ Course description: {description}
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """
     Evaluate a batch of answer sheets using OpenAI API.
-    
+
     This function evaluates the answer sheets it receives without internal batching.
     Batching logic should be handled by the caller (routes layer).
-    
+
     Args:
         evaluation_id: Unique identifier for the evaluation
         user_id: User performing the evaluation
         extracted_mark_scheme: Dict containing mark scheme with 'mark_scheme' key
         extracted_answer_sheets: Dict with "answer_sheets" key containing list of sheets to evaluate
-        
+
     Returns:
         Dict with structure: { "evaluation_id": str, "students": [...] }
     """
@@ -225,6 +274,9 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     evaluation = get_evaluation_by_evaluation_id(evaluation_id)
     if not evaluation:
         raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found")
+
+    # Validate question numbers consistency
+    _validate_question_numbers(extracted_mark_scheme, answer_sheets_list)
     # Prepare evaluation payload
     payload = {
         "mark_scheme": json.dumps(extracted_mark_scheme),
