@@ -9,6 +9,10 @@ function handleAxiosError(error) {
   throw new Error(error.message || 'Unknown error');
 }
 
+// Tracks in-flight save-as-resource requests to prevent duplicate submissions
+// (e.g. double click or re-render firing the same save while one is still pending).
+const inFlightResourceSaves = new Set();
+
 export const assetService = {
   // Get all assets for a course
   getAssets: async (courseId) => {
@@ -1089,6 +1093,12 @@ export const assetService = {
 
   // Save asset as resource
   saveAssetAsResource: async (courseId, assetName, content) => {
+    const key = `${courseId}/${assetName}`;
+    if (inFlightResourceSaves.has(key)) {
+      console.warn(`saveAssetAsResource already in flight for ${key}; ignoring duplicate request`);
+      return { message: 'Save already in progress' };
+    }
+    inFlightResourceSaves.add(key);
     try {
       const res = await axiosInstance.post(`/courses/${courseId}/assets/${assetName}/save-as-resource`,
         {
@@ -1099,6 +1109,8 @@ export const assetService = {
       return res.data;
     } catch (error) {
       handleAxiosError(error);
+    } finally {
+      inFlightResourceSaves.delete(key);
     }
   }
 }; 

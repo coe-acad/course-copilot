@@ -190,6 +190,8 @@ def get_course_owner_email(course_id: str):
 
 # Resources
 def create_resource(course_id: str, resource_name: str, content: str = None):
+    if get_resource_by_course_id_and_resource_name(course_id, resource_name):
+        return
     resource_data = {"course_id": course_id, "resource_name": resource_name}
     if content is not None:
         resource_data["content"] = content
