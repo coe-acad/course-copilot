@@ -577,10 +577,12 @@ def save_asset(course_id: str, asset_name: str, asset_type: str, request: AssetC
     # Default to a safe category so saving never fails due to unmapped type
     asset_category = category_map.get(asset_type, "content")
     # For generated assets that need exact content ordering, do not apply extra cleaning.
-    if asset_type in ["mark-scheme", "sprint-plan"]:
-        cleaned_text = request.content
-    else:
-        cleaned_text = clean_text(request.content)
+    # NOTE: clean_text temporarily disabled — will be restored later.
+    cleaned_text = request.content
+    # if asset_type in ["mark-scheme", "sprint-plan"]:
+    #     cleaned_text = request.content
+    # else:
+    #     cleaned_text = clean_text(request.content)
     
     # Get user's display name for the asset
     user_display_name = get_user_display_name(user_id)
