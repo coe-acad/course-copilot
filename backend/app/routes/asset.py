@@ -322,6 +322,40 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
+
+        # For question-paper, inject the ACTUAL content of the selected files into the prompt.
+        # Selection otherwise only passes file NAMES; the model reads content via file_search
+        # over the whole vector store, which is unreliable for saved assets (e.g. a Course
+        # Outcomes doc). Resolving each selected file to its stored text and appending it makes
+        # the source material — including the CO list — directly visible to the model.
+        if asset_type_name == "question-paper":
+            resolved_sections = []
+            for fname in file_names:
+                if not fname:
+                    continue
+                content = ""
+                resource = get_resource_by_course_id_and_resource_name(course_id, fname)
+                if resource and resource.get("content"):
+                    content = resource["content"]
+                else:
+                    asset = get_asset_by_course_id_and_asset_name(course_id, fname)
+                    if asset and asset.get("asset_content"):
+                        content = asset["asset_content"]
+                if content:
+                    resolved_sections.append(f"### {fname}\n{content}")
+                    logger.info(f"[QP] Injected content for selected file '{fname}' ({len(content)} chars)")
+                else:
+                    logger.warning(f"[QP] No stored text content found for selected file '{fname}' (relying on file_search)")
+
+            if resolved_sections:
+                prompt += (
+                    "\n\n---\n"
+                    "FULL CONTENT OF THE SELECTED FILES (authoritative source material — "
+                    "treat this as the content of the files named above; use it directly, "
+                    "including for locating course outcomes. The file_search tool is only a supplement):\n\n"
+                    + "\n\n".join(resolved_sections)
+                )
+
         print("\n\n===== FINAL PROMPT SENT TO LLM =====\n")
         print(prompt)
         print("\n===== END PROMPT =====\n")
