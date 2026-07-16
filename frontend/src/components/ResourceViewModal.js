@@ -1,15 +1,15 @@
 import React, { useState } from "react";
-import { FiX, FiDownload, FiCopy } from "react-icons/fi";
+import { FiX, FiCopy } from "react-icons/fi";
 import Modal from "./Modal";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { viewResource } from "../services/resources";
-import { jsPDF } from "jspdf";
+import DownloadButton from "./DownloadButton";
+import { latexToText } from "../utils/latexToText";
 
 export default function ResourceViewModal({ open, onClose, resourceName, courseId }) {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
-  const [showDownloadMessage, setShowDownloadMessage] = useState(false);
   const [resourceData, setResourceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -53,91 +53,6 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
       setTimeout(() => setShowCopyMessage(false), 2000);
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!resourceData?.content) return;
-    
-    try {
-      // Create PDF document
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 15;
-      const maxWidth = pageWidth - 2 * margin;
-      let yPosition = margin;
-
-      // Helper function to strip markdown formatting and convert to plain text
-      const stripMarkdown = (text) => {
-        // Remove markdown headers
-        text = text.replace(/^#+\s+/gm, '');
-        // Remove bold/italic markers
-        text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
-        text = text.replace(/\*([^*]+)\*/g, '$1');
-        // Remove links but keep text
-        text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-        // Remove code blocks
-        text = text.replace(/```[\s\S]*?```/g, '');
-        text = text.replace(/`([^`]+)`/g, '$1');
-        // Remove list markers
-        text = text.replace(/^[\s]*[-*+]\s+/gm, '');
-        text = text.replace(/^[\s]*\d+\.\s+/gm, '');
-        return text;
-      };
-
-      // Convert markdown content to plain text
-      const plainText = stripMarkdown(resourceData.content);
-      
-      // Split text into lines
-      const lines = plainText.split('\n');
-      
-      // Add title
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
-      const titleLines = doc.splitTextToSize(resourceName, maxWidth);
-      doc.text(titleLines, margin, yPosition);
-      yPosition += titleLines.length * 10 + 10;
-      
-      // Add a line separator
-      doc.setDrawColor(200, 200, 200);
-      doc.setLineWidth(0.5);
-      doc.line(margin, yPosition, pageWidth - margin, yPosition);
-      yPosition += 10;
-      
-      // Add content
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 51, 51);
-      
-      lines.forEach((line) => {
-        // Check if we need a new page
-        if (yPosition > pageHeight - margin - 20) {
-          doc.addPage();
-          yPosition = margin;
-        }
-        
-        if (line.trim() === '') {
-          // Empty line - add spacing
-          yPosition += 4;
-        } else {
-          // Split long lines to fit page width
-          const textLines = doc.splitTextToSize(line.trim(), maxWidth);
-          doc.text(textLines, margin, yPosition);
-          yPosition += textLines.length * 5 + 3;
-        }
-      });
-      
-      // Save the PDF
-      const filename = `${resourceName.replace(/\.(txt|pdf)$/i, '')}.pdf`;
-      doc.save(filename);
-      
-      setShowDownloadMessage(true);
-      setTimeout(() => setShowDownloadMessage(false), 2000);
-    } catch (error) {
-      console.error('Failed to download file:', error);
-      alert('Failed to generate PDF. Please try again.');
     }
   };
 
@@ -219,41 +134,11 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
                       </span>
                     )}
                   </button>
-                  <button
-                    onClick={handleDownload}
-                    style={{
-                      background: '#2563eb',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '14px',
-                      color: 'white',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#1d4ed8';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#2563eb';
-                    }}
-                    title="Download content"
-                  >
-                    <FiDownload size={16} />
-                    Download
-                    {showDownloadMessage && (
-                      <span style={{ 
-                        fontSize: '12px', 
-                        color: '#fff',
-                        marginLeft: '4px'
-                      }}>
-                        ✓ Downloaded!
-                      </span>
-                    )}
-                  </button>
+                  <DownloadButton
+                    courseId={courseId}
+                    filename={resourceName}
+                    content={resourceData.content}
+                  />
                 </>
               )}
               
@@ -381,7 +266,7 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
                   td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />
                 }}
               >
-                {resourceData.content}
+                {latexToText(resourceData.content)}
               </ReactMarkdown>
             </div>
           )}

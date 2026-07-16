@@ -10,6 +10,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
+import DownloadButton from '../components/DownloadButton';
+import { latexToText } from '../utils/latexToText';
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -292,20 +294,6 @@ export default function AssetStudioContent() {
     }
   };
 
-  const handleDownload = async (message) => {
-    try {
-      const safeTitle = (title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_');
-      await assetService.downloadContentAsPdf(safeTitle, message || '', {
-        asset_type: option,
-        asset_category: undefined,
-        updated_by: undefined,
-        updated_at: undefined,
-      });
-    } catch (e) {
-      console.error('PDF download failed', e);
-    }
-  };
-
   const handleSaveToAsset = (message) => {
     setSaveModalMessage(message);
     setAssetName("");
@@ -549,7 +537,7 @@ export default function AssetStudioContent() {
                           a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
                         }}
                       >
-                        {msg.text}
+                        {latexToText(msg.text)}
                       </ReactMarkdown>
                     </div>
                   ) : (
@@ -568,10 +556,17 @@ export default function AssetStudioContent() {
                       color: "#888"
                     }}
                   >
-                    <FaDownload
-                      title="Download"
-                      style={{ cursor: "pointer", opacity: 0.8 }}
-                      onClick={() => handleDownload(msg.text)}
+                    <DownloadButton
+                      courseId={localStorage.getItem('currentCourseId')}
+                      filename={(title || 'asset').toString().replace(/[^a-zA-Z0-9-_]/g, '_')}
+                      content={msg.text}
+                      renderTrigger={(open) => (
+                        <FaDownload
+                          title="Download"
+                          style={{ cursor: "pointer", opacity: 0.8 }}
+                          onClick={open}
+                        />
+                      )}
                     />
                     <FaFolderPlus
                       title="Save to Asset"

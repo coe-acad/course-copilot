@@ -142,7 +142,64 @@ export const assetService = {
     }
   },
 
-  // Download asset as DOCX by streaming the backend text-to-docx endpoint
+  // Trigger a browser download for a Blob. Shared by every download helper so
+  // the anchor/objectURL handling lives in exactly one place.
+  triggerBlobDownload: (blob, filename) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  // Single source of truth for downloading rendered content. Renders the
+  // markdown `content` to the chosen `format` ('pdf' | 'docx') via the backend
+  // converters (reportlab / python-docx) and downloads it. Every download
+  // entry point (chat, asset card, resource view) goes through here so the
+  // output is identical regardless of where the download was triggered.
+  downloadContent: async (courseId, baseName, content, format = 'pdf') => {
+    try {
+      if (!courseId) {
+        throw new Error('Course ID is required');
+      }
+      if (!content) {
+        throw new Error('Content is required');
+      }
+
+      const fmt = format === 'docx' ? 'docx' : 'pdf';
+      // Strip a trailing extension, then drop only characters that are invalid
+      // in filenames / would break the Content-Disposition header. Spaces and
+      // hyphens are kept so user-entered names are preserved.
+      const safeBase = (baseName || 'document')
+        .toString()
+        .replace(/\.(pdf|docx|txt)$/i, '')
+        // eslint-disable-next-line no-control-regex
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+        .trim() || 'document';
+      const filename = `${safeBase}.${fmt}`;
+      const mime = fmt === 'docx'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'application/pdf';
+
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/assets/${fmt}`,
+        { content, filename },
+        { responseType: 'blob' }
+      );
+
+      const blob = new Blob([response.data], { type: mime });
+      assetService.triggerBlobDownload(blob, filename);
+    } catch (error) {
+      handleAxiosError(error);
+    }
+  },
+
+  // Download an asset as DOCX. Kept for callers that download directly without
+  // a format prompt (e.g. the Dashboard quick-download); delegates to the
+  // shared downloadContent so the output matches every other download path.
   downloadAsset: async (courseId, assetName, contentOverride = null) => {
     try {
       if (!courseId || !assetName) {
@@ -164,54 +221,7 @@ export const assetService = {
         resolvedName = asset.asset_name || assetName;
       }
 
-      const filename = `${resolvedName}.docx`;
-
-      const response = await axiosInstance.post(
-        `/courses/${courseId}/assets/docx`,
-        { content, filename, asset_name: assetName },
-        { responseType: 'blob' }
-      );
-
-      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      handleAxiosError(error);
-    }
-  },
-
-  // Generate a PDF from raw markdown/text content using backend text_to_pdf utility
-  downloadContentAsPdf: async (title, content, meta = {}) => {
-    try {
-      const courseId = localStorage.getItem('currentCourseId');
-      if (!courseId) {
-        throw new Error('No course ID found');
-      }
-
-      const filename = `${title || 'asset'}.pdf`;
-
-      // Use backend text_to_pdf endpoint
-      const response = await axiosInstance.post(
-        `/courses/${courseId}/assets/pdf`,
-        { content, filename },
-        { responseType: 'blob' }
-      );
-
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await assetService.downloadContent(courseId, resolvedName, content, 'docx');
     } catch (error) {
       handleAxiosError(error);
     }

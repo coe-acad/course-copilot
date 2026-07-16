@@ -20,18 +20,68 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     HRFlowable,
+    Image,
     ListFlowable,
     ListItem,
     Paragraph,
     Preformatted,
     SimpleDocTemplate,
     Spacer,
+    Table,
+    TableStyle,
 )
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.pdfmetrics import registerFontFamily
+
+from app.utils.markdown_media import fetch_image_stream, parse_image_line
+from app.utils.latex_to_text import latex_to_text
 
 PdfBytes = bytes
 PathLike = Union[str, Path]
 
-_DEFAULT_FONT_NAME = "Helvetica"
+_FONTS_DIR = Path(__file__).parent / "fonts"
+
+
+def _register_unicode_fonts() -> tuple[str, str]:
+    """Register the bundled DejaVu fonts for full Unicode (math/Greek) coverage.
+
+    The built-in Type-1 fonts (Helvetica/Courier) lack glyphs for math symbols
+    and sub/superscripts, so equations render as tofu boxes. DejaVu covers them.
+    Returns ``(body_font, mono_font)`` names, falling back to the built-in fonts
+    if the TTF files are missing so PDF generation never breaks.
+    """
+    try:
+        variants = {
+            "DejaVuSans": "DejaVuSans.ttf",
+            "DejaVuSans-Bold": "DejaVuSans-Bold.ttf",
+            "DejaVuSans-Oblique": "DejaVuSans-Oblique.ttf",
+            "DejaVuSans-BoldOblique": "DejaVuSans-BoldOblique.ttf",
+            "DejaVuSansMono": "DejaVuSansMono.ttf",
+            "DejaVuSansMono-Bold": "DejaVuSansMono-Bold.ttf",
+        }
+        for name, filename in variants.items():
+            path = _FONTS_DIR / filename
+            if not path.exists():
+                raise FileNotFoundError(path)
+            if name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(name, str(path)))
+        # Let reportlab resolve -Bold / -Oblique and inline <b>/<i> markup.
+        registerFontFamily(
+            "DejaVuSans",
+            normal="DejaVuSans",
+            bold="DejaVuSans-Bold",
+            italic="DejaVuSans-Oblique",
+            boldItalic="DejaVuSans-BoldOblique",
+        )
+        return "DejaVuSans", "DejaVuSansMono"
+    except Exception:
+        # Fonts unavailable — degrade to the built-ins rather than fail.
+        return "Helvetica", "Courier"
+
+
+_DEFAULT_FONT_NAME, _MONO_FONT_NAME = _register_unicode_fonts()
 _DEFAULT_FONT_SIZE = 11
 _DEFAULT_PAGE_SIZE = LETTER
 _H_MARGIN = 0.85 * inch
@@ -52,6 +102,9 @@ def text_to_pdf(
 
     if not text:
         raise ValueError("text must be a non-empty string")
+
+    # Convert LaTeX math to readable plain text so equations don't render raw.
+    text = latex_to_text(text)
 
     title = _extract_title(text) or _DEFAULT_TITLE
     buffer = BytesIO()
@@ -211,7 +264,7 @@ def _build_styles(font_name: str, font_size: int):
     code_style = ParagraphStyle(
         "Code",
         parent=body,
-        fontName="Courier",
+        fontName=_MONO_FONT_NAME,
         fontSize=font_size - 1,
         leading=(font_size - 1) * 1.4,
         backColor=colors.HexColor("#f9fafb"),
@@ -351,7 +404,15 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
                     spaceBefore=0.15 * inch,
                 )
             )
-            
+
+        elif b_type == "table":
+            table_flowable = _build_table(block, styles)
+            if table_flowable is not None:
+                flowables.append(table_flowable)
+
+        elif b_type == "image":
+            flowables.append(_build_image(block, styles))
+
         else:
             # Regular paragraph - join lines with spaces for proper wrapping
             paragraph_text = " ".join(
@@ -481,6 +542,43 @@ def _split_blocks(text: str) -> List[dict]:
                 blocks.append({"type": "ol", "items": items})
             continue
 
+        # Standalone images: ![alt](src)
+        image_match = parse_image_line(stripped)
+        if image_match:
+            alt, src = image_match
+            blocks.append({"type": "image", "alt": alt, "src": src})
+            idx += 1
+            continue
+
+        # Markdown tables — lines starting with |
+        if stripped.startswith("|"):
+            table_lines = []
+            while idx < total and lines[idx].strip().startswith("|"):
+                table_lines.append(lines[idx].strip())
+                idx += 1
+
+            def _parse_row(row_str):
+                cells = row_str.strip().strip("|").split("|")
+                return [c.strip() for c in cells]
+
+            def _is_separator(row_str):
+                cells = [c.strip() for c in row_str.strip().strip("|").split("|") if c.strip()]
+                return bool(cells) and all(re.match(r"^:?-+:?$", c) for c in cells)
+
+            headers: List[str] = []
+            rows: List[List[str]] = []
+            for i, tl in enumerate(table_lines):
+                if i == 0:
+                    headers = _parse_row(tl)
+                elif _is_separator(tl):
+                    continue
+                else:
+                    rows.append(_parse_row(tl))
+
+            if headers:
+                blocks.append({"type": "table", "headers": headers, "rows": rows})
+            continue
+
         # Regular paragraphs - everything else including "1 Title" style lines
         paragraph_lines = [line]
         idx += 1
@@ -497,6 +595,8 @@ def _split_blocks(text: str) -> List[dict]:
                 or re.match(r"^\s*\d+\.\s+", lookahead)
                 or stripped_la.startswith("#")
                 or stripped_la.startswith(">")
+                or stripped_la.startswith("|")
+                or parse_image_line(stripped_la)
             ):
                 break
             paragraph_lines.append(lookahead)
@@ -504,6 +604,18 @@ def _split_blocks(text: str) -> List[dict]:
         blocks.append({"type": "paragraph", "lines": paragraph_lines})
 
     return blocks
+
+
+def _split_url_trailing(url: str):
+    """Split trailing sentence punctuation a bare-URL match greedily swallowed."""
+    trail = ""
+    while url and url[-1] in ".,!?":
+        trail = url[-1] + trail
+        url = url[:-1]
+    while url.endswith(")") and url.count("(") < url.count(")"):
+        trail = ")" + trail
+        url = url[:-1]
+    return url, trail
 
 
 def _convert_inline(text: str) -> str:
@@ -516,6 +628,31 @@ def _convert_inline(text: str) -> str:
         .replace("\t", "    ")
     )
     
+    # Extract [text](url) links first, stashing each URL behind a token so the
+    # emphasis passes below can style the link *label* without mangling the URL
+    # (URLs often contain _ or ~). The <a href> tag is restored at the end.
+    stashed_urls: List[str] = []
+
+    def _stash_link(match: "re.Match") -> str:
+        label, url = match.group(1), match.group(2)
+        token = f"\x00U{len(stashed_urls)}\x00"
+        stashed_urls.append(url)
+        return f'<a href="{token}" color="#2563eb"><u>{label}</u></a>'
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", _stash_link, text)
+
+    # Autolink bare URLs (http(s)://… or www.…) that aren't already markdown
+    # links. Trailing sentence punctuation is kept outside the link.
+    def _stash_bare_url(match: "re.Match") -> str:
+        raw = match.group(0)
+        url, trail = _split_url_trailing(raw)
+        href = url if url.lower().startswith("http") else "https://" + url
+        token = f"\x00U{len(stashed_urls)}\x00"
+        stashed_urls.append(href)
+        return f'<a href="{token}" color="#2563eb"><u>{url}</u></a>{trail}'
+
+    text = re.sub(r"(?:https?://|www\.)[^\s<>\[\]\"']+", _stash_bare_url, text)
+
     # Apply inline formatting (order matters!)
     conversions = [
         (r"\*\*\*(.+?)\*\*\*", r"<b><i>\1</i></b>"),  # Bold + italic
@@ -524,14 +661,95 @@ def _convert_inline(text: str) -> str:
         (r"__(.+?)__", r"<b>\1</b>"),  # Bold
         (r"\*(.+?)\*", r"<i>\1</i>"),  # Italic
         (r"_(.+?)_", r"<i>\1</i>"),  # Italic
-        (r"`([^`]+)`", r'<font face="Courier" color="#dc2626">\1</font>'),  # Inline code
+        (r"`([^`]+)`", rf'<font face="{_MONO_FONT_NAME}" color="#dc2626">\1</font>'),  # Inline code
         (r"~~(.+?)~~", r"<strike>\1</strike>"),  # Strikethrough
     ]
-    
+
     for pattern, replacement in conversions:
         text = re.sub(pattern, replacement, text)
-    
+
+    # Restore the stashed URLs into the href attributes.
+    for idx, url in enumerate(stashed_urls):
+        text = text.replace(f"\x00U{idx}\x00", url)
+
     return text
+
+
+def _build_table(block: dict, styles: dict):
+    """Build a ReportLab Table flowable from a parsed markdown table block."""
+    headers = block.get("headers", [])
+    rows = block.get("rows", [])
+    col_count = max(len(headers), max((len(r) for r in rows), default=0))
+    if col_count == 0:
+        return None
+
+    cell_style = ParagraphStyle(
+        "TableCell",
+        parent=styles["body"],
+        fontSize=styles["body"].fontSize - 1,
+        leading=(styles["body"].fontSize - 1) * 1.3,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    header_style = ParagraphStyle(
+        "TableHeaderCell",
+        parent=cell_style,
+        fontName=f"{styles['body'].fontName}-Bold",
+        textColor=colors.HexColor("#1f2937"),
+    )
+
+    def _pad(cells, style):
+        padded = list(cells) + [""] * (col_count - len(cells))
+        return [Paragraph(_convert_inline(c), style) for c in padded]
+
+    data = [_pad(headers, header_style)]
+    for row in rows:
+        data.append(_pad(row, cell_style))
+
+    content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
+    col_width = content_width / col_count
+    table = Table(data, colWidths=[col_width] * col_count, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f9fafb")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    return table
+
+
+def _build_image(block: dict, styles: dict):
+    """Build an Image flowable from a markdown image block.
+
+    Falls back to a paragraph with the alt text/link if the image cannot be
+    fetched, so a broken/expired image never breaks the whole document.
+    """
+    src = block.get("src", "")
+    alt = block.get("alt", "")
+    stream = fetch_image_stream(src)
+    if stream is not None:
+        try:
+            img = Image(stream)
+            content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
+            if img.drawWidth > content_width:
+                ratio = content_width / img.drawWidth
+                img.drawWidth = content_width
+                img.drawHeight = img.drawHeight * ratio
+            img.hAlign = "CENTER"
+            return img
+        except Exception:
+            pass
+
+    fallback = alt or src
+    label = f"[Image: {fallback}]" if fallback else "[Image]"
+    return Paragraph(_convert_inline(label), styles["body"])
 
 
 def _extract_title(text: str) -> Optional[str]:

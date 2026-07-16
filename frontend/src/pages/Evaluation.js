@@ -8,6 +8,7 @@ import { FiEye } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import { latexToText } from "../utils/latexToText";
 import { jsPDF } from "jspdf";
 
 export default function Evaluation() {
@@ -1001,7 +1002,7 @@ export default function Evaluation() {
                           <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                     }}
                   >
-                    {student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available'}
+                    {latexToText(student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available')}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -1023,7 +1024,7 @@ export default function Evaluation() {
                           <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                     }}
                   >
-                    {student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available'}
+                    {latexToText(student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available')}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -1193,7 +1194,7 @@ export default function Evaluation() {
                             <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
                       }}
                     >
-                      {student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available'}
+                      {latexToText(student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available')}
                     </ReactMarkdown>
                   </div>
                 )}
@@ -1661,7 +1662,7 @@ export default function Evaluation() {
                         a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
                       }}
                     >
-                      {currentReport}
+                      {latexToText(currentReport)}
                     </ReactMarkdown>
                   </div>
                 )}

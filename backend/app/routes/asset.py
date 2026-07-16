@@ -532,6 +532,10 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
             for event in stream:
                 handler.handle(event)
 
+        # DEBUG: print raw response BEFORE stripping
+        print("\n\n===== RAW LLM RESPONSE (FOLLOW-UP) =====\n")
+        print(handler.response_text)
+        print("\n===== END RAW RESPONSE (FOLLOW-UP) =====\n")
         complete_response = handler.response_text.strip()
         
         # Mark task as completed with result

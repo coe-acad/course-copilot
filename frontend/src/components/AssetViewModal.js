@@ -1,14 +1,14 @@
 import React, { useState } from "react";
-import { FiX, FiDownload, FiCopy } from "react-icons/fi";
+import { FiX, FiCopy } from "react-icons/fi";
 import Modal from "./Modal";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { assetService } from "../services/asset";
+import DownloadButton from "./DownloadButton";
+import { latexToText } from "../utils/latexToText";
 
 export default function AssetViewModal({ open, onClose, assetData, courseId }) {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
-  const [showDownloadMessage, setShowDownloadMessage] = useState(false);
 
   if (!open || !assetData) return null;
 
@@ -22,52 +22,42 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
     }
   };
 
-  const handleDownload = async () => {
-    try {
-      if (!courseId || !assetData?.asset_name) return;
-      
-      // Add Type and Category to content before downloading
-      let content = assetData.asset_content;
-      const assetType = assetData.asset_type || '';
-      const assetCategory = assetData.asset_category || '';
-      
-      if (assetType || assetCategory) {
-        const metadataLines = [];
-        if (assetType) {
-          metadataLines.push(`- **Type:** ${assetType}`);
-        }
-        if (assetCategory) {
-          metadataLines.push(`- **Category:** ${assetCategory}`);
-        }
-        
-        const metadataText = metadataLines.join('\n');
-        
-        // Find Duration line and insert after it
-        if (content.includes('Duration:')) {
-          const lines = content.split('\n');
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes('Duration:')) {
-              lines.splice(i + 1, 0, metadataText);
-              break;
-            }
-          }
-          content = lines.join('\n');
-        } else {
-          // If no Duration found, prepend to content
-          content = metadataText + '\n\n' + content;
-        }
-      }
-      
-      await assetService.downloadAsset(
-        courseId,
-        assetData.asset_name,
-        content
-      );
-      setShowDownloadMessage(true);
-      setTimeout(() => setShowDownloadMessage(false), 2000);
-    } catch (error) {
-      console.error('Failed to download file:', error);
-    }
+  // Build the content to download.
+  const buildDownloadContent = () => {
+    const content = assetData.asset_content;
+
+    // Type/Category metadata injection is disabled for now.
+    // const assetType = assetData.asset_type || '';
+    // const assetCategory = assetData.asset_category || '';
+    //
+    // if (assetType || assetCategory) {
+    //   const metadataLines = [];
+    //   if (assetType) {
+    //     metadataLines.push(`- **Type:** ${assetType}`);
+    //   }
+    //   if (assetCategory) {
+    //     metadataLines.push(`- **Category:** ${assetCategory}`);
+    //   }
+    //
+    //   const metadataText = metadataLines.join('\n');
+    //
+    //   // Find Duration line and insert after it
+    //   if (content.includes('Duration:')) {
+    //     const lines = content.split('\n');
+    //     for (let i = 0; i < lines.length; i++) {
+    //       if (lines[i].includes('Duration:')) {
+    //         lines.splice(i + 1, 0, metadataText);
+    //         break;
+    //       }
+    //     }
+    //     content = lines.join('\n');
+    //   } else {
+    //     // If no Duration found, prepend to content
+    //     content = metadataText + '\n\n' + content;
+    //   }
+    // }
+
+    return content;
   };
 
   return (
@@ -136,32 +126,11 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               <FiCopy size={16} />
               Copy
             </button>
-            <button
-              onClick={handleDownload}
-              style={{
-                background: '#2563eb',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '14px',
-                color: 'white',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#1d4ed8';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#2563eb';
-              }}
-              title="Download as DOCX"
-            >
-              <FiDownload size={16} />
-              Download
-            </button>
+            <DownloadButton
+              courseId={courseId}
+              filename={assetData.asset_name}
+              content={buildDownloadContent}
+            />
             <button
               onClick={onClose}
               style={{
@@ -207,27 +176,6 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
                 animation: 'fadeInOut 2s ease-in-out'
               }}>
                 ✓ Copied to clipboard!
-              </div>
-            )}
-
-            {/* Download confirmation message */}
-            {showDownloadMessage && (
-              <div style={{
-                position: 'absolute',
-                top: '-40px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: '#2563eb',
-                color: 'white',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-                zIndex: 1000,
-                animation: 'fadeInOut 2s ease-in-out'
-              }}>
-                ✓ Downloaded successfully!
               </div>
             )}
           </div>
@@ -286,7 +234,7 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />
             }}
           >
-            {assetData.asset_content}
+            {latexToText(assetData.asset_content)}
           </ReactMarkdown>
         </div>
 
