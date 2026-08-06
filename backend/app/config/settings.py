@@ -29,6 +29,11 @@ class Settings:
     # API Configuration
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
+
+    # Public base URL for building absolute links to server-served files (e.g.
+    # images embedded in generated content). Must be reachable by the browser AND
+    # by the PDF/DOCX exporters. Override per environment for deploys.
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     
     # CORS Configuration
     CORS_ORIGINS: List[str] = [

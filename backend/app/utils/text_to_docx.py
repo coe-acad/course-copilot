@@ -274,12 +274,17 @@ def _markdown_to_docx(doc: Document, text: str):
                 _shade_cell(cell, "F9FAFB")
 
             # Data rows
+            try:
+                section = doc.sections[-1]
+                usable = section.page_width - section.left_margin - section.right_margin
+                cell_img_width = int(usable / col_count * 0.9)  # fit within the column
+            except Exception:
+                cell_img_width = None
             for ri, row_cells in enumerate(rows):
                 tbl_row = table.rows[ri + 1]
                 for ci in range(col_count):
                     cell_text = row_cells[ci].strip() if ci < len(row_cells) else ""
-                    p = tbl_row.cells[ci].paragraphs[0]
-                    _add_inline_runs(p, cell_text)
+                    _add_cell_content(tbl_row.cells[ci], cell_text, cell_img_width)
 
         elif b_type == "image":
             _add_image(doc, block)
@@ -424,6 +429,18 @@ def _add_inline_runs(para, text: str):
 # Block parser (reuses logic from text_to_pdf.py)
 # ---------------------------------------------------------------------------
 
+def _is_table_separator_line(s: str) -> bool:
+    """True if a line is a markdown table separator row (e.g. '---|:--:|---').
+
+    Lets GFM tables that omit leading/trailing pipes be recognised as tables.
+    """
+    s = (s or "").strip()
+    if "-" not in s:
+        return False
+    cells = [c.strip() for c in s.strip("|").split("|") if c.strip()]
+    return bool(cells) and all(re.match(r"^:?-+:?$", c) for c in cells)
+
+
 def _split_blocks(text: str) -> List[dict]:
     blocks: List[dict] = []
     lines = text.splitlines()
@@ -521,10 +538,12 @@ def _split_blocks(text: str) -> List[dict]:
             idx += 1
             continue
 
-        # Markdown tables — lines starting with |
-        if stripped.startswith("|"):
+        # Markdown tables — a pipe-led row (| a | b |) OR a GFM pipe-less header
+        # row (a | b) immediately followed by a separator row (---|---).
+        next_line = lines[idx + 1] if idx + 1 < total else ""
+        if stripped.startswith("|") or ("|" in stripped and _is_table_separator_line(next_line)):
             table_lines = []
-            while idx < total and lines[idx].strip().startswith("|"):
+            while idx < total and "|" in lines[idx] and lines[idx].strip():
                 table_lines.append(lines[idx].strip())
                 idx += 1
 
@@ -566,6 +585,7 @@ def _split_blocks(text: str) -> List[dict]:
                 or stripped_la.startswith("#")
                 or stripped_la.startswith(">")
                 or stripped_la.startswith("|")
+                or ("|" in stripped_la and idx + 1 < total and _is_table_separator_line(lines[idx + 1]))
                 or parse_image_line(stripped_la)
             ):
                 break
@@ -631,6 +651,52 @@ def _add_image(doc: Document, block: dict):
     run = p.add_run(f"[Image: {fallback}]" if fallback else "[Image]")
     run.font.italic = True
     run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+
+# Inline markdown image inside a larger string (e.g. within a table cell). Unlike
+# markdown_media.parse_image_line this does NOT require the image to be the whole
+# line, so it matches an image embedded alongside question text in a cell.
+_INLINE_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+
+
+def _add_cell_image(cell, src: str, alt: str, max_width: Optional[int] = None):
+    """Embed an image inside a table cell, scaled to ``max_width`` (EMU) if given.
+
+    Falls back to italic alt/link text if the image can't be fetched, mirroring
+    ``_add_image`` so a broken image never breaks the document.
+    """
+    stream = fetch_image_stream(src)
+    if stream is not None:
+        try:
+            para = cell.add_paragraph()
+            para.alignment = 1  # WD_ALIGN_PARAGRAPH.CENTER
+            shape = para.add_run().add_picture(stream)
+            if max_width and shape.width and shape.width > max_width:
+                ratio = max_width / shape.width
+                shape.width = Emu(int(shape.width * ratio))
+                shape.height = Emu(int(shape.height * ratio))
+            return
+        except Exception:
+            pass
+    fallback = alt or src
+    para = cell.add_paragraph()
+    run = para.add_run(f"[Image: {fallback}]" if fallback else "[Image]")
+    run.font.italic = True
+    run.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+
+def _add_cell_content(cell, text: str, img_max_width: Optional[int] = None):
+    """Fill a table cell. If ``text`` contains inline image markdown, add the
+    remaining text then embed each image; otherwise just add inline runs —
+    byte-identical to the previous cell rendering for image-free cells.
+    """
+    if not _INLINE_IMAGE_RE.search(text or ""):
+        _add_inline_runs(cell.paragraphs[0], text)
+        return
+    remaining = _INLINE_IMAGE_RE.sub("", text).strip()
+    _add_inline_runs(cell.paragraphs[0], remaining)
+    for m in _INLINE_IMAGE_RE.finditer(text):
+        _add_cell_image(cell, m.group(2), m.group(1), img_max_width)
 
 
 def _add_horizontal_rule(doc: Document):

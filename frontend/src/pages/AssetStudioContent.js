@@ -3,7 +3,7 @@ import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
 import { FaDownload, FaFolderPlus, FaSave } from "react-icons/fa";
-import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
+import { getAllResources, extractResourceImages, deleteResource as deleteResourceApi } from "../services/resources";
 import { assetService } from "../services/asset";
 import { resolveNameConflict, getAllResourceNames } from "../utils/nameConflictHandler";
 import ReactMarkdown from "react-markdown";
@@ -412,7 +412,8 @@ export default function AssetStudioContent() {
     if (!courseId || !files.length) return;
     try {
       setIsUploadingResources(true);
-      await uploadCourseResources(courseId, files); // upload to backend
+      // PDF/image pipeline: raw bytes stored in Mongo; PDFs go directly to the model.
+      await extractResourceImages(courseId, files);
       // Refresh resources
       const resourcesData = await getAllResources(courseId);
       setResources(resourcesData.resources);
@@ -534,7 +535,8 @@ export default function AssetStudioContent() {
                           tr: ({ children }) => <tr style={{ borderBottom: "1px solid #ddd" }}>{children}</tr>,
                           th: ({ children }) => <th style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word" }}>{children}</th>,
                           td: ({ children }) => <td style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4" }}>{children}</td>,
-                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>
+                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>,
+                          img: ({ src, alt }) => <img src={src} alt={alt || ""} loading="lazy" style={{ maxWidth: "100%", height: "auto", display: "block", margin: "8px auto", borderRadius: "8px", border: "1px solid #eee" }} />
                         }}
                       >
                         {latexToText(msg.text)}

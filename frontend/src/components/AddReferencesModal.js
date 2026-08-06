@@ -16,42 +16,29 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
   const [discoverError, setDiscoverError] = useState(null);
   const [selectedResources, setSelectedResources] = useState([]);  // Track selected resource URLs
 
-  // Supported file types for OpenAI API
+  // File types accepted by the PDF/image pipeline (bytes stored in Mongo;
+  // PDFs are sent directly to the model at generation time, images are figures).
   const SUPPORTED_FILE_TYPES = [
-    // Documents
-    '.pdf', '.txt', '.md', '.docx',
-    // Spreadsheets
-    '.xlsx', '.csv',
-    // Presentations
-    '.pptx',
-    // Code files
-    '.py', '.js', '.html', '.css', '.json',
-    // Additional common formats
-    '.rtf', '.odt'
+    '.pdf',
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'
   ];
 
   const SUPPORTED_MIME_TYPES = [
     'application/pdf',
-    'text/plain',
-    'text/markdown',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/csv',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'text/javascript',
-    'text/html',
-    'text/css',
-    'application/json',
-    'application/rtf',
-    'application/vnd.oasis.opendocument.text',
-    'text/x-python'
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/bmp',
+    'image/tiff',
+    'image/webp'
   ];
 
   // Validate file type
   const validateFile = (file) => {
     const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
     const isValidExtension = SUPPORTED_FILE_TYPES.includes(fileExtension);
-    const isValidMimeType = SUPPORTED_MIME_TYPES.includes(file.type);
+    // Some browsers report an empty MIME type — fall back to the extension check.
+    const isValidMimeType = !file.type || SUPPORTED_MIME_TYPES.includes(file.type);
 
     return {
       isValid: isValidExtension && isValidMimeType,
@@ -66,7 +53,15 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
     const newErrors = [];
     const validFiles = [];
 
-    newFiles.forEach(file => {
+    // Block files over 15 MB (they must fit a single Mongo document).
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const oversized = newFiles.filter(f => f.size > MAX_FILE_SIZE);
+    if (oversized.length > 0) {
+      alert('The size limit is 15 MB. These files exceed it and cannot be uploaded:\n' +
+        oversized.map(f => `• ${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)`).join('\n'));
+    }
+
+    newFiles.filter(f => f.size <= MAX_FILE_SIZE).forEach(file => {
       const validation = validateFile(file);
       if (validation.isValid) {
         validFiles.push(file);
@@ -200,7 +195,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
         >
           <FiUploadCloud size={32} style={{ color: '#2563eb', marginBottom: 8 }} />
           <div style={{ fontSize: 15, marginBottom: 6 }}>Drag and drop or <span style={{ color: '#2563eb', textDecoration: 'underline' }}>browse</span> files to upload</div>
-          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .docx .txt .md .xlsx .pptx .py .js .html .css .json</span></div>
+          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .png .jpg .jpeg .gif .bmp .tiff .webp</span></div>
           <input
             type="file"
             multiple

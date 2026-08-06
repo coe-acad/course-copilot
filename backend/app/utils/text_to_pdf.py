@@ -86,6 +86,9 @@ _DEFAULT_FONT_SIZE = 11
 _DEFAULT_PAGE_SIZE = LETTER
 _H_MARGIN = 0.85 * inch
 _V_MARGIN = 1.0 * inch
+# Cap embedded-image height so a tall image never overflows the page frame
+# (reportlab raises LayoutError otherwise). ~0.85 of the usable text height.
+_MAX_IMAGE_HEIGHT = (_DEFAULT_PAGE_SIZE[1] - 2 * _V_MARGIN) * 0.85
 _PARAGRAPH_SPACING = 0.12 * inch
 _DEFAULT_TITLE = "Document"
 
@@ -426,6 +429,19 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
     return flowables or [Paragraph("", styles["body"])]
 
 
+def _is_table_separator_line(s: str) -> bool:
+    """True if a line is a markdown table separator row (e.g. '---|:--:|---').
+
+    Used to recognise GFM tables that omit the leading/trailing pipes, so
+    ``CO# | Name`` followed by ``---|---`` is treated as a table, not a paragraph.
+    """
+    s = (s or "").strip()
+    if "-" not in s:
+        return False
+    cells = [c.strip() for c in s.strip("|").split("|") if c.strip()]
+    return bool(cells) and all(re.match(r"^:?-+:?$", c) for c in cells)
+
+
 def _split_blocks(text: str) -> List[dict]:
     """Parse markdown text into structured blocks, handling numbered text as regular paragraphs."""
     blocks: List[dict] = []
@@ -550,10 +566,12 @@ def _split_blocks(text: str) -> List[dict]:
             idx += 1
             continue
 
-        # Markdown tables — lines starting with |
-        if stripped.startswith("|"):
+        # Markdown tables — a pipe-led row (| a | b |) OR a GFM pipe-less header
+        # row (a | b) immediately followed by a separator row (---|---).
+        next_line = lines[idx + 1] if idx + 1 < total else ""
+        if stripped.startswith("|") or ("|" in stripped and _is_table_separator_line(next_line)):
             table_lines = []
-            while idx < total and lines[idx].strip().startswith("|"):
+            while idx < total and "|" in lines[idx] and lines[idx].strip():
                 table_lines.append(lines[idx].strip())
                 idx += 1
 
@@ -596,6 +614,7 @@ def _split_blocks(text: str) -> List[dict]:
                 or stripped_la.startswith("#")
                 or stripped_la.startswith(">")
                 or stripped_la.startswith("|")
+                or ("|" in stripped_la and idx + 1 < total and _is_table_separator_line(lines[idx + 1]))
                 or parse_image_line(stripped_la)
             ):
                 break
@@ -675,6 +694,58 @@ def _convert_inline(text: str) -> str:
     return text
 
 
+# Inline markdown image inside a larger string (e.g. within a table cell). Unlike
+# markdown_media.parse_image_line this does NOT require the image to be the whole
+# line, so it matches an image embedded alongside question text in a cell.
+_INLINE_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+
+
+def _build_scaled_image(src: str, alt: str, max_width: float, style):
+    """An Image flowable scaled to fit ``max_width``; falls back to alt/link text.
+
+    Same fetch + graceful-fallback behavior as ``_build_image`` but sized to a
+    caller-provided width (used to fit an image inside a table column).
+    """
+    stream = fetch_image_stream(src)
+    if stream is not None:
+        try:
+            img = Image(stream)
+            if img.drawWidth > max_width:
+                ratio = max_width / img.drawWidth
+                img.drawWidth = max_width
+                img.drawHeight = img.drawHeight * ratio
+            if img.drawHeight > _MAX_IMAGE_HEIGHT:
+                ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
+                img.drawHeight = _MAX_IMAGE_HEIGHT
+                img.drawWidth = img.drawWidth * ratio
+            img.hAlign = "CENTER"
+            return img
+        except Exception:
+            pass
+    fallback = alt or src
+    label = f"[Image: {fallback}]" if fallback else "[Image]"
+    return Paragraph(_convert_inline(label), style)
+
+
+def _build_cell(text: str, style, img_max_width: float):
+    """Build a table cell's content.
+
+    If the cell contains inline markdown image(s), return a list of flowables (any
+    remaining text as a paragraph, then each image scaled to the column). A cell
+    with no image returns a single Paragraph — byte-identical to the previous
+    table rendering.
+    """
+    if not _INLINE_IMAGE_RE.search(text or ""):
+        return Paragraph(_convert_inline(text), style)
+    flowables = []
+    remaining = _INLINE_IMAGE_RE.sub("", text).strip()
+    if remaining:
+        flowables.append(Paragraph(_convert_inline(remaining), style))
+    for m in _INLINE_IMAGE_RE.finditer(text):
+        flowables.append(_build_scaled_image(m.group(2), m.group(1), img_max_width, style))
+    return flowables or Paragraph(_convert_inline(text), style)
+
+
 def _build_table(block: dict, styles: dict):
     """Build a ReportLab Table flowable from a parsed markdown table block."""
     headers = block.get("headers", [])
@@ -698,16 +769,19 @@ def _build_table(block: dict, styles: dict):
         textColor=colors.HexColor("#1f2937"),
     )
 
+    content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
+    col_width = content_width / col_count
+    # Leave room for the cell's left/right padding when sizing an in-cell image.
+    img_max_width = max(col_width - 14, 24)
+
     def _pad(cells, style):
         padded = list(cells) + [""] * (col_count - len(cells))
-        return [Paragraph(_convert_inline(c), style) for c in padded]
+        return [_build_cell(c, style, img_max_width) for c in padded]
 
     data = [_pad(headers, header_style)]
     for row in rows:
         data.append(_pad(row, cell_style))
 
-    content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
-    col_width = content_width / col_count
     table = Table(data, colWidths=[col_width] * col_count, hAlign="LEFT")
     table.setStyle(
         TableStyle(
@@ -742,6 +816,10 @@ def _build_image(block: dict, styles: dict):
                 ratio = content_width / img.drawWidth
                 img.drawWidth = content_width
                 img.drawHeight = img.drawHeight * ratio
+            if img.drawHeight > _MAX_IMAGE_HEIGHT:
+                ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
+                img.drawHeight = _MAX_IMAGE_HEIGHT
+                img.drawWidth = img.drawWidth * ratio
             img.hAlign = "CENTER"
             return img
         except Exception:

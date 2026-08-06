@@ -231,7 +231,8 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               a: ({href, children, ...props}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{color: '#2563eb', textDecoration: 'underline'}} {...props}>{children}</a>,
               table: (props) => <table style={{borderCollapse: 'collapse', width: '100%', margin: '8px 0'}} {...props} />,
               th: (props) => <th style={{border: '1px solid #d1d5db', padding: '8px', background: '#f9fafb', fontWeight: 'bold'}} {...props} />,
-              td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />
+              td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />,
+              img: ({src, alt}) => <img src={src} alt={alt || ''} loading="lazy" style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />
             }}
           >
             {latexToText(assetData.asset_content)}

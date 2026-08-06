@@ -9,7 +9,7 @@ import KnowledgeBase from "../components/KnowledgBase";
 import SettingsModal from "../components/SettingsModal";
 import KnowledgeBaseSelectModal from "../components/KnowledgeBaseSelectModal";
 import SelectionModal from "../components/SelectionModal";
-import { getAllResources, uploadCourseResources, deleteResource as deleteResourceApi } from "../services/resources";
+import { getAllResources, extractResourceImages, deleteResource as deleteResourceApi } from "../services/resources";
 import { getCourseSettings } from "../services/course";
 import { assetService } from "../services/asset";
 import curriculumOptions from "../config/curriculumOptions";
@@ -379,7 +379,8 @@ export default function Dashboard() {
 
     setIsUploadingResources(true);
     try {
-      await uploadCourseResources(courseId, files); // upload to backend
+      // PDF/image pipeline: raw bytes stored in Mongo; PDFs go directly to the model.
+      await extractResourceImages(courseId, files);
       // Refresh resources
       const data = await getAllResources(courseId);
       const transformedResources = (data.resources || []).map(resource => ({

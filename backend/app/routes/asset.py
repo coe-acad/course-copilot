@@ -1,6 +1,7 @@
 from logging import log
 import logging
 import re
+import base64
 import asyncio
 import time
 from io import BytesIO
@@ -16,7 +17,7 @@ from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.sprint_plan import build_sprint_plan
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_pdf, get_resource_pdfs_meta_for_names
 from ..services.openai_service import clean_text, create_file, connect_file_to_vector_store
 from ..services.task_manager import task_manager, TaskStatus
 
@@ -122,6 +123,49 @@ def construct_input_variables(course: dict, file_names: list[str], course_descri
         "course_description": course_description or ""
     }
     return input_variables
+
+
+# Cap on figures attached as vision input per generation (token/cost guard).
+_MAX_FIGURES = 12
+
+# Direct-to-model PDF limits per chat. WARNING: OpenAI accepts ~100 pages and
+# ~32 MB of file content per request — selections between 32 and 50 MB will be
+# rejected by the API at generation time.
+_MAX_CHAT_PDFS = 10
+_MAX_CHAT_PDF_BYTES = 50 * 1024 * 1024
+_MAX_CHAT_PDF_PAGES = 100
+
+# Any inline markdown image. Used to sanitize model output so ONLY real figures
+# survive: image_ref:<id> -> served URL, every other src is stripped.
+_ANY_IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(\s*([^)]*?)\s*\)")
+
+
+def _resolve_image_refs(text: str, course_id: str, allowed_ids: set) -> str:
+    """Sanitize image links in generated content so only REAL figures render.
+
+    - ``![alt](image_ref:<id>)`` with a known id -> absolute served-image URL, so
+      the picture renders in the chat, the saved view, and PDF/DOCX exports.
+    - any other image (unknown id, or a src the model invented such as
+      ``attachment:x`` or an external ``https://…`` URL) -> the image markdown is
+      removed, so a broken image is never shown anywhere.
+    """
+    if not text:
+        return text
+    base = settings.PUBLIC_BASE_URL.rstrip("/")
+
+    def _sub(match):
+        alt, src = match.group(1), (match.group(2) or "").strip()
+        if src.startswith("image_ref:"):
+            image_id = src[len("image_ref:"):].strip()
+            if image_id in allowed_ids:
+                return f"![{alt}]({base}/api/courses/{course_id}/images/{image_id})"
+            logger.warning(f"[figures] removed unknown image_ref:{image_id}")
+            return ""
+        logger.warning(f"[figures] removed invented image src={src[:60]!r}")
+        return ""
+
+    return _ANY_IMAGE_MD.sub(_sub, text)
+
 
 def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name: str, file_names: list, course_description: Optional[str], user_id: str):
     """Background task to process asset chat generation"""
@@ -323,6 +367,11 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         parser = PromptParser()
         prompt = parser.get_asset_prompt(asset_type_name, input_variables)
 
+        # Figures (extracted images) available to this generation, resolved from
+        # the selected files for EVERY asset type below.
+        figures = []
+        allowed_image_ids = set()
+
         # For question-paper, inject the ACTUAL content of the selected files into the prompt.
         # Selection otherwise only passes file NAMES; the model reads content via file_search
         # over the whole vector store, which is unreliable for saved assets (e.g. a Course
@@ -356,10 +405,95 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     + "\n\n".join(resolved_sections)
                 )
 
+        # AVAILABLE FIGURES — resolve extracted images for the selected files for
+        # EVERY asset type, so the model can SEE them (vision, attached below) and
+        # embed them where they add value. No images for the selection -> no-op and
+        # the prompt / model call are unchanged.
+        # Directly-uploaded png/jpeg resources stored in Mongo (base64).
+        try:
+            mongo_records = get_resource_images_for_names(course_id, file_names)
+        except Exception as m_err:
+            mongo_records = []
+            logger.warning(f"[figures] mongo lookup failed: {m_err}")
+
+        for rec in mongo_records[:_MAX_FIGURES]:
+            image_id = rec.get("image_id")
+            if not image_id:
+                continue
+            b64 = rec.get("image_base64")
+            mime = rec.get("image_mime") or "image/png"
+            figures.append({
+                "image_id": image_id,
+                "caption": (rec.get("resource_name") or "").strip(),
+                "resource_name": rec.get("resource_name") or "",
+                "page": None,
+                "data_uri": f"data:{mime};base64,{b64}" if b64 else None,
+            })
+            allowed_image_ids.add(image_id)
+        if len(mongo_records) > _MAX_FIGURES:
+            logger.warning(f"[figures] {len(mongo_records)} available; only the first {_MAX_FIGURES} are used")
+
+        if figures:
+            menu_lines = []
+            for f in figures:
+                loc = f["resource_name"]
+                if f.get("page") is not None:
+                    loc += f" p.{f['page'] + 1}"
+                menu_lines.append(f"- image_ref:{f['image_id']} | {loc} | caption: {f['caption'] or '(none)'}")
+            prompt += (
+                "\n\n---\n"
+                "AVAILABLE FIGURES — the user attached these images specifically so they appear in "
+                "your output. The actual images are attached to this message so you can SEE them. You "
+                "MUST embed each relevant figure as an image using EXACTLY this markdown — do NOT "
+                "merely mention the file name in prose; the image itself has to appear:\n"
+                "![short caption](image_ref:<id>)\n"
+                "Put it where it adds the most value — on its own line in the relevant section, or "
+                "inside the relevant table cell when the output is a table. Use ONLY the ids listed "
+                "below; never invent an id or an image URL, and never write a bare file name in place "
+                "of the image.\n\n"
+                + "\n".join(menu_lines)
+            )
+            logger.info(
+                f"[figures] attached {len(figures)} figure(s) for '{asset_type_name}'; "
+                f"{sum(1 for f in figures if f['data_uri'])} with visible image data"
+            )
+
         print("\n\n===== FINAL PROMPT SENT TO LLM =====\n")
         print(prompt)
         print("\n===== END PROMPT =====\n")
 
+        # Directly-uploaded PDFs (stored in Mongo) sent to the model verbatim, so it
+        # reads the real document. Empty for selections with no such PDFs.
+        pdf_inputs = []
+        try:
+            for _name in file_names:
+                rec = get_resource_pdf(course_id, _name)
+                if rec and rec.get("pdf_bytes"):
+                    b64 = base64.b64encode(bytes(rec["pdf_bytes"])).decode("ascii")
+                    pdf_inputs.append({
+                        "filename": _name,
+                        "data_uri": f"data:application/pdf;base64,{b64}",
+                    })
+        except Exception as pdf_err:
+            logger.warning(f"[pdf] lookup failed: {pdf_err}")
+        if pdf_inputs:
+            logger.info(f"[pdf] attaching {len(pdf_inputs)} PDF(s) directly to the model")
+
+        # Build the user message. With figures/PDFs, attach the real image pixels
+        # (vision) and/or the PDF files alongside the prompt. No figures/PDFs -> plain
+        # text (byte-identical to the previous behaviour).
+        user_content = prompt
+        _vision_figs = [f for f in figures if f.get("data_uri")]
+        if _vision_figs or pdf_inputs:
+            user_content = [{"type": "input_text", "text": prompt}]
+            for f in _vision_figs:
+                label = f"Figure image_ref:{f['image_id']}"
+                if f["caption"]:
+                    label += f" — {f['caption']}"
+                user_content.append({"type": "input_text", "text": label})
+                user_content.append({"type": "input_image", "image_url": f["data_uri"], "detail": "auto"})
+            for p in pdf_inputs:
+                user_content.append({"type": "input_file", "filename": p["filename"], "file_data": p["data_uri"]})
 
         # Stream run with proper error handling
         handler = AssetChatStreamHandler(label=f"Asset Generation: {asset_type_name}")
@@ -371,7 +505,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 model=settings.OPENAI_MODEL,
                 input=[
                     {"role": "system", "content": systemPrompt},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": user_content}
                 ],
                 temperature=temp,
                 tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
@@ -398,7 +532,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     model=settings.OPENAI_MODEL,
                     input=[
                         {"role": "system", "content": systemPrompt},
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": user_content}
                     ],
                     temperature=temp,
                     tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
@@ -406,6 +540,11 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 complete_response = (response.output_text or "").strip()
             except Exception as retry_error:
                 logger.error(f"Non-stream retry failed for task {task_id}: {retry_error}")
+
+        # Turn valid image_ref:<id> links into absolute served-image URLs (and drop
+        # any hallucinated ids) so figures render wherever this content is shown.
+        if complete_response and "![" in complete_response:
+            complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
 
         if asset_type_name == "sprint-plan":
             if not complete_response:
@@ -462,7 +601,27 @@ async def create_asset_chat(course_id: str, asset_type_name: str, request: Asset
         course = get_course(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
-        
+
+        # Guard: selected PDFs are sent directly to the model, which limits how much
+        # file content it accepts per request. Block clearly if the selection is too big.
+        pdf_meta = get_resource_pdfs_meta_for_names(course_id, request.file_names)
+        if len(pdf_meta) > _MAX_CHAT_PDFS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"You can use at most {_MAX_CHAT_PDFS} PDFs per chat (selected {len(pdf_meta)}). Please deselect some.",
+            )
+        total_bytes = sum(int(d.get("size_bytes") or 0) for d in pdf_meta)
+        total_pages = sum(int(d.get("pages") or 0) for d in pdf_meta)
+        if total_bytes > _MAX_CHAT_PDF_BYTES or total_pages > _MAX_CHAT_PDF_PAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Selected PDFs are too large to send to the model "
+                    f"({total_bytes / (1024 * 1024):.1f} MB, {total_pages} pages). "
+                    f"Limit is ~{_MAX_CHAT_PDF_BYTES // (1024 * 1024)} MB / {_MAX_CHAT_PDF_PAGES} pages — please deselect some."
+                ),
+            )
+
         # Create task with creation timestamp
         task_id = task_manager.create_task(
             task_type="asset_chat_create",

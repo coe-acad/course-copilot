@@ -25,6 +25,7 @@ export default function Evaluation() {
   const [answerSheetsUploaded, setAnswerSheetsUploaded] = useState(false);
   const [evaluationId, setEvaluationId] = useState(null);
   const [evaluationResult, setEvaluationResult] = useState(null);
+  const [evaluationError, setEvaluationError] = useState(null); // Set when the backend reports the evaluation failed
   const [showResults, setShowResults] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [selectedStudentIndex, setSelectedStudentIndex] = useState(null);
@@ -91,6 +92,9 @@ export default function Evaluation() {
           if (status.status === 'completed' && status.evaluation_result) {
             setEvaluationResult({ evaluation_id: evalId, evaluation_result: status.evaluation_result });
             setIsEvaluating(false);
+          } else if (status.status === 'failed') {
+            setEvaluationError(status.error || status.message || 'The evaluation process failed.');
+            setIsEvaluating(false);
           } else {
             setIsEvaluating(true);
           }
@@ -109,6 +113,29 @@ export default function Evaluation() {
   useEffect(() => {
     // This effect will run whenever forceUpdate changes, forcing a re-render
   }, [forceUpdate]);
+
+  // While an evaluation is running, poll its status so completion or failure
+  // shows up live instead of only after a page reload.
+  useEffect(() => {
+    if (!isEvaluating || !evaluationId) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const status = await evaluationService.checkEvaluationStatus(evaluationId);
+        if (cancelled) return;
+        if (status.status === 'completed' && status.evaluation_result) {
+          setEvaluationResult({ evaluation_id: evaluationId, evaluation_result: status.evaluation_result });
+          setIsEvaluating(false);
+        } else if (status.status === 'failed') {
+          setEvaluationError(status.error || status.message || 'The evaluation process failed.');
+          setIsEvaluating(false);
+        }
+      } catch (e) {
+        // Transient network/server error — keep polling.
+      }
+    }, 10000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isEvaluating, evaluationId]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -269,6 +296,7 @@ export default function Evaluation() {
     evaluationInProgressRef.current = true;
     
     try {
+      setEvaluationError(null);
       setIsEvaluating(true);
 
       // Start the evaluation in the background
@@ -1238,6 +1266,46 @@ export default function Evaluation() {
         </div>
 
 
+        {/* Evaluation failed banner */}
+        {evaluationError && (
+          <div style={{ maxWidth: 1200, margin: "0 auto 1rem auto", width: '100%' }}>
+            <div style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '14px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: '#fee2e2',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                fontSize: '20px'
+              }}>
+                ⚠️
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: '16px', marginBottom: '4px' }}>
+                  Evaluation failed — the process has stopped
+                </div>
+                <div style={{ color: '#7f1d1d', fontSize: '14px', lineHeight: 1.6 }}>
+                  {evaluationError}
+                </div>
+                <div style={{ color: '#991b1b', fontSize: '13px', marginTop: '6px' }}>
+                  No answer sheets were evaluated. Please fix the issue above and start a new evaluation.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Total Submissions Summary and Action Buttons */}
         <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ 
@@ -1367,9 +1435,14 @@ export default function Evaluation() {
                   }}
                 >
                   {file.name}
-                  {!evaluationResult && (
+                  {!evaluationResult && !evaluationError && (
                     <div style={{ fontSize: '12px', color: '#dc3545', marginTop: '4px' }}>
                       (evaluating....)
+                    </div>
+                  )}
+                  {evaluationError && (
+                    <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px' }}>
+                      (not evaluated)
                     </div>
                   )}
                   {evaluationResult && (
@@ -1380,23 +1453,23 @@ export default function Evaluation() {
                 </div>
                 
                 {/* Marks */}
-                <div style={{ 
+                <div style={{
                   fontWeight: 600,
-                  color: isEvaluating ? '#6c757d' : '#28a745'
+                  color: evaluationError ? '#dc2626' : isEvaluating ? '#6c757d' : '#28a745'
                 }}>
-                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ? 
-                    formatScore(evaluationResult.evaluation_result.students[index].total_score, evaluationResult.evaluation_result.students[index].max_total_score) : 
+                  {evaluationError ? 'Stopped' : isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
+                    formatScore(evaluationResult.evaluation_result.students[index].total_score, evaluationResult.evaluation_result.students[index].max_total_score) :
                     'Pending'
                   }
                 </div>
-                
+
                 {/* Result */}
-                <div style={{ 
+                <div style={{
                   fontWeight: 600,
-                  color: isEvaluating ? '#6c757d' : '#28a745'
+                  color: evaluationError ? '#dc2626' : isEvaluating ? '#6c757d' : '#28a745'
                 }}>
-                  {isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ? 
-                    ((evaluationResult.evaluation_result.students[index].total_score / evaluationResult.evaluation_result.students[index].max_total_score) >= 0.6 ? 'Passed' : 'Failed') : 
+                  {evaluationError ? 'Stopped' : isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
+                    ((evaluationResult.evaluation_result.students[index].total_score / evaluationResult.evaluation_result.students[index].max_total_score) >= 0.6 ? 'Passed' : 'Failed') :
                     'Pending'
                   }
                 </div>
@@ -1858,20 +1931,25 @@ export default function Evaluation() {
               <div style={{
                 width: '80px',
                 height: '80px',
-                background: '#e0f2fe',
+                background: evaluationError ? '#fee2e2' : '#e0f2fe',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 20px auto'
               }}>
-                <span style={{ fontSize: '40px', color: '#2563eb' }}>📧</span>
+                <span style={{ fontSize: '40px', color: evaluationError ? '#dc2626' : '#2563eb' }}>
+                  {evaluationError ? '⚠️' : '📧'}
+                </span>
               </div>
-              <h3 style={{ margin: '0 0 18px 0', fontSize: 26, fontWeight: 700, color: '#111827' }}>
-                Evaluation Started
+              <h3 style={{ margin: '0 0 18px 0', fontSize: 26, fontWeight: 700, color: evaluationError ? '#b91c1c' : '#111827' }}>
+                {evaluationError ? 'Evaluation Failed' : 'Evaluation Started'}
               </h3>
               <p style={{ margin: '0 0 28px 0', fontSize: 18, color: '#374151', lineHeight: 1.6 }}>
-                The evaluation has started. You will be notified on email once it is completed. You can see the results on the evaluation card.
+                {evaluationError
+                  ? <>The evaluation process has stopped due to an error:<br />
+                      <span style={{ fontSize: 15, color: '#7f1d1d' }}>{evaluationError}</span></>
+                  : 'The evaluation has started. You will be notified on email once it is completed. You can see the results on the evaluation card.'}
               </p>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
                 <button

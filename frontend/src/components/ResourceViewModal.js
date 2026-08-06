@@ -13,36 +13,75 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
   const [resourceData, setResourceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const isPdf = !!resourceName && resourceName.toLowerCase().endsWith('.pdf');
+  // Mirrors the backend's IMAGE_EXTENSIONS (pdf_image_extractor.is_image_filename)
+  const isImage = !!resourceName && /\.(png|jpe?g|gif|bmp|tiff?|webp)$/i.test(resourceName);
+
+  // Image resources have no text content; their bytes are stored in Mongo and
+  // served by GET /courses/{id}/images/{image_id}, where the id is the backend's
+  // resource_image_id slug: "res_" + non-alphanumerics collapsed to "_".
+  const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+  const imageSlug = (resourceName || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'image';
+  const imageUrl = isImage && courseId
+    ? `${apiBase}/api/courses/${courseId}/images/res_${imageSlug}`
+    : null;
 
   React.useEffect(() => {
-    const fetchResourceContent = async () => {
+    if (!(open && resourceName && courseId)) return;
+    let objectUrl = null;
+
+    const fetchText = async () => {
       setLoading(true);
       setError(null);
       try {
-        console.log('Fetching resource content for:', resourceName, 'in course:', courseId);
         const data = await viewResource(courseId, resourceName);
-        console.log('Resource data received:', data);
         setResourceData(data);
       } catch (error) {
-        console.error('Error fetching resource content:', error);
         setError(error.message || 'Failed to load resource content');
       } finally {
         setLoading(false);
       }
     };
 
-    console.log('ResourceViewModal useEffect triggered:', { open, resourceName, courseId });
-    if (open && resourceName && courseId) {
-      console.log('Conditions met, calling fetchResourceContent');
-      fetchResourceContent();
+    // For a PDF resource, show the real file if its bytes are stored (new upload
+    // flow); otherwise fall back to the extracted-text view (old upload flow).
+    const loadPdf = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const base = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+        const url = `${base}/api/courses/${courseId}/resources/${encodeURIComponent(resourceName)}/pdf`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          objectUrl = URL.createObjectURL(blob);
+          setPdfUrl(objectUrl);
+          setLoading(false);
+        } else {
+          await fetchText();
+        }
+      } catch (e) {
+        await fetchText();
+      }
+    };
+
+    setPdfUrl(null);
+    setResourceData(null);
+    if (isPdf) {
+      loadPdf();
+    } else if (isImage) {
+      // The <img> tag fetches the bytes itself; nothing to preload here.
+      setError(null);
+      setLoading(false);
     } else {
-      console.log('Conditions not met:', { 
-        open: !!open, 
-        resourceName: !!resourceName, 
-        courseId: !!courseId 
-      });
+      fetchText();
     }
-  }, [open, resourceName, courseId]);
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [open, resourceName, courseId, isPdf, isImage]);
 
   const handleCopyContent = async () => {
     if (!resourceData?.content) return;
@@ -59,8 +98,12 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
   if (!open) return null;
 
   return (
-    <Modal open={open} onClose={onClose}>
-      <div style={{ 
+    <Modal
+      open={open}
+      onClose={onClose}
+      modalStyle={isPdf ? { width: 'min(1150px, 95vw)', maxWidth: '95vw', minWidth: 0, padding: '16px' } : undefined}
+    >
+      <div style={{
         position: 'relative',
         maxHeight: '90vh',
         overflow: 'hidden',
@@ -213,7 +256,35 @@ export default function ResourceViewModal({ open, onClose, resourceName, courseI
             </div>
           )}
 
-          {resourceData?.content && !loading && !error && (
+          {imageUrl && !loading && !error && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              background: '#fafbfc',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              padding: '16px',
+              maxHeight: '75vh',
+              overflow: 'auto'
+            }}>
+              <img
+                src={imageUrl}
+                alt={resourceName}
+                style={{ maxWidth: '100%', height: 'auto', borderRadius: '4px' }}
+                onError={() => setError('Failed to load image')}
+              />
+            </div>
+          )}
+
+          {pdfUrl && !loading && (
+            <iframe
+              src={pdfUrl}
+              title={resourceName}
+              style={{ width: '100%', height: '82vh', border: '1px solid #e5e7eb', borderRadius: '8px', display: 'block', background: '#f3f4f6' }}
+            />
+          )}
+
+          {resourceData?.content && !loading && !error && !pdfUrl && (
             <div style={{
               background: '#fafbfc',
               border: '1px solid #e5e7eb',

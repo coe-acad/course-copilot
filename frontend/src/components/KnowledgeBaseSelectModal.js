@@ -8,15 +8,24 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
   const allSelectableFiles = files || [];
   const isAllSelected = allSelectableFiles.length > 0 && selected.length === allSelectableFiles.length;
 
+  const MAX_SELECTED = 10;
+
   const handleToggle = (file) => {
-    setSelected((prev) =>
-      prev.includes(file) ? prev.filter(f => f !== file) : [...prev, file]
-    );
+    setSelected((prev) => {
+      if (prev.includes(file)) return prev.filter(f => f !== file);
+      if (prev.length >= MAX_SELECTED) {
+        alert(`You can select at most ${MAX_SELECTED} documents. Please deselect one first.`);
+        return prev;
+      }
+      return [...prev, file];
+    });
   };
 
   const handleToggleAll = () => {
     if (isAllSelected) {
       setSelected([]);
+    } else if (allSelectableFiles.length > MAX_SELECTED) {
+      alert(`You can select at most ${MAX_SELECTED} documents.`);
     } else {
       setSelected(allSelectableFiles);
     }

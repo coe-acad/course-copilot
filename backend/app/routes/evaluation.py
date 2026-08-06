@@ -394,9 +394,10 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         except Exception as email_error:
             logger.error(f"Failed to send error email: {str(email_error)}")
 
-        # Update evaluation status to failed
+        # Update evaluation status to failed, keeping the error so the frontend
+        # can tell the user why the process stopped.
         try:
-            await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed"})
+            await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed", "error_message": str(e)})
         except Exception as status_error:
             logger.error(f"Failed to update evaluation status: {str(status_error)}")
 
@@ -514,6 +515,7 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             return {
                 "status": "failed",
                 "message": "Evaluation processing failed. Please try again or contact support.",
+                "error": evaluation.get("error_message") or "",
                 "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
             }
         

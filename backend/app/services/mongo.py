@@ -203,6 +203,81 @@ def get_resources_by_course_id(course_id: str):
 def get_resource_by_course_id_and_resource_name(course_id: str, resource_name: str):
     return get_one_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 
+# Resource images: bytes of directly-uploaded png/jpeg resources, stored in Mongo
+# (base64). PDF-extracted images are NOT stored here — they stay on local disk.
+def save_resource_image(course_id: str, resource_name: str, image_id: str,
+                        image_base64: str, image_mime: str, image_ext: str):
+    """Upsert a directly-uploaded image resource's bytes (base64) into Mongo."""
+    db["resource_images"].update_one(
+        {"course_id": course_id, "image_id": image_id},
+        {"$set": {
+            "course_id": course_id,
+            "resource_name": resource_name,
+            "image_id": image_id,
+            "image_base64": image_base64,
+            "image_mime": image_mime,
+            "image_ext": image_ext,
+        }},
+        upsert=True,
+    )
+
+def get_resource_image_by_id(course_id: str, image_id: str):
+    """Fetch a single Mongo-stored image resource by its image_id (or None)."""
+    return get_one_from_collection("resource_images", {"course_id": course_id, "image_id": image_id})
+
+def get_resource_images_for_names(course_id: str, resource_names: list):
+    """All Mongo-stored image resources whose resource_name is in the given list."""
+    names = [n for n in (resource_names or []) if n]
+    if not names:
+        return []
+    return get_many_from_collection("resource_images", {"course_id": course_id, "resource_name": {"$in": names}})
+
+def delete_resource_image(course_id: str, resource_name: str):
+    """Remove any Mongo-stored image bytes for a resource (used on resource delete)."""
+    db["resource_images"].delete_many({"course_id": course_id, "resource_name": resource_name})
+
+# Resource PDFs: raw bytes of directly-uploaded PDFs stored in Mongo (<=15 MB each,
+# under the 16 MB BSON document limit). Sent DIRECTLY to the model at generation
+# time and served back for in-browser viewing; NOT uploaded to the vector store.
+def save_resource_pdf(course_id: str, resource_name: str, pdf_bytes: bytes, size_bytes: int, pages: int):
+    """Upsert a directly-uploaded PDF's raw bytes into Mongo."""
+    db["resource_pdfs"].update_one(
+        {"course_id": course_id, "resource_name": resource_name},
+        {"$set": {
+            "course_id": course_id,
+            "resource_name": resource_name,
+            "pdf_bytes": pdf_bytes,
+            "size_bytes": size_bytes,
+            "pages": pages,
+        }},
+        upsert=True,
+    )
+
+def get_resource_pdf(course_id: str, resource_name: str):
+    """Fetch a single stored PDF (including its raw bytes), or None."""
+    return db["resource_pdfs"].find_one({"course_id": course_id, "resource_name": resource_name})
+
+def get_resource_pdfs_meta_for_names(course_id: str, resource_names: list):
+    """Metadata (size/pages, WITHOUT the bytes) for stored PDFs among the given names.
+
+    Used for the pre-generation size/page/count guard without transferring MBs.
+    """
+    names = [n for n in (resource_names or []) if n]
+    if not names:
+        return []
+    out = []
+    for d in db["resource_pdfs"].find(
+        {"course_id": course_id, "resource_name": {"$in": names}},
+        {"pdf_bytes": 0},
+    ):
+        d.pop("_id", None)
+        out.append(d)
+    return out
+
+def delete_resource_pdf(course_id: str, resource_name: str):
+    """Remove any Mongo-stored PDF bytes for a resource (used on resource delete)."""
+    db["resource_pdfs"].delete_many({"course_id": course_id, "resource_name": resource_name})
+
 def delete_resource(course_id: str, resource_name: str):
     delete_from_collection("resources", {"course_id": course_id, "resource_name": resource_name})
 

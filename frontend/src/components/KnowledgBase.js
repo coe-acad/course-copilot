@@ -103,6 +103,12 @@ export default function KnowledgeBase({
 
   const handleCheckboxToggle = (id) => {
     if (!onSelect) return;
+    // Cap selection at 10 documents per chat (resources are sent directly to the model).
+    const isSelecting = !selected.includes(id);
+    if (isSelecting && selected.length >= 10) {
+      alert('You can select at most 10 documents per chat. Please deselect one first.');
+      return;
+    }
     onSelect(id);
   };
 
@@ -119,11 +125,24 @@ export default function KnowledgeBase({
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
+    // Block files over 15 MB (they must fit a single Mongo document).
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const oversized = files.filter(f => f.size > MAX_FILE_SIZE);
+    if (oversized.length > 0) {
+      alert('The size limit is 15 MB. These files exceed it and cannot be uploaded:\n' +
+        oversized.map(f => `• ${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)`).join('\n'));
+    }
+    const sizedFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
+    if (sizedFiles.length === 0) {
+      event.target.value = '';
+      return;
+    }
+
     // Validate files before upload
     const validFiles = [];
     const errors = [];
 
-    files.forEach(file => {
+    sizedFiles.forEach(file => {
       const validation = validateFile(file);
       if (validation.isValid) {
         validFiles.push(file);
@@ -299,6 +318,10 @@ export default function KnowledgeBase({
                     (res, i) => res.id || res.resourceName || res.fileName || i
                   );
                   if (e.target.checked) {
+                    if (allIds.length > 10) {
+                      alert('You can select at most 10 documents per chat.');
+                      return;
+                    }
                     onSelectAll(allIds);
                   } else {
                     onSelectAll([]);
