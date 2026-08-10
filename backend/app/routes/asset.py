@@ -128,11 +128,10 @@ def construct_input_variables(course: dict, file_names: list[str], course_descri
 # Cap on figures attached as vision input per generation (token/cost guard).
 _MAX_FIGURES = 12
 
-# Direct-to-model PDF limits per chat. WARNING: OpenAI accepts ~100 pages and
-# ~32 MB of file content per request — selections between 32 and 50 MB will be
-# rejected by the API at generation time.
+# Direct-to-model PDF limits per chat (OpenAI accepts ~100 pages / ~32 MB of file
+# content per request; we stay safely under that).
 _MAX_CHAT_PDFS = 10
-_MAX_CHAT_PDF_BYTES = 50 * 1024 * 1024
+_MAX_CHAT_PDF_BYTES = 30 * 1024 * 1024
 _MAX_CHAT_PDF_PAGES = 100
 
 # Any inline markdown image. Used to sanitize model output so ONLY real figures

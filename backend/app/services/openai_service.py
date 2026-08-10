@@ -241,6 +241,33 @@ Course description: {description}
         raise HTTPException(status_code=500, detail="Failed to generate course description")
 
     
+def _collect_image_refs(answer_sheets_list: list) -> list:
+    """
+    Collect (sheet_file_id, question_number, openai_file_id) for every image
+    referenced in student answers, in the order they appear in the payload.
+
+    Structured answers (images/tables/mixed) are stored as a JSON array string
+    in 'student_answer'; plain text answers are stored as a plain string.
+    """
+    refs = []
+    for sheet in answer_sheets_list:
+        sheet_id = sheet.get("file_id", "unknown")
+        for answer in sheet.get("answers", []) or []:
+            raw = answer.get("student_answer")
+            if not isinstance(raw, str) or not raw.lstrip().startswith("["):
+                continue
+            try:
+                items = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict) and item.get("type") == "image" and item.get("file_id"):
+                    refs.append((sheet_id, str(answer.get("question_number", "?")), item["file_id"]))
+    return refs
+
+
 def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_scheme: dict, extracted_answer_sheets: dict):
     """
     Evaluate a batch of answer sheets using OpenAI API.
@@ -286,10 +313,25 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     
     evaluation_prompt = PromptParser().get_evaluation_prompt(evaluation_id, payload)
 
+    # Attach student answer images as vision inputs. A file_id mentioned inside
+    # prompt text is inert — the model only sees images passed as input_image
+    # content parts. Each image is preceded by a text label (file_id, sheet,
+    # question) so the model can match it to the reference in the answer JSON.
+    image_refs = _collect_image_refs(answer_sheets_list)
+    content = [{"type": "input_text", "text": evaluation_prompt}]
+    for sheet_id, question_number, image_file_id in image_refs:
+        content.append({
+            "type": "input_text",
+            "text": f"Attached image {image_file_id} — {sheet_id}, question {question_number}:"
+        })
+        content.append({"type": "input_image", "file_id": image_file_id, "detail": "auto"})
+    if image_refs:
+        logger.info(f"Attaching {len(image_refs)} answer image(s) to evaluation request")
+
     # Create thread and run evaluation
     run = client.responses.create(
         model=settings.OPENAI_MODEL,
-        input=[{"role": "user", "content": evaluation_prompt}],
+        input=[{"role": "user", "content": content}],
         temperature=0.3,
         text={
             "format": {
