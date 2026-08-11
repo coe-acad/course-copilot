@@ -17,7 +17,7 @@ from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.sprint_plan import build_sprint_plan
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_pdf, get_resource_pdfs_meta_for_names
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names
 from ..services.openai_service import clean_text, create_file, connect_file_to_vector_store
 from ..services.task_manager import task_manager, TaskStatus
 
@@ -441,15 +441,28 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 menu_lines.append(f"- image_ref:{f['image_id']} | {loc} | caption: {f['caption'] or '(none)'}")
             prompt += (
                 "\n\n---\n"
-                "AVAILABLE FIGURES — the user attached these images specifically so they appear in "
-                "your output. The actual images are attached to this message so you can SEE them. You "
-                "MUST embed each relevant figure as an image using EXACTLY this markdown — do NOT "
-                "merely mention the file name in prose; the image itself has to appear:\n"
-                "![short caption](image_ref:<id>)\n"
-                "Put it where it adds the most value — on its own line in the relevant section, or "
-                "inside the relevant table cell when the output is a table. Use ONLY the ids listed "
-                "below; never invent an id or an image URL, and never write a bare file name in place "
-                "of the image.\n\n"
+                "AVAILABLE FIGURES — The user may have attached images that can be used as figures "
+                "in your output. The images are attached to this message so you can SEE them. Do not "
+                "automatically embed figures unless they are relevant or the user explicitly asks you "
+                "to include them.\n\n"
+                "When a figure is relevant and adds meaningful value to the requested output, embed "
+                "it using EXACTLY this markdown format — do NOT merely mention the file name in "
+                "prose; the image itself must appear:\n"
+                "![short caption](image_ref:<id>)\n\n"
+                "User instructions take priority: If the user explicitly specifies which image to "
+                "use, what it should show/illustrate, or where it should be placed, follow that "
+                "instruction exactly. Do not move the figure to another location or substitute "
+                "another image unless necessary.\n\n"
+                "When the user does not specify a particular image or location, choose the most "
+                "relevant available figure and place it where it adds the most value — on its own "
+                "line in the relevant section, or inside the relevant table cell when the output is "
+                "a table.\n\n"
+                "Use ONLY the image ids listed below; never invent an id or an image URL, and never "
+                "write a bare file name in place of the image.\n\n"
+                "If no figure is relevant and the user has not requested one, do not include any "
+                "image.\n\n"
+                "Keep the image URL/reference format exactly as provided. Do not modify, replace, or "
+                "convert the image_ref:<id> value.\n\n"
                 + "\n".join(menu_lines)
             )
             logger.info(
@@ -695,7 +708,20 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
         print(handler.response_text)
         print("\n===== END RAW RESPONSE (FOLLOW-UP) =====\n")
         complete_response = handler.response_text.strip()
-        
+
+        # Turn valid image_ref:<id> links into absolute served-image URLs (and drop
+        # any hallucinated ids), same as the initial generation. On follow-up turns
+        # the original file selection is unknown, so every image of the course is a
+        # valid target — the model can only re-emit ids it was shown earlier anyway.
+        if complete_response and "![" in complete_response:
+            try:
+                allowed_image_ids = set(get_resource_image_ids_for_course(course_id))
+            except Exception as img_err:
+                allowed_image_ids = set()
+                logger.warning(f"[figures] course image lookup failed: {img_err}")
+            complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
+
+
         # Mark task as completed with result
         result = {
             "response": complete_response,

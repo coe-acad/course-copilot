@@ -232,6 +232,11 @@ def get_resource_images_for_names(course_id: str, resource_names: list):
         return []
     return get_many_from_collection("resource_images", {"course_id": course_id, "resource_name": {"$in": names}})
 
+def get_resource_image_ids_for_course(course_id: str):
+    """All image_ids of Mongo-stored image resources for a course (ids only, no bytes)."""
+    cursor = db["resource_images"].find({"course_id": course_id}, {"image_id": 1})
+    return [doc["image_id"] for doc in cursor if doc.get("image_id")]
+
 def delete_resource_image(course_id: str, resource_name: str):
     """Remove any Mongo-stored image bytes for a resource (used on resource delete)."""
     db["resource_images"].delete_many({"course_id": course_id, "resource_name": resource_name})
