@@ -5,10 +5,8 @@ import logging
 import os
 import io
 import base64
-from pathlib import Path
 from ..services import openai_service
 from ..services.mongo import get_course, get_resources_by_course_id, create_resource, get_resource_by_course_id_and_resource_name, delete_resource as delete_resource_in_db, save_resource_image, get_resource_image_by_id, delete_resource_image, save_resource_pdf, get_resource_pdf, delete_resource_pdf
-from ..services.openai_service import create_file, connect_file_to_vector_store, discover_resources
 from ..utils.course_pdf_utils import generate_course_pdf
 from ..utils.pdf_image_extractor import (
     is_image_filename,
@@ -88,9 +86,12 @@ def check_course_exists(course_id: str):
         raise HTTPException(status_code=404, detail="Course not found")
     return True
 
-def create_course_description_file(course_id: str, user_id: str = Depends(verify_token)):
-    """
-    Create a course description file using PDF utility and add it to vector store
+def create_course_description_file(course_id: str, user_id: str):
+    """Create the course-description resource, stored entirely in Mongo.
+
+    The description text is the resource content (used for prompt injection at
+    generation time) and the rendered PDF bytes are stored alongside it so the
+    resource can be viewed as a real PDF and sent directly to the model.
     """
     try:
         # Get course information from MongoDB
@@ -98,71 +99,37 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         if not course:
             logger.error(f"Course not found: {course_id}")
             return None
-        
-        # Generate PDF using the utility
+
+        # Generate the PDF using the utility, store its bytes in Mongo, and drop
+        # the local file — Mongo is the only storage.
         pdf_path = generate_course_pdf(course_id)
         if not pdf_path or not os.path.exists(pdf_path):
             logger.error(f"Failed to generate PDF for course {course_id}")
             return None
-        
-        # Get relative path starting from 'local_storage'
-        pdf_relative_path = Path(pdf_path).as_posix().split("local_storage", 1)[-1]
-        pdf_relative_path = "local_storage" + pdf_relative_path
-        
-        #name of the pdf should be the title
         resource_name = os.path.basename(pdf_path)
-
-        # Get course information to extract description text
-        course_name = course.get('name', 'Unknown Course')
-        course_description = course.get('description', 'No description available')
-        
-        # Store the course description text in database (not the PDF binary)
-        create_resource(course_id, resource_name, course_description)
-
-        # Upload the PDF to OpenAI (open as binary stream)
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
+        os.remove(pdf_path)
 
-        file_obj = io.BytesIO(pdf_bytes)
-        file_obj.name = resource_name
+        course_description = course.get('description', 'No description available')
+        create_resource(course_id, resource_name, course_description)
+        try:
+            pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        except Exception:
+            pages = 0
+        save_resource_pdf(course_id, resource_name, pdf_bytes, len(pdf_bytes), pages)
 
-        # file_obj = io.BytesIO(pdf_content)
-        file_obj.name = resource_name  # ✅ Required for OpenAI
-        openai_file_id = create_file(file_obj)
-        
-        # Check if vector store exists, if not create one
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            logger.error(f"No vector_store_id found for course {course_id}")
-            return None
-        
-        # Connect file to vector store
-        batch_id = connect_file_to_vector_store(vector_store_id, openai_file_id)
-        
-        logger.info(f"Created course description PDF for {course_id}: {openai_file_id}")
-        logger.info(f"Connected to vector store {vector_store_id}, batch: {batch_id}")
-        
-        return {
-            "file_id": openai_file_id,
-            "vector_store_id": vector_store_id,
-            "batch_id": batch_id,
-            "pdf_path": pdf_path
-        }
+        logger.info(f"Created course description resource '{resource_name}' for {course_id} in Mongo")
+        return {"resource_name": resource_name}
     except Exception as e:
         logger.error(f"Error creating course description file for {course_id}: {str(e)}")
         return None
 
-# Keep this route, we add the file to the vector store attached 
+# Everything uploaded here is stored in Mongo only — nothing goes to OpenAI.
 @router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
 def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
-        # if course exists, get the vector store id from the course
-        course = get_course(course_id)
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            logger.error(f"No vector_store_id found for course {course_id}")
-            return None
 
         # Build a set of existing resource names for collision handling
         existing_resources = get_resources_by_course_id(course_id) or []
@@ -172,12 +139,6 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
         for f in files:
             f.filename = ensure_unique_name(f.filename, existing_names)
 
-        # Upload only NON-image files to the vector store (a png/jpeg has no text to
-        # search; its bytes are stored in Mongo instead, below).
-        non_image_files = [f for f in files if not is_image_filename(f.filename)]
-        openai_service.upload_resources(user_id, course_id, vector_store_id, non_image_files)
-
-        # Create resource records with the possibly renamed filenames
         for file in files:
             content = ""
 
@@ -196,14 +157,28 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
                 continue
 
             if file.filename.endswith(".pdf"):
-                pdf_reader = PdfReader(file.file)
-                for page in pdf_reader.pages:
-                    content += page.extract_text() or ""
+                # Store the raw bytes (<= 15 MB) so the real PDF can be viewed and
+                # sent directly to the model, plus the extracted text as a fallback
+                # for oversized files and for prompt injection.
+                file.file.seek(0)
+                data = file.file.read()
+                if data and len(data) <= _MAX_PDF_BYTES:
+                    try:
+                        pages = len(PdfReader(io.BytesIO(data)).pages)
+                    except Exception:
+                        pages = 0
+                    save_resource_pdf(course_id, file.filename, data, len(data), pages)
+                try:
+                    pdf_reader = PdfReader(io.BytesIO(data))
+                    for page in pdf_reader.pages:
+                        content += page.extract_text() or ""
+                except Exception as text_err:
+                    logger.warning(f"Text extraction failed for '{file.filename}': {text_err}")
             else:
+                file.file.seek(0)
                 content = file.file.read().decode("utf-8", errors="ignore")
 
             create_resource(course_id, file.filename, content)
-
 
         return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
@@ -406,20 +381,14 @@ def add_discovered_resources(
 ):
     """
     Add selected discovered resources to the knowledge base.
-    Creates a text file for each resource containing the URL and adds it to the vector store.
+    Stores each resource's title, URL and description as Mongo resource content.
     """
     try:
         check_course_exists(course_id)
-        
+
         if not request.resources or len(request.resources) == 0:
             raise HTTPException(status_code=400, detail="No resources provided")
-        
-        # Get course and vector store
-        course = get_course(course_id)
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            raise HTTPException(status_code=404, detail="Vector store not found for this course")
-        
+
         # Get existing resources to avoid duplicates
         existing_resources = get_resources_by_course_id(course_id) or []
         existing_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
@@ -441,22 +410,11 @@ def add_discovered_resources(
                 
                 existing_names.add(resource_name)
                 
-                # Create text content with URL and description
+                # Store the link's text as the resource content in Mongo so
+                # generation can inject it like any other knowledge-base entry.
                 content = f"{resource.title}\n\n{resource.url}\n\n{resource.description}"
-                
-                # Create a text file in memory
-                file_obj = io.BytesIO(content.encode('utf-8'))
-                file_obj.name = f"{resource_name}.txt"
-                
-                # Upload to OpenAI
-                openai_file_id = create_file(file_obj)
-                
-                # Connect to vector store
-                connect_file_to_vector_store(vector_store_id, openai_file_id)
-                
-                # Create resource record in database
-                create_resource(course_id, resource_name)
-                
+                create_resource(course_id, resource_name, content)
+
                 added_count += 1
                 logger.info(f"Added discovered resource: {resource_name}")
                 

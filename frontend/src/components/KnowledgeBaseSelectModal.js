@@ -5,9 +5,6 @@ import { FiCheckSquare, FiSquare } from "react-icons/fi";
 export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, files }) {
   const [selected, setSelected] = useState([]);
 
-  const allSelectableFiles = files || [];
-  const isAllSelected = allSelectableFiles.length > 0 && selected.length === allSelectableFiles.length;
-
   const MAX_SELECTED = 10;
 
   const handleToggle = (file) => {
@@ -19,16 +16,6 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
       }
       return [...prev, file];
     });
-  };
-
-  const handleToggleAll = () => {
-    if (isAllSelected) {
-      setSelected([]);
-    } else if (allSelectableFiles.length > MAX_SELECTED) {
-      alert(`You can select at most ${MAX_SELECTED} documents.`);
-    } else {
-      setSelected(allSelectableFiles);
-    }
   };
 
   const handleGenerate = () => {
@@ -55,6 +42,7 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
         fontFamily: 'Inter, sans-serif'
       }}>
         These files will be used by the AI to generate course content.
+        You can select up to {MAX_SELECTED} files.
       </p>
       <div style={{
         maxHeight: 260,
@@ -65,24 +53,6 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
         marginBottom: 24,
         background: '#fafbfc'
       }}>
-        {files.length > 0 && (
-          <div
-            onClick={handleToggleAll}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '6px 4px 10px 4px',
-              borderBottom: '1px solid #f0f0f0',
-              cursor: 'pointer',
-              marginBottom: 4
-            }}
-          >
-            {isAllSelected ? <FiCheckSquare size={18} /> : <FiSquare size={18} />}
-            <span style={{ marginLeft: 12, fontSize: 14, fontWeight: 500 }}>
-              Select all resources
-            </span>
-          </div>
-        )}
         {files.length === 0 ? (
           <div style={{ color: "#888", fontSize: 14 }}>No resources found.</div>
         ) : (

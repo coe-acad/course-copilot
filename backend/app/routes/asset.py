@@ -18,7 +18,6 @@ from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.sprint_plan import build_sprint_plan
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names
-from ..services.openai_service import clean_text, create_file, connect_file_to_vector_store
 from ..services.task_manager import task_manager, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -125,6 +124,33 @@ def construct_input_variables(course: dict, file_names: list[str], course_descri
     return input_variables
 
 
+def _resolve_selected_text_sections(course_id: str, file_names: list, skip_names: set) -> list:
+    """Resolve each selected file (resource or saved asset) to its stored text.
+
+    With no file_search tool attached, this injected text plus the directly-attached
+    Mongo PDFs are the only source material the model can read. Names in
+    ``skip_names`` (files already attached verbatim as PDFs) are skipped.
+    """
+    sections = []
+    for fname in file_names:
+        if not fname or fname in skip_names:
+            continue
+        content = ""
+        resource = get_resource_by_course_id_and_resource_name(course_id, fname)
+        if resource and resource.get("content"):
+            content = resource["content"]
+        else:
+            asset = get_asset_by_course_id_and_asset_name(course_id, fname)
+            if asset and asset.get("asset_content"):
+                content = asset["asset_content"]
+        if content:
+            sections.append(f"### {fname}\n{content}")
+            logger.info(f"[selection] injected content for selected file '{fname}' ({len(content)} chars)")
+        else:
+            logger.warning(f"[selection] no stored text content for selected file '{fname}'; it is not visible to the model")
+    return sections
+
+
 # Cap on figures attached as vision input per generation (token/cost guard).
 _MAX_FIGURES = 12
 
@@ -181,21 +207,52 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         if not course:
             task_manager.mark_failed(task_id, "Course not found")
             return
-        vector_store_id = course.get("vector_store_id")
-        logger.info(f"[DEBUG] Vector Store ID: {vector_store_id}")
-        if not vector_store_id:
-            task_manager.mark_failed(task_id, "Vector store ID not found")
-            return
-        logger.info(f"Vector store ID: {vector_store_id}")
         # Check if mark-scheme and extract questions first
         extracted_questions = ""
         systemPrompt = PromptParser().render_prompt("app/prompts/system/overall_context.json" , {})
+
+        # Directly-uploaded PDFs (stored in Mongo) are sent to the model verbatim so it
+        # reads the real documents. This is the ONLY file access the model has — there
+        # is no file_search/vector store attached, so the selection is a hard boundary.
+        # Built up-front so the mark-scheme question extraction can attach them too.
+        pdf_inputs = []
+        try:
+            for _name in file_names:
+                rec = get_resource_pdf(course_id, _name)
+                if rec and rec.get("pdf_bytes"):
+                    b64 = base64.b64encode(bytes(rec["pdf_bytes"])).decode("ascii")
+                    pdf_inputs.append({
+                        "filename": _name,
+                        "data_uri": f"data:application/pdf;base64,{b64}",
+                    })
+        except Exception as pdf_err:
+            logger.warning(f"[pdf] lookup failed: {pdf_err}")
+        if pdf_inputs:
+            logger.info(f"[pdf] attaching {len(pdf_inputs)} PDF(s) directly to the model")
+        pdf_names = {p["filename"] for p in pdf_inputs}
         if asset_type_name == "mark-scheme":
             # First extract questions using qp-extraction
             input_variables_qp = construct_input_variables(course, file_names)
             parser_qp = PromptParser()
             prompt_qp = parser_qp.get_asset_prompt("qp-extraction", input_variables_qp)
+
+            # The extraction model has no file_search: give it the selected files
+            # directly — stored text inline, Mongo PDFs attached verbatim.
+            qp_sections = _resolve_selected_text_sections(course_id, file_names, pdf_names)
+            if qp_sections:
+                prompt_qp += (
+                    "\n\n---\n"
+                    "FULL CONTENT OF THE SELECTED FILES (authoritative source material — "
+                    "treat this as the content of the files named above and use it directly):\n\n"
+                    + "\n\n".join(qp_sections)
+                )
             logger.info(f"[DEBUG] qp-extraction prompt_qp:\n{prompt_qp}")
+
+            qp_content = prompt_qp
+            if pdf_inputs:
+                qp_content = [{"type": "input_text", "text": prompt_qp}]
+                for p in pdf_inputs:
+                    qp_content.append({"type": "input_file", "filename": p["filename"], "file_data": p["data_uri"]})
 
             handler_qp = AssetChatStreamHandler(label="Question Extraction")
 
@@ -204,9 +261,8 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     model=settings.OPENAI_MODEL,
                     input=[
                         {"role": "system", "content": systemPrompt},
-                        {"role": "user", "content": prompt_qp}
-                    ],
-                    tools = [{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+                        {"role": "user", "content": qp_content}
+                    ]
                 ) as stream:
                     for event in stream:
                         handler_qp.handle(event)
@@ -371,36 +427,18 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         figures = []
         allowed_image_ids = set()
 
-        # For question-paper, inject the ACTUAL content of the selected files into the prompt.
-        # Selection otherwise only passes file NAMES; the model reads content via file_search
-        # over the whole vector store, which is unreliable for saved assets (e.g. a Course
-        # Outcomes doc). Resolving each selected file to its stored text and appending it makes
-        # the source material — including the CO list — directly visible to the model.
-        if asset_type_name == "question-paper":
-            resolved_sections = []
-            for fname in file_names:
-                if not fname:
-                    continue
-                content = ""
-                resource = get_resource_by_course_id_and_resource_name(course_id, fname)
-                if resource and resource.get("content"):
-                    content = resource["content"]
-                else:
-                    asset = get_asset_by_course_id_and_asset_name(course_id, fname)
-                    if asset and asset.get("asset_content"):
-                        content = asset["asset_content"]
-                if content:
-                    resolved_sections.append(f"### {fname}\n{content}")
-                    logger.info(f"[QP] Injected content for selected file '{fname}' ({len(content)} chars)")
-                else:
-                    logger.warning(f"[QP] No stored text content found for selected file '{fname}' (relying on file_search)")
-
+        # Inject the ACTUAL content of the selected files into the prompt. Selection
+        # otherwise only passes file NAMES, and with no file_search tool attached the
+        # injected text plus the directly-attached Mongo PDFs are the model's ONLY
+        # source material. Sprint-plan resolves its sources itself above.
+        if asset_type_name != "sprint-plan":
+            resolved_sections = _resolve_selected_text_sections(course_id, file_names, pdf_names)
             if resolved_sections:
                 prompt += (
                     "\n\n---\n"
                     "FULL CONTENT OF THE SELECTED FILES (authoritative source material — "
-                    "treat this as the content of the files named above; use it directly, "
-                    "including for locating course outcomes. The file_search tool is only a supplement):\n\n"
+                    "treat this as the content of the files named above and use it directly, "
+                    "including for locating course outcomes):\n\n"
                     + "\n\n".join(resolved_sections)
                 )
 
@@ -474,23 +512,6 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         print(prompt)
         print("\n===== END PROMPT =====\n")
 
-        # Directly-uploaded PDFs (stored in Mongo) sent to the model verbatim, so it
-        # reads the real document. Empty for selections with no such PDFs.
-        pdf_inputs = []
-        try:
-            for _name in file_names:
-                rec = get_resource_pdf(course_id, _name)
-                if rec and rec.get("pdf_bytes"):
-                    b64 = base64.b64encode(bytes(rec["pdf_bytes"])).decode("ascii")
-                    pdf_inputs.append({
-                        "filename": _name,
-                        "data_uri": f"data:application/pdf;base64,{b64}",
-                    })
-        except Exception as pdf_err:
-            logger.warning(f"[pdf] lookup failed: {pdf_err}")
-        if pdf_inputs:
-            logger.info(f"[pdf] attaching {len(pdf_inputs)} PDF(s) directly to the model")
-
         # Build the user message. With figures/PDFs, attach the real image pixels
         # (vision) and/or the PDF files alongside the prompt. No figures/PDFs -> plain
         # text (byte-identical to the previous behaviour).
@@ -519,8 +540,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     {"role": "system", "content": systemPrompt},
                     {"role": "user", "content": user_content}
                 ],
-                temperature=temp,
-                tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+                temperature=temp
             ) as stream:
                 for event in stream:
                     handler.handle(event)
@@ -546,8 +566,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                         {"role": "system", "content": systemPrompt},
                         {"role": "user", "content": user_content}
                     ],
-                    temperature=temp,
-                    tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+                    temperature=temp
                 )
                 complete_response = (response.output_text or "").strip()
             except Exception as retry_error:
@@ -684,21 +703,18 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
         asset_type = asset.get("asset_type", "") if asset else ""
         temp = 0.3 if asset_type == "mark-scheme" else 1.0
 
-        vector_store_id = course.get("vector_store_id")
-        
-        # Create and stream the run
+        # Create and stream the run. No file_search/vector store: the conversation
+        # continues from previous_response_id, which already carries the selected
+        # files (injected text + directly-attached Mongo PDFs) from the first turn.
         handler = AssetChatStreamHandler(label=f"Continue Asset Chat: {asset_name}")
-        
+
         stream_kwargs = {
             "model": settings.OPENAI_MODEL,
             "input": [{"role": "user", "content": user_prompt}],
             "temperature": temp,
             "previous_response_id": previous_response_id,
         }
-        
-        if vector_store_id:
-            stream_kwargs["tools"] = [{"type": "file_search", "vector_store_ids": [vector_store_id]}]
-            
+
         with client.responses.stream(**stream_kwargs) as stream:
             for event in stream:
                 handler.handle(event)
@@ -941,25 +957,11 @@ def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreate
             raise HTTPException(status_code=404, detail="Content not provided")
 
         
-        # 5. Save the content as a resource
+        # 5. Save the content as a resource in Mongo. That is the knowledge base:
+        # generation reads this content back via _resolve_selected_text_sections.
         logger.info(f"Saving resource: {asset_name} with content length: {len(content)}")
         create_resource(course_id, asset_name, content)
         logger.info(f"Resource saved successfully: {asset_name}")
-
-        # 6. Also add the resource to the course vector store so it is searchable (e.g. file_search)
-        try:
-            course = get_course(course_id)
-            vector_store_id = course.get("vector_store_id") if course else None
-            if vector_store_id:
-                file_obj = BytesIO(content.encode("utf-8"))
-                file_obj.name = f"{asset_name}.txt"
-                openai_file_id = create_file(file_obj)
-                connect_file_to_vector_store(vector_store_id, openai_file_id)
-                logger.info(f"Resource '{asset_name}' added to vector store {vector_store_id}")
-            else:
-                logger.warning(f"No vector store for course {course_id}; resource '{asset_name}' not indexed")
-        except Exception as vs_error:
-            logger.error(f"Failed to add resource '{asset_name}' to vector store: {vs_error}")
 
         return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{asset_name}' successfully")
     except HTTPException:
