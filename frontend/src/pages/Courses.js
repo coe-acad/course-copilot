@@ -367,6 +367,7 @@ export default function Courses() {
             navigate("/dashboard");
           } catch (err) {
             console.error("Error creating course:", err);
+            alert(`Failed to create course: ${err.response?.data?.detail || err.message || 'Unknown error'}`);
           }
         }}
         loading={loading}

@@ -392,7 +392,7 @@ export default function Dashboard() {
       setResources(transformedResources);
     } catch (error) {
       console.error('Error uploading resources:', error);
-      alert('Failed to upload resources. Please try again.');
+      alert(`Failed to upload resources: ${error.message || 'Unknown error'}. Please try again.`);
     } finally {
       setIsUploadingResources(false);
     }

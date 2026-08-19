@@ -207,20 +207,23 @@ export default function AssetStudioContent() {
         const taskId = taskResponse?.task_id;
 
         if (taskId) {
-          // Poll for task completion
-          const completedTask = await assetService.getTaskStatus(taskId);
-          if (completedTask && completedTask.result && completedTask.result.response) {
-            const normalizedResponse = normalizeEscapes(completedTask.result.response);
+          // Poll for task completion (throws if the task failed on the backend)
+          const result = await assetService.pollTaskUntilComplete(taskId, 600, 1000);
+          if (result && result.response) {
+            const normalizedResponse = normalizeEscapes(result.response);
             const formattedResponse = option === 'mark-scheme'
               ? formatMarkSchemeResponse(normalizedResponse)
               : normalizedResponse;
             setChatMessages(prev => [...prev, { type: "bot", text: formattedResponse }]);
-            setLastResponseId(completedTask.result.response_id);
+            setLastResponseId(result.response_id);
           }
         }
       } catch (error) {
         console.error("Error creating initial message:", error);
-        // Don't show any error message to user - just log it
+        setChatMessages(prev => [...prev, {
+          type: "bot",
+          text: `⚠️ Generation failed: ${error.message || 'Unknown error'}. Please try again.`
+        }]);
       } finally {
         setIsLoading(false);
       }
@@ -285,7 +288,7 @@ export default function AssetStudioContent() {
       console.error("Error details:", err.message);
       const errorResponse = {
         type: "bot",
-        text: "Sorry, I encountered an error. Please try again."
+        text: `⚠️ Sorry, I encountered an error: ${err.message || 'Unknown error'}. Please try again.`
       };
       setChatMessages((prev) => [...prev, errorResponse]);
     } finally {
@@ -333,8 +336,7 @@ export default function AssetStudioContent() {
       setAssetName("");
     } catch (error) {
       console.error("Error saving asset:", error);
-      // Optionally surface to user
-      // alert(error?.message || 'Failed to save asset');
+      alert(`Failed to save asset: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsSavingAsset(false);
     }
@@ -419,6 +421,7 @@ export default function AssetStudioContent() {
       setResources(resourcesData.resources);
     } catch (err) {
       console.error('Error uploading resources from modal:', err);
+      alert(`Failed to upload resources: ${err.message || 'Unknown error'}`);
     } finally {
       setIsUploadingResources(false);
     }
