@@ -9,14 +9,122 @@ from io import BytesIO
 from typing import List, Optional, Union
 from pathlib import Path
 
+import base64
+import requests
+
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Emu
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.opc.constants import RELATIONSHIP_TYPE as _RT
 
-from app.utils.markdown_media import fetch_image_stream, parse_image_line
-from app.utils.latex_to_text import latex_to_text
+_IMAGE_LINE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
+_COURSE_IMAGE_RE = re.compile(r"/courses/([^/]+)/images/([^/?#\s]+)")
+
+
+def parse_image_line(stripped_line: str) -> Optional[Tuple[str, str]]:
+    """Return (alt, src) if the line is a standalone markdown image, else None."""
+    match = _IMAGE_LINE.match(stripped_line.strip())
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def fetch_image_stream(src: str) -> Optional[BytesIO]:
+    """Fetch image into a BytesIO stream with support for mongo lookup, base64, and URLs."""
+    if not src:
+        return None
+
+    try:
+        # 1. Base64 data URIs
+        if src.startswith("data:"):
+            header, _, data = src.partition(",")
+            if ";base64" in header and data:
+                img_data = base64.b64decode(data)
+                stream = BytesIO(img_data)
+                stream.seek(0)
+                return stream
+            return None
+
+        # 2. Internal course / knowledge base image path
+        course_img_match = _COURSE_IMAGE_RE.search(src)
+        if course_img_match:
+            course_id = course_img_match.group(1)
+            image_id = course_img_match.group(2)
+
+            from app.services.mongo import get_one_from_collection
+            mongo_img = get_one_from_collection("resource_images", {
+                "course_id": course_id,
+                "$or": [
+                    {"image_id": image_id},
+                    {"resource_name": image_id},
+                    {"resource_name": image_id.replace("_", " ")},
+                    {"image_id": image_id.replace(".", "_")},
+                    {"image_id": f"res_{image_id.replace('.', '_')}"},
+                ]
+            })
+            if not mongo_img:
+                mongo_img = get_one_from_collection("resource_images", {
+                    "$or": [
+                        {"image_id": image_id},
+                        {"resource_name": image_id},
+                    ]
+                })
+
+            if mongo_img and mongo_img.get("image_base64"):
+                image_base64 = mongo_img["image_base64"]
+                if "," in image_base64 and image_base64.startswith("data:"):
+                    image_base64 = image_base64.split(",", 1)[1]
+                img_data = base64.b64decode(image_base64)
+                if img_data:
+                    stream = BytesIO(img_data)
+                    stream.seek(0)
+                    return stream
+
+        # 3. Direct MongoDB lookup by image_id or resource_name
+        if not src.startswith("http://") and not src.startswith("https://"):
+            from app.services.mongo import get_one_from_collection
+            clean_src = src.lstrip("/")
+            mongo_img = get_one_from_collection("resource_images", {
+                "$or": [
+                    {"image_id": clean_src},
+                    {"resource_name": clean_src},
+                    {"image_id": clean_src.replace(".", "_")},
+                ]
+            })
+            if mongo_img and mongo_img.get("image_base64"):
+                image_base64 = mongo_img["image_base64"]
+                if "," in image_base64 and image_base64.startswith("data:"):
+                    image_base64 = image_base64.split(",", 1)[1]
+                img_data = base64.b64decode(image_base64)
+                if img_data:
+                    stream = BytesIO(img_data)
+                    stream.seek(0)
+                    return stream
+
+        # 4. HTTP(S) URLs
+        if src.startswith("http://") or src.startswith("https://"):
+            response = requests.get(src, timeout=10.0)
+            if response.ok and response.content:
+                stream = BytesIO(response.content)
+                stream.seek(0)
+                return stream
+
+        return None
+    except Exception:
+        return None
+
+
+def latex_to_text(text: str) -> str:
+    """Clean LaTeX math markers for clear readable text."""
+    if not text:
+        return ""
+    text = re.sub(r"\\\[(.+?)\\\]", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"\\\((.+?)\\\)", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"\$\$(.+?)\$\$", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"(?<!\\)\$(?!\$)([^\n$]+?)(?<!\\)\$", r"\1", text)
+    return text
+
 
 DocxBytes = bytes
 PathLike = Union[str, Path]
@@ -225,16 +333,32 @@ def _markdown_to_docx(doc: Document, text: str):
         elif b_type == "ul":
             bullet_num_id = _bullet_num_id(doc)
             for item in block.get("items", []):
-                p = doc.add_paragraph(style="List Bullet")
-                _apply_list_number(p, bullet_num_id)
-                _add_inline_runs(p, item)
+                if _INLINE_IMAGE_RE.search(item):
+                    remaining = _INLINE_IMAGE_RE.sub("", item).strip()
+                    p = doc.add_paragraph(style="List Bullet")
+                    _apply_list_number(p, bullet_num_id)
+                    _add_inline_runs(p, remaining)
+                    for m in _INLINE_IMAGE_RE.finditer(item):
+                        _add_image(doc, {"alt": m.group(1), "src": m.group(2)})
+                else:
+                    p = doc.add_paragraph(style="List Bullet")
+                    _apply_list_number(p, bullet_num_id)
+                    _add_inline_runs(p, item)
 
         elif b_type == "ol":
             number_num_id = _new_ordered_num_id(doc)  # fresh id -> restarts at 1
             for item in block.get("items", []):
-                p = doc.add_paragraph(style="List Number")
-                _apply_list_number(p, number_num_id)
-                _add_inline_runs(p, item)
+                if _INLINE_IMAGE_RE.search(item):
+                    remaining = _INLINE_IMAGE_RE.sub("", item).strip()
+                    p = doc.add_paragraph(style="List Number")
+                    _apply_list_number(p, number_num_id)
+                    _add_inline_runs(p, remaining)
+                    for m in _INLINE_IMAGE_RE.finditer(item):
+                        _add_image(doc, {"alt": m.group(1), "src": m.group(2)})
+                else:
+                    p = doc.add_paragraph(style="List Number")
+                    _apply_list_number(p, number_num_id)
+                    _add_inline_runs(p, item)
 
         elif b_type == "code":
             p = doc.add_paragraph()
@@ -297,12 +421,20 @@ def _markdown_to_docx(doc: Document, text: str):
             lines = block.get("lines", [])
             paragraph_text = " ".join(line.strip() for line in lines if line.strip())
             if paragraph_text:
-                p = doc.add_paragraph()
-                _add_inline_runs(p, paragraph_text)
+                if _INLINE_IMAGE_RE.search(paragraph_text):
+                    remaining = _INLINE_IMAGE_RE.sub("", paragraph_text).strip()
+                    if remaining:
+                        p = doc.add_paragraph()
+                        _add_inline_runs(p, remaining)
+                    for m in _INLINE_IMAGE_RE.finditer(paragraph_text):
+                        _add_image(doc, {"alt": m.group(1), "src": m.group(2)})
+                else:
+                    p = doc.add_paragraph()
+                    _add_inline_runs(p, paragraph_text)
 
 
 # ---------------------------------------------------------------------------
-# Inline markdown → runs
+# Inline markdown & HTML → runs
 # ---------------------------------------------------------------------------
 
 # Bare URL autolink: http(s):// or www. up to the next space/bracket/quote.
@@ -371,21 +503,34 @@ def _add_hyperlink(para, text: str, url: str):
 _INLINE_PATTERN = re.compile(
     r'(?P<link>\[(?P<ltext>[^\]]+)\]\((?P<lurl>[^)\s]+)\))'  # [text](url)
     r'|(?P<url>(?:https?://|www\.)[^\s<>\[\]"\']+)'            # bare url autolink
-    r'|(?P<bi>\*\*\*(?P<bitext>.+?)\*\*\*)'                    # bold + italic
-    r'|(?P<b>\*\*(?P<btext>.+?)\*\*)'                          # bold
-    r'|(?P<i>\*(?P<itext>.+?)\*)'                              # italic
-    r'|(?P<code>`(?P<ctext>[^`]+)`)'                           # inline code
-    r'|(?P<strike>~~(?P<stext>.+?)~~)'                         # strikethrough
+    r'|(?P<br><br\s*/?>)'                                      # <br> or <br/>
+    r'|(?P<bi>\*\*\*(?P<bitext>.+?)\*\*\*|___(?P<bi_utext>.+?)___)' # bold + italic
+    r'|(?P<b>\*\*(?P<btext>.+?)\*\*|__(?P<b_utext>.+?)__|<b>(?P<hbtext>.+?)</b>|<strong>(?P<strongtext>.+?)</strong>)' # bold
+    r'|(?P<i>\*(?P<itext>.+?)\*|_(?P<i_utext>.+?)_|<i>(?P<hitext>.+?)</i>|<em>(?P<emtext>.+?)</em>)' # italic
+    r'|(?P<u><u>(?P<utext>.+?)</u>)'                          # underline
+    r'|(?P<code>`(?P<ctext>[^`]+)`|<code>(?P<hctext>.+?)</code>)' # inline code
+    r'|(?P<strike>~~(?P<stext>.+?)~~|<s>(?P<stext_s>.+?)</s>|<strike>(?P<stext_strike>.+?)</strike>|<del>(?P<stext_del>.+?)</del>)' # strikethrough
+    r'|(?P<sub><sub>(?P<subtext>.+?)</sub>)'                  # subscript
+    r'|(?P<sup><sup>(?P<suptext>.+?)</sup>)',                 # superscript
+    re.IGNORECASE | re.DOTALL
 )
 
 
 def _add_inline_runs(para, text: str):
-    """Parse inline markdown and add styled runs to a paragraph."""
+    """Parse inline markdown and HTML and add styled runs to a paragraph."""
+    if not text:
+        return
+
+    # Auto-format inline sub-questions (i), (ii), (iii), (a), (b), (c) that follow text onto clean new lines
+    subq_pattern = r"(?<!^)(?<!<br/>)(?<!<br>)(?<!\n)(?:;\s*and\s+|;\s*|,\s*and\s+|,\s*|\s+and\s+|\s+)(\((?:[a-h]|i{1,3}|iv|v|vi{1,3}|ix|x|[1-9])\)\s+)"
+    text = re.sub(subq_pattern, r"<br/>\1", text, flags=re.IGNORECASE)
+
     pos = 0
     for m in _INLINE_PATTERN.finditer(text):
         # Add plain text before this match
         if m.start() > pos:
             run = para.add_run(text[pos:m.start()])
+
             run.font.color.rgb = RGBColor(0x37, 0x41, 0x51)
 
         if m.group("link"):
@@ -397,25 +542,44 @@ def _add_inline_runs(para, text: str):
             if trail:
                 run = para.add_run(trail)
                 run.font.color.rgb = RGBColor(0x37, 0x41, 0x51)
+        elif m.group("br"):
+            run = para.add_run()
+            run.add_break()
         elif m.group("bi"):
-            run = para.add_run(m.group("bitext"))
+            txt = m.group("bitext") or m.group("bi_utext") or ""
+            run = para.add_run(txt)
             run.bold = True
             run.italic = True
         elif m.group("b"):
-            run = para.add_run(m.group("btext"))
+            txt = m.group("btext") or m.group("b_utext") or m.group("hbtext") or m.group("strongtext") or ""
+            run = para.add_run(txt)
             run.bold = True
         elif m.group("i"):
-            run = para.add_run(m.group("itext"))
+            txt = m.group("itext") or m.group("i_utext") or m.group("hitext") or m.group("emtext") or ""
+            run = para.add_run(txt)
             run.italic = True
+        elif m.group("u"):
+            txt = m.group("utext") or ""
+            run = para.add_run(txt)
+            run.underline = True
         elif m.group("code"):
-            run = para.add_run(m.group("ctext"))
+            txt = m.group("ctext") or m.group("hctext") or ""
+            run = para.add_run(txt)
             run.font.name = "Courier New"
             run.font.size = Pt(10)
             run.font.color.rgb = RGBColor(0xDC, 0x26, 0x26)
         elif m.group("strike"):
-            run = para.add_run(m.group("stext"))
-            # python-docx has no direct strikethrough property; set it via XML.
+            txt = m.group("stext") or m.group("stext_s") or m.group("stext_strike") or m.group("stext_del") or ""
+            run = para.add_run(txt)
             run.font._element.get_or_add_rPr().append(OxmlElement('w:strike'))
+        elif m.group("sub"):
+            txt = m.group("subtext") or ""
+            run = para.add_run(txt)
+            run.font.subscript = True
+        elif m.group("sup"):
+            txt = m.group("suptext") or ""
+            run = para.add_run(txt)
+            run.font.superscript = True
 
         pos = m.end()
 
@@ -423,6 +587,7 @@ def _add_inline_runs(para, text: str):
     if pos < len(text):
         run = para.add_run(text[pos:])
         run.font.color.rgb = RGBColor(0x37, 0x41, 0x51)
+
 
 
 # ---------------------------------------------------------------------------
@@ -686,17 +851,27 @@ def _add_cell_image(cell, src: str, alt: str, max_width: Optional[int] = None):
 
 
 def _add_cell_content(cell, text: str, img_max_width: Optional[int] = None):
-    """Fill a table cell. If ``text`` contains inline image markdown, add the
-    remaining text then embed each image; otherwise just add inline runs —
-    byte-identical to the previous cell rendering for image-free cells.
-    """
+    """Fill a table cell, preserving the natural reading order (text before image -> image -> text after image)."""
     if not _INLINE_IMAGE_RE.search(text or ""):
         _add_inline_runs(cell.paragraphs[0], text)
         return
-    remaining = _INLINE_IMAGE_RE.sub("", text).strip()
-    _add_inline_runs(cell.paragraphs[0], remaining)
+
+    last_idx = 0
+    first_para = True
     for m in _INLINE_IMAGE_RE.finditer(text):
+        before = text[last_idx:m.start()].strip()
+        if before:
+            para = cell.paragraphs[0] if first_para else cell.add_paragraph()
+            _add_inline_runs(para, before)
+            first_para = False
         _add_cell_image(cell, m.group(2), m.group(1), img_max_width)
+        first_para = False
+        last_idx = m.end()
+
+    after = text[last_idx:].strip()
+    if after:
+        para = cell.paragraphs[0] if first_para else cell.add_paragraph()
+        _add_inline_runs(para, after)
 
 
 def _add_horizontal_rule(doc: Document):

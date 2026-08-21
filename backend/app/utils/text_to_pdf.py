@@ -13,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Union
 
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.lib.pagesizes import LETTER
@@ -31,12 +32,168 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+import base64
+import requests
+
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
-from app.utils.markdown_media import fetch_image_stream, parse_image_line
-from app.utils.latex_to_text import latex_to_text
+_IMAGE_LINE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
+_COURSE_IMAGE_RE = re.compile(r"/courses/([^/]+)/images/([^/?#\s]+)")
+
+
+def parse_image_line(stripped_line: str) -> Optional[Tuple[str, str]]:
+    """Return (alt, src) if the line is a standalone markdown image, else None."""
+    match = _IMAGE_LINE.match(stripped_line.strip())
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+# def fetch_image_stream(src: str) -> Optional[BytesIO]:
+#     """Fetch image into a BytesIO stream with support for mongo lookup, base64, and URLs."""
+#     try:
+#         if not src:
+#             return None
+
+#         # 1) Direct MongoDB lookup for internal course images
+#         course_img_match = _COURSE_IMAGE_RE.search(src)
+#         if course_img_match:
+#             try:
+#                 from app.services.mongo import get_resource_image_by_id
+#                 course_id, image_id = course_img_match.group(1), course_img_match.group(2)
+#                 mongo_img = get_resource_image_by_id(course_id, image_id)
+#                 if mongo_img and mongo_img.get("image_base64"):
+#                     img_data = base64.b64decode(mongo_img["image_base64"])
+#                     stream = BytesIO(img_data)
+#                     stream.seek(0)
+#                     return stream
+#             except Exception:
+#                 pass
+
+#         # 2) Base64 data URIs
+#         if src.startswith("data:"):
+#             header, _, data = src.partition(",")
+#             if ";base64" in header and data:
+#                 stream = BytesIO(base64.b64decode(data))
+#                 stream.seek(0)
+#                 return stream
+#             return None
+
+#         # 3) HTTP(S) URLs
+#         if src.startswith("http://") or src.startswith("https://"):
+#             response = requests.get(src, timeout=8.0)
+#             response.raise_for_status()
+#             if not response.content:
+#                 return None
+#             stream = BytesIO(response.content)
+#             stream.seek(0)
+#             return stream
+#     except Exception:
+#         return None
+#     return None
+
+
+def fetch_image_stream(src: str) -> Optional[BytesIO]:
+    """Fetch image into a BytesIO stream with support for mongo lookup, base64, and URLs."""
+    if not src:
+        logger.warning("fetch_image_stream: Empty image source")
+        return None
+
+    try:
+        # 1. Base64 data URI
+        if src.startswith("data:"):
+            header, _, data = src.partition(",")
+            if ";base64" in header and data:
+                img_data = base64.b64decode(data)
+                stream = BytesIO(img_data)
+                stream.seek(0)
+                return stream
+            return None
+
+        # 2. Internal course / knowledge base image path
+        course_img_match = _COURSE_IMAGE_RE.search(src)
+        if course_img_match:
+            course_id = course_img_match.group(1)
+            image_id = course_img_match.group(2)
+
+            from app.services.mongo import get_one_from_collection
+            mongo_img = get_one_from_collection("resource_images", {
+                "course_id": course_id,
+                "$or": [
+                    {"image_id": image_id},
+                    {"resource_name": image_id},
+                    {"resource_name": image_id.replace("_", " ")},
+                    {"image_id": image_id.replace(".", "_")},
+                    {"image_id": f"res_{image_id.replace('.', '_')}"},
+                ]
+            })
+            if not mongo_img:
+                mongo_img = get_one_from_collection("resource_images", {
+                    "$or": [
+                        {"image_id": image_id},
+                        {"resource_name": image_id},
+                    ]
+                })
+
+            if mongo_img and mongo_img.get("image_base64"):
+                image_base64 = mongo_img["image_base64"]
+                if "," in image_base64 and image_base64.startswith("data:"):
+                    image_base64 = image_base64.split(",", 1)[1]
+                img_data = base64.b64decode(image_base64)
+                if img_data:
+                    stream = BytesIO(img_data)
+                    stream.seek(0)
+                    return stream
+
+        # 3. Direct MongoDB lookup by image_id or resource_name
+        if not src.startswith("http://") and not src.startswith("https://"):
+            from app.services.mongo import get_one_from_collection
+            clean_src = src.lstrip("/")
+            mongo_img = get_one_from_collection("resource_images", {
+                "$or": [
+                    {"image_id": clean_src},
+                    {"resource_name": clean_src},
+                    {"image_id": clean_src.replace(".", "_")},
+                ]
+            })
+            if mongo_img and mongo_img.get("image_base64"):
+                image_base64 = mongo_img["image_base64"]
+                if "," in image_base64 and image_base64.startswith("data:"):
+                    image_base64 = image_base64.split(",", 1)[1]
+                img_data = base64.b64decode(image_base64)
+                if img_data:
+                    stream = BytesIO(img_data)
+                    stream.seek(0)
+                    return stream
+
+        # 4. HTTP(S) URLs
+        if src.startswith("http://") or src.startswith("https://"):
+            response = requests.get(src, timeout=10)
+            if response.ok and response.content:
+                stream = BytesIO(response.content)
+                stream.seek(0)
+                return stream
+
+        return None
+
+    except Exception as e:
+        logger.error(f"fetch_image_stream error for '{src}': {e}")
+        return None
+
+
+def latex_to_text(text: str) -> str:
+    """Clean LaTeX math markers for clear readable text."""
+    if not text:
+        return ""
+    # Strip basic \[ ... \], \( ... \), $$ ... $$, $ ... $
+    text = re.sub(r"\\\[(.+?)\\\]", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"\\\((.+?)\\\)", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"\$\$(.+?)\$\$", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"(?<!\\)\$(?!\$)([^\n$]+?)(?<!\\)\$", r"\1", text)
+    return text
+
 
 PdfBytes = bytes
 PathLike = Union[str, Path]
@@ -88,7 +245,13 @@ _H_MARGIN = 0.85 * inch
 _V_MARGIN = 1.0 * inch
 # Cap embedded-image height so a tall image never overflows the page frame
 # (reportlab raises LayoutError otherwise). ~0.85 of the usable text height.
-_MAX_IMAGE_HEIGHT = (_DEFAULT_PAGE_SIZE[1] - 2 * _V_MARGIN) * 0.85
+# Maximum height for normal standalone images
+_MAX_IMAGE_HEIGHT = (_DEFAULT_PAGE_SIZE[1] - 2 * _V_MARGIN) * 0.60
+
+# Smaller maximum height for images inside table cells.
+# This prevents a question row from becoming taller than the PDF page.
+_MAX_TABLE_IMAGE_HEIGHT = 2.2 * inch
+
 _PARAGRAPH_SPACING = 0.12 * inch
 _DEFAULT_TITLE = "Document"
 
@@ -125,7 +288,37 @@ def text_to_pdf(
     flowables = _markdown_to_flowables(text, styles, title)
 
     decorator = lambda canvas, doc_: _decorate_page(canvas, doc_, title)
-    doc.build(flowables, onFirstPage=decorator, onLaterPages=decorator)
+    # try:
+    #     doc.build(flowables, onFirstPage=decorator, onLaterPages=decorator)
+    # except Exception:
+    #     # Fallback: if document layout fails on complex/oversized flowables, retry with safe text fallbacks for images
+    #     buffer = BytesIO()
+    #     doc = SimpleDocTemplate(
+    #         buffer,
+    #         pagesize=page_size,
+    #         leftMargin=_H_MARGIN,
+    #         rightMargin=_H_MARGIN,
+    #         topMargin=_V_MARGIN,
+    #         bottomMargin=_V_MARGIN,
+    #         title=title,
+    #     )
+    #     safe_flowables = _markdown_to_flowables(text, styles, title, fallback_images=True)
+    #     doc.build(safe_flowables, onFirstPage=decorator, onLaterPages=decorator)
+
+    try:
+        doc.build(
+            flowables,
+            onFirstPage=decorator,
+            onLaterPages=decorator
+        )
+
+    except Exception as e:
+        print("PDF BUILD ERROR:", repr(e))
+
+        raise RuntimeError(
+            f"PDF generation failed: {e}"
+        ) from e
+
 
     pdf_bytes = buffer.getvalue()
 
@@ -135,6 +328,7 @@ def text_to_pdf(
         return path_obj
 
     return pdf_bytes
+
 
 
 def _cli() -> None:
@@ -326,7 +520,7 @@ def _decorate_page(canvas, doc, title: str):
 # Markdown-ish parsing
 # ---------------------------------------------------------------------------
 
-def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
+def _markdown_to_flowables(text: str, styles: dict, title: str, fallback_images: bool = False) -> List:
     """Convert markdown text to ReportLab flowables, preserving original formatting."""
     flowables: List = []
     
@@ -339,13 +533,13 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
         b_type = block.get("type")
 
         if b_type == "header1":
-            flowables.append(Paragraph(_convert_inline(block["text"]), styles["header1"]))
+            flowables.append(_safe_paragraph(_convert_inline(block["text"]), styles["header1"]))
             
         elif b_type == "header2":
-            flowables.append(Paragraph(_convert_inline(block["text"]), styles["header2"]))
+            flowables.append(_safe_paragraph(_convert_inline(block["text"]), styles["header2"]))
             
         elif b_type == "header3":
-            flowables.append(Paragraph(_convert_inline(block["text"]), styles["header3"]))
+            flowables.append(_safe_paragraph(_convert_inline(block["text"]), styles["header3"]))
             
         elif b_type in {"ul", "ol"}:
             items = block.get("items", [])
@@ -353,28 +547,50 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
             if b_type == "ol":
                 # For ordered lists, use global counter to maintain sequential numbering
                 for item_text in items:
-                    # Create a paragraph with sequential numbering
-                    numbered_text = f"{ol_counter}. {_convert_inline(item_text)}"
-                    flowables.append(Paragraph(numbered_text, styles["numbered"]))
+                    if _INLINE_IMAGE_RE.search(item_text):
+                        remaining = _INLINE_IMAGE_RE.sub("", item_text).strip()
+                        if remaining:
+                            numbered_text = f"{ol_counter}. {_convert_inline(remaining)}"
+                            flowables.append(_safe_paragraph(numbered_text, styles["numbered"]))
+                        for m in _INLINE_IMAGE_RE.finditer(item_text):
+                            flowables.append(_build_image({"alt": m.group(1), "src": m.group(2)}, styles, fallback_only=fallback_images))
+                    else:
+                        numbered_text = f"{ol_counter}. {_convert_inline(item_text)}"
+                        flowables.append(_safe_paragraph(numbered_text, styles["numbered"]))
                     ol_counter += 1
             else:
                 # For unordered lists, use ListFlowable with bullet points
-                list_items = [
-                    ListItem(Paragraph(_convert_inline(item_text), styles["bullet"]))
-                    for item_text in items
-                ]
-                flowables.append(
-                    ListFlowable(
-                        list_items,
-                        bulletType="bullet",
-                        leftIndent=32,
-                        bulletDedent=18,
-                        bulletFontName=styles["body"].fontName,
-                        bulletFontSize=styles["body"].fontSize,
-                        bulletAnchor="start",
-                        bulletOffsetY=2,
-                    )
-                )
+                for item_text in items:
+                    if _INLINE_IMAGE_RE.search(item_text):
+                        remaining = _INLINE_IMAGE_RE.sub("", item_text).strip()
+                        if remaining:
+                            flowables.append(
+                                ListFlowable(
+                                    [ListItem(_safe_paragraph(_convert_inline(remaining), styles["bullet"]))],
+                                    bulletType="bullet",
+                                    leftIndent=32,
+                                    bulletDedent=18,
+                                    bulletFontName=styles["body"].fontName,
+                                    bulletFontSize=styles["body"].fontSize,
+                                    bulletAnchor="start",
+                                    bulletOffsetY=2,
+                                )
+                            )
+                        for m in _INLINE_IMAGE_RE.finditer(item_text):
+                            flowables.append(_build_image({"alt": m.group(1), "src": m.group(2)}, styles, fallback_only=fallback_images))
+                    else:
+                        flowables.append(
+                            ListFlowable(
+                                [ListItem(_safe_paragraph(_convert_inline(item_text), styles["bullet"]))],
+                                bulletType="bullet",
+                                leftIndent=32,
+                                bulletDedent=18,
+                                bulletFontName=styles["body"].fontName,
+                                bulletFontSize=styles["body"].fontSize,
+                                bulletAnchor="start",
+                                bulletOffsetY=2,
+                            )
+                        )
             
         elif b_type == "code":
             # Wrap code in Preformatted for proper line breaking
@@ -395,7 +611,7 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
             
         elif b_type == "quote":
             quote_text = " ".join(block.get("lines", []))
-            flowables.append(Paragraph(_convert_inline(quote_text), styles["quote"]))
+            flowables.append(_safe_paragraph(_convert_inline(quote_text), styles["quote"]))
             
         elif b_type == "rule":
             flowables.append(
@@ -409,12 +625,12 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
             )
 
         elif b_type == "table":
-            table_flowable = _build_table(block, styles)
+            table_flowable = _build_table(block, styles, fallback_images=fallback_images)
             if table_flowable is not None:
                 flowables.append(table_flowable)
 
         elif b_type == "image":
-            flowables.append(_build_image(block, styles))
+            flowables.append(_build_image(block, styles, fallback_only=fallback_images))
 
         else:
             # Regular paragraph - join lines with spaces for proper wrapping
@@ -422,11 +638,19 @@ def _markdown_to_flowables(text: str, styles: dict, title: str) -> List:
                 line.strip() for line in block.get("lines", []) if line.strip()
             )
             if paragraph_text:
-                flowables.append(Paragraph(_convert_inline(paragraph_text), styles["body"]))
+                if _INLINE_IMAGE_RE.search(paragraph_text):
+                    remaining = _INLINE_IMAGE_RE.sub("", paragraph_text).strip()
+                    if remaining:
+                        flowables.append(_safe_paragraph(_convert_inline(remaining), styles["body"]))
+                    for m in _INLINE_IMAGE_RE.finditer(paragraph_text):
+                        flowables.append(_build_image({"alt": m.group(1), "src": m.group(2)}, styles, fallback_only=fallback_images))
+                else:
+                    flowables.append(_safe_paragraph(_convert_inline(paragraph_text), styles["body"]))
 
         flowables.append(Spacer(1, _PARAGRAPH_SPACING))
 
-    return flowables or [Paragraph("", styles["body"])]
+    return flowables or [_safe_paragraph("", styles["body"])]
+
 
 
 def _is_table_separator_line(s: str) -> bool:
@@ -637,9 +861,90 @@ def _split_url_trailing(url: str):
     return url, trail
 
 
+def _safe_paragraph(xml_text: str, style) -> Paragraph:
+    """Create a ReportLab Paragraph safely, recovering gracefully from XML parsing errors."""
+    try:
+        return Paragraph(xml_text, style)
+    except Exception as e:
+        logger.warning(f"ReportLab Paragraph parse error: {e}. Attempting recovery on: {ascii(xml_text)}")
+        # 1. Try stripping unsupported or unclosed tags while keeping basic ones
+        cleaned = re.sub(r"<(?!/?(?:br|b|i|u|font|a|strike|sub|sup)\b)[^>]*>", "", xml_text)
+        try:
+            return Paragraph(cleaned, style)
+        except Exception:
+            # 2. Strip all formatting tags except <br/>
+            clean_basic = re.sub(r"</?(?:b|i|u|font|a|strike|sub|sup)[^>]*>", "", xml_text)
+            clean_basic = clean_basic.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            clean_basic = clean_basic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            clean_basic = clean_basic.replace("&lt;br/&gt;", "<br/>").replace("&lt;br&gt;", "<br/>")
+            try:
+                return Paragraph(clean_basic, style)
+            except Exception:
+                # 3. Ultimate fallback: pure plain text
+                plain = re.sub(r"<[^>]+>", "", xml_text)
+                plain = plain.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                return Paragraph(plain, style)
+
+
 def _convert_inline(text: str) -> str:
-    """Convert inline markdown to HTML for ReportLab."""
-    # Escape HTML entities first
+    """Convert inline markdown and HTML to ReportLab Paragraph XML."""
+    if not text:
+        return ""
+
+    # Strip any leading <br> tags at start of text
+    text = re.sub(r"^(?:\s*&lt;br\s*/?&gt;|\s*<br\s*/?>\s*)+", "", text, flags=re.IGNORECASE)
+
+    # 0. Stash code spans FIRST (both markdown `code` and HTML <code>code</code>) so that
+    # any underscores or special characters inside code are NEVER mangled by italic/bold markdown passes.
+    stashed_code: List[str] = []
+    def _stash_code_span(match: "re.Match") -> str:
+        code_content = match.group(1)
+        code_escaped = (
+            code_content.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\t", "    ")
+        )
+        token = f"\x00CODE{len(stashed_code)}\x00"
+        stashed_code.append(f'<font face="{_MONO_FONT_NAME}" color="#dc2626">{code_escaped}</font>')
+        return token
+
+    # Stash HTML <code>...</code> first
+    text = re.sub(r"<code(?:\s+[^>]*)?>([\s\S]*?)</code>", _stash_code_span, text, flags=re.IGNORECASE)
+    # Stash markdown inline code `...`
+    text = re.sub(r"`([^`\n]+)`", _stash_code_span, text)
+
+    # 1. Stash existing HTML tags to preserve them during entity escaping
+    stashed_tags: List[str] = []
+    def _stash_html_tag(match: "re.Match") -> str:
+        token = f"\x00HTML{len(stashed_tags)}\x00"
+        full = match.group(0)
+        tag_name = match.group(1).lower()
+        is_closing = full.startswith("</")
+
+        if tag_name in ("b", "strong"):
+            tag_rep = "</b>" if is_closing else "<b>"
+        elif tag_name in ("i", "em"):
+            tag_rep = "</i>" if is_closing else "<i>"
+        elif tag_name == "u":
+            tag_rep = "</u>" if is_closing else "<u>"
+        elif tag_name in ("s", "strike", "del"):
+            tag_rep = "</strike>" if is_closing else "<strike>"
+        elif tag_name == "sub":
+            tag_rep = "</sub>" if is_closing else "<sub>"
+        elif tag_name == "sup":
+            tag_rep = "</sup>" if is_closing else "<sup>"
+        elif tag_name == "br":
+            tag_rep = "<br/>"
+        else:
+            tag_rep = ""  # Strip other unsupported HTML tags
+
+        stashed_tags.append(tag_rep)
+        return token
+
+    text = re.sub(r"</?([a-zA-Z0-9]+)\s*[^>]*?/?>", _stash_html_tag, text)
+
+    # Escape HTML entities in raw content
     text = (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -647,9 +952,8 @@ def _convert_inline(text: str) -> str:
         .replace("\t", "    ")
     )
     
-    # Extract [text](url) links first, stashing each URL behind a token so the
-    # emphasis passes below can style the link *label* without mangling the URL
-    # (URLs often contain _ or ~). The <a href> tag is restored at the end.
+    # Extract [text](url) links first (excluding markdown images ![alt](url)),
+    # stashing each URL behind a token so emphasis passes can style the link label.
     stashed_urls: List[str] = []
 
     def _stash_link(match: "re.Match") -> str:
@@ -658,10 +962,10 @@ def _convert_inline(text: str) -> str:
         stashed_urls.append(url)
         return f'<a href="{token}" color="#2563eb"><u>{label}</u></a>'
 
-    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", _stash_link, text)
+    # Note the negative lookbehind (?<!\!) to avoid mangling ![alt](url)
+    text = re.sub(r"(?<!\!)\[([^\]]+)\]\(([^)\s]+)\)", _stash_link, text)
 
-    # Autolink bare URLs (http(s)://… or www.…) that aren't already markdown
-    # links. Trailing sentence punctuation is kept outside the link.
+    # Autolink bare URLs (http(s)://… or www.…) that aren't already markdown links
     def _stash_bare_url(match: "re.Match") -> str:
         raw = match.group(0)
         url, trail = _split_url_trailing(raw)
@@ -675,78 +979,162 @@ def _convert_inline(text: str) -> str:
     # Apply inline formatting (order matters!)
     conversions = [
         (r"\*\*\*(.+?)\*\*\*", r"<b><i>\1</i></b>"),  # Bold + italic
-        (r"___(.+?)___", r"<b><i>\1</i></b>"),  # Bold + italic
+        (r"(?<!\w)___(?!\s)(.+?)(?<!\s)___(?!\w)", r"<b><i>\1</i></b>"),  # Bold + italic
         (r"\*\*(.+?)\*\*", r"<b>\1</b>"),  # Bold
-        (r"__(.+?)__", r"<b>\1</b>"),  # Bold
+        (r"(?<!\w)__(?!\s)(.+?)(?<!\s)__(?!\w)", r"<b>\1</b>"),  # Bold
         (r"\*(.+?)\*", r"<i>\1</i>"),  # Italic
-        (r"_(.+?)_", r"<i>\1</i>"),  # Italic
-        (r"`([^`]+)`", rf'<font face="{_MONO_FONT_NAME}" color="#dc2626">\1</font>'),  # Inline code
+        (r"(?<!\w)_(?!\s)([^_\n]+?)(?<!\s)_(?!\w)", r"<i>\1</i>"),  # Italic
         (r"~~(.+?)~~", r"<strike>\1</strike>"),  # Strikethrough
     ]
 
     for pattern, replacement in conversions:
         text = re.sub(pattern, replacement, text)
 
-    # Restore the stashed URLs into the href attributes.
+    # Restore the stashed code spans
+    for idx, code_html in enumerate(stashed_code):
+        text = text.replace(f"\x00CODE{idx}\x00", code_html)
+
+    # Restore the stashed URLs into the href attributes
     for idx, url in enumerate(stashed_urls):
         text = text.replace(f"\x00U{idx}\x00", url)
+
+    # Restore the stashed HTML tags
+    for idx, tag in enumerate(stashed_tags):
+        text = text.replace(f"\x00HTML{idx}\x00", tag)
+
+    # Auto-format inline sub-questions (i), (ii), (iii), (a), (b), (c) that follow text onto clean new lines
+    subq_pattern = r"(?<!^)(?<!<br/>)(?<!<br>)(?<!\n)(?:;\s*and\s+|;\s*|,\s*and\s+|,\s*|\s+and\s+|\s+)(\((?:[a-h]|i{1,3}|iv|v|vi{1,3}|ix|x|[1-9])\)\s+)"
+    text = re.sub(subq_pattern, r"<br/><br/>\1", text, flags=re.IGNORECASE)
+
+    # Clean up any excessive line break stacking
+    text = re.sub(r"(?:<br/>\s*){3,}", "<br/><br/>", text)
 
     return text
 
 
-# Inline markdown image inside a larger string (e.g. within a table cell). Unlike
-# markdown_media.parse_image_line this does NOT require the image to be the whole
-# line, so it matches an image embedded alongside question text in a cell.
+
+# Inline markdown image inside a larger string (e.g. within a table cell or question paragraph).
 _INLINE_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
 
 
-def _build_scaled_image(src: str, alt: str, max_width: float, style):
-    """An Image flowable scaled to fit ``max_width``; falls back to alt/link text.
+# def _build_scaled_image(src: str, alt: str, max_width: float, style, fallback_only: bool = False):
+#     """An Image flowable scaled to fit ``max_width``; falls back to alt/link text."""
+#     if not fallback_only:
+#         stream = fetch_image_stream(src)
+#         if stream is not None:
+#             try:
+#                 stream.seek(0)
+#                 img = Image(stream)
+#                 if img.drawWidth > max_width:
+#                     ratio = max_width / img.drawWidth
+#                     img.drawWidth = max_width
+#                     img.drawHeight = img.drawHeight * ratio
+#                 if img.drawHeight > _MAX_IMAGE_HEIGHT:
+#                     ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
+#                     img.drawHeight = _MAX_IMAGE_HEIGHT
+#                     img.drawWidth = img.drawWidth * ratio
+#                 img.hAlign = "CENTER"
+#                 return img
+#             except Exception:
+#                 pass
+#     fallback = alt or src
+#     label = f"[Image: {fallback}]" if fallback else "[Image]"
+#     return Paragraph(_convert_inline(label), style)
 
-    Same fetch + graceful-fallback behavior as ``_build_image`` but sized to a
-    caller-provided width (used to fit an image inside a table column).
-    """
-    stream = fetch_image_stream(src)
-    if stream is not None:
-        try:
-            img = Image(stream)
-            if img.drawWidth > max_width:
-                ratio = max_width / img.drawWidth
-                img.drawWidth = max_width
-                img.drawHeight = img.drawHeight * ratio
-            if img.drawHeight > _MAX_IMAGE_HEIGHT:
-                ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
-                img.drawHeight = _MAX_IMAGE_HEIGHT
-                img.drawWidth = img.drawWidth * ratio
-            img.hAlign = "CENTER"
-            return img
-        except Exception:
-            pass
+
+
+def _build_scaled_image(
+    src: str,
+    alt: str,
+    max_width: float,
+    style,
+    fallback_only: bool = False,
+    max_height: float = _MAX_TABLE_IMAGE_HEIGHT,
+):
+    """Build and scale an image for use inside a table cell."""
+
+    print(f"PDF IMAGE: Building image from: {src}")
+
+    if not fallback_only:
+        stream = fetch_image_stream(src)
+
+        if stream is not None:
+            try:
+                stream.seek(0)
+
+                img = Image(stream)
+
+                original_width = img.drawWidth
+                original_height = img.drawHeight
+
+                print(
+                    f"PDF IMAGE: Original size "
+                    f"{original_width} x {original_height}"
+                )
+
+                # Scale by width
+                if img.drawWidth > max_width:
+                    ratio = max_width / img.drawWidth
+                    img.drawWidth = max_width
+                    img.drawHeight = img.drawHeight * ratio
+
+                # Scale by height
+                if img.drawHeight > max_height:
+                    ratio = max_height / img.drawHeight
+                    img.drawHeight = max_height
+                    img.drawWidth = img.drawWidth * ratio
+
+                img.hAlign = "CENTER"
+
+                print(
+                    f"PDF IMAGE SUCCESS: Final size "
+                    f"{img.drawWidth} x {img.drawHeight}"
+                )
+
+                return img
+
+            except Exception as e:
+                print(
+                    f"PDF IMAGE ERROR: ReportLab could not create image: {e}"
+                )
+
     fallback = alt or src
     label = f"[Image: {fallback}]" if fallback else "[Image]"
-    return Paragraph(_convert_inline(label), style)
+
+    return _safe_paragraph(
+        _convert_inline(label),
+        style
+    )
 
 
-def _build_cell(text: str, style, img_max_width: float):
+
+
+def _build_cell(text: str, style, img_max_width: float, fallback_images: bool = False):
     """Build a table cell's content.
 
-    If the cell contains inline markdown image(s), return a list of flowables (any
-    remaining text as a paragraph, then each image scaled to the column). A cell
-    with no image returns a single Paragraph — byte-identical to the previous
-    table rendering.
+    If the cell contains inline markdown image(s), return a list of flowables
+    preserving the natural reading order (text before image -> image -> text after image).
     """
     if not _INLINE_IMAGE_RE.search(text or ""):
-        return Paragraph(_convert_inline(text), style)
+        return _safe_paragraph(_convert_inline(text), style)
+
     flowables = []
-    remaining = _INLINE_IMAGE_RE.sub("", text).strip()
-    if remaining:
-        flowables.append(Paragraph(_convert_inline(remaining), style))
+    last_idx = 0
     for m in _INLINE_IMAGE_RE.finditer(text):
-        flowables.append(_build_scaled_image(m.group(2), m.group(1), img_max_width, style))
-    return flowables or Paragraph(_convert_inline(text), style)
+        before = text[last_idx:m.start()].strip()
+        if before:
+            flowables.append(_safe_paragraph(_convert_inline(before), style))
+        flowables.append(_build_scaled_image(m.group(2), m.group(1), img_max_width, style, fallback_only=fallback_images))
+        last_idx = m.end()
+
+    after = text[last_idx:].strip()
+    if after:
+        flowables.append(_safe_paragraph(_convert_inline(after), style))
+
+    return flowables or _safe_paragraph(_convert_inline(text), style)
 
 
-def _build_table(block: dict, styles: dict):
+def _build_table(block: dict, styles: dict, fallback_images: bool = False):
     """Build a ReportLab Table flowable from a parsed markdown table block."""
     headers = block.get("headers", [])
     rows = block.get("rows", [])
@@ -770,19 +1158,43 @@ def _build_table(block: dict, styles: dict):
     )
 
     content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
-    col_width = content_width / col_count
-    # Leave room for the cell's left/right padding when sizing an in-cell image.
-    img_max_width = max(col_width - 14, 24)
+
+    # Calculate proportional column widths
+    lower_headers = [h.strip().lower() for h in headers]
+    if any("question" in h for h in lower_headers):
+        col_weights = []
+        for h in lower_headers:
+            if "q.no" in h or "q. no" in h or "sl" in h:
+                col_weights.append(0.08)
+            elif "question" in h:
+                col_weights.append(0.68)
+            elif "mark" in h or "score" in h:
+                col_weights.append(0.08)
+            elif "co" in h or "mapping" in h or "outcome" in h:
+                col_weights.append(0.16)
+            else:
+                col_weights.append(1.0 / col_count)
+        total_w = sum(col_weights)
+        col_widths = [(w / total_w) * content_width for w in col_weights]
+    else:
+        col_text_lens = []
+        for c_idx in range(col_count):
+            h_len = len(headers[c_idx]) if c_idx < len(headers) else 0
+            r_lens = [len(r[c_idx]) if c_idx < len(r) else 0 for r in rows]
+            max_len = max([h_len] + r_lens + [1])
+            col_text_lens.append(min(max(max_len, 5), 100))
+        total_len = sum(col_text_lens)
+        col_widths = [(l / total_len) * content_width for l in col_text_lens]
 
     def _pad(cells, style):
         padded = list(cells) + [""] * (col_count - len(cells))
-        return [_build_cell(c, style, img_max_width) for c in padded]
+        return [_build_cell(c, style, max(col_widths[i] - 12 if i < len(col_widths) else 24, 24), fallback_images=fallback_images) for i, c in enumerate(padded)]
 
     data = [_pad(headers, header_style)]
     for row in rows:
         data.append(_pad(row, cell_style))
 
-    table = Table(data, colWidths=[col_width] * col_count, hAlign="LEFT")
+    table = Table(data, colWidths=col_widths, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
@@ -799,7 +1211,7 @@ def _build_table(block: dict, styles: dict):
     return table
 
 
-def _build_image(block: dict, styles: dict):
+def _build_image(block: dict, styles: dict, fallback_only: bool = False):
     """Build an Image flowable from a markdown image block.
 
     Falls back to a paragraph with the alt text/link if the image cannot be
@@ -807,27 +1219,30 @@ def _build_image(block: dict, styles: dict):
     """
     src = block.get("src", "")
     alt = block.get("alt", "")
-    stream = fetch_image_stream(src)
-    if stream is not None:
-        try:
-            img = Image(stream)
-            content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
-            if img.drawWidth > content_width:
-                ratio = content_width / img.drawWidth
-                img.drawWidth = content_width
-                img.drawHeight = img.drawHeight * ratio
-            if img.drawHeight > _MAX_IMAGE_HEIGHT:
-                ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
-                img.drawHeight = _MAX_IMAGE_HEIGHT
-                img.drawWidth = img.drawWidth * ratio
-            img.hAlign = "CENTER"
-            return img
-        except Exception:
-            pass
+    if not fallback_only:
+        stream = fetch_image_stream(src)
+        if stream is not None:
+            try:
+                stream.seek(0)
+                img = Image(stream)
+                content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
+                if img.drawWidth > content_width:
+                    ratio = content_width / img.drawWidth
+                    img.drawWidth = content_width
+                    img.drawHeight = img.drawHeight * ratio
+                if img.drawHeight > _MAX_IMAGE_HEIGHT:
+                    ratio = _MAX_IMAGE_HEIGHT / img.drawHeight
+                    img.drawHeight = _MAX_IMAGE_HEIGHT
+                    img.drawWidth = img.drawWidth * ratio
+                img.hAlign = "CENTER"
+                return img
+            except Exception:
+                pass
 
     fallback = alt or src
     label = f"[Image: {fallback}]" if fallback else "[Image]"
-    return Paragraph(_convert_inline(label), styles["body"])
+    return _safe_paragraph(_convert_inline(label), styles["body"])
+
 
 
 def _extract_title(text: str) -> Optional[str]:

@@ -12,6 +12,81 @@ import remarkBreaks from "remark-breaks";
 import AddResourceModal from '../components/AddReferencesModal';
 import DownloadButton from '../components/DownloadButton';
 import { latexToText } from '../utils/latexToText';
+import { API_BASE } from '../utils/axiosConfig';
+
+// Resolve an image src from the AI response to a renderable URL.
+// Internal knowledge-base images (e.g. /courses/{id}/images/{id}) are fetched
+// from the backend via the authenticated axios base URL and converted to an
+// object URL so the browser can display them without CORS / auth issues.
+function useResolvedImageSrc(src) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+  useEffect(() => {
+    if (!src) return;
+    // Only rewrite internal /courses/.../images/... paths
+    if (src.startsWith('/courses/') && src.includes('/images/')) {
+      const fullUrl = `${API_BASE}${src}`;
+      const token = (() => {
+        try { return JSON.parse(localStorage.getItem('user') || '{}').token || ''; } catch { return ''; }
+      })();
+      fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        .then(r => r.ok ? r.blob() : null)
+        .then(blob => { if (blob) setResolvedSrc(URL.createObjectURL(blob)); })
+        .catch(() => {});
+    } else {
+      setResolvedSrc(src);
+    }
+  }, [src]);
+  return resolvedSrc;
+}
+
+// Wrapper component so hooks can be used inside the ReactMarkdown img renderer
+function ResolvedImage({ src, alt, style }) {
+  const resolved = useResolvedImageSrc(src);
+  return <img src={resolved} alt={alt || ''} loading="lazy" style={style} />;
+}
+
+// Helper to clean <br> tags and ensure sub-questions (a), (b), (c), (i), (ii) have 
+// a clean 1-line gap between them when rendered in table cells or paragraphs.
+function renderFormattedContent(nodes) {
+  if (nodes === null || nodes === undefined) return null;
+  if (typeof nodes === "string") {
+    // Convert all literal <br> variants to \n
+    let cleaned = nodes.replace(/&lt;br\s*\/?&gt;|<br\s*\/?>/gi, "\n");
+    
+    // Ensure sub-questions like (a), (b), (c), (i), (ii) have a line break before them if following text
+    cleaned = cleaned.replace(
+      /(?:\s+|\n|^)(\((?:[a-z]|\d+|[ivx]+)\)\s+)/gi,
+      (match, p1, offset) => (offset === 0 ? p1 : `\n\n${p1.trimStart()}`)
+    );
+
+    const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    if (lines.length <= 1) {
+      return lines[0] !== undefined ? lines[0] : "";
+    }
+    return lines.map((line, idx) => (
+      <div
+        key={idx}
+        style={{
+          marginTop: idx > 0 ? "10px" : "0",
+          lineHeight: "1.5"
+        }}
+      >
+        {line}
+      </div>
+    ));
+  }
+
+  if (Array.isArray(nodes)) {
+    return nodes.map((child, idx) => {
+      if (typeof child === "string") {
+        return <React.Fragment key={idx}>{renderFormattedContent(child)}</React.Fragment>;
+      }
+      return <React.Fragment key={idx}>{child}</React.Fragment>;
+    });
+  }
+
+  return nodes;
+}
 
 const optionTitles = {
   "course-outcomes": "Course Outcomes",
@@ -520,8 +595,8 @@ export default function AssetStudioContent() {
                           h1: ({ children }) => <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h1>,
                           h2: ({ children }) => <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h2>,
                           h3: ({ children }) => <h3 style={{ fontSize: "16px", fontWeight: "bold", margin: "8px 0", color: "#222" }}>{children}</h3>,
-                          p: ({ children }) => <p style={{ margin: "8px 0", color: "#222" }}>{children}</p>,
-                          li: ({ children }) => <li style={{ margin: "4px 0", color: "#222" }}>{children}</li>,
+                          p: ({ children }) => <div style={{ margin: "8px 0", color: "#222", lineHeight: "1.6" }}>{renderFormattedContent(children)}</div>,
+                          li: ({ children, ordered }) => <li style={{ margin: ordered ? "12px 0" : "4px 0", color: "#222" }}>{children}</li>,
                           ul: ({ children }) => <ul style={{ margin: "8px 0", paddingLeft: "20px", color: "#222" }}>{children}</ul>,
                           ol: ({ children }) => <ol style={{ margin: "8px 0", paddingLeft: "20px", color: "#222" }}>{children}</ol>,
                           strong: ({ children }) => <strong style={{ fontWeight: "bold", color: "#222" }}>{children}</strong>,
@@ -533,10 +608,10 @@ export default function AssetStudioContent() {
                           thead: ({ children }) => <thead style={{ backgroundColor: "#f5f5f5" }}>{children}</thead>,
                           tbody: ({ children }) => <tbody>{children}</tbody>,
                           tr: ({ children }) => <tr style={{ borderBottom: "1px solid #ddd" }}>{children}</tr>,
-                          th: ({ children }) => <th style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word" }}>{children}</th>,
-                          td: ({ children }) => <td style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.4" }}>{children}</td>,
+                          th: ({ children }) => <th style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", fontWeight: "bold", backgroundColor: "#f5f5f5", verticalAlign: "top", wordWrap: "break-word" }}>{renderFormattedContent(children)}</th>,
+                          td: ({ children }) => <td style={{ padding: "12px 8px", textAlign: "left", border: "1px solid #ddd", verticalAlign: "top", wordWrap: "break-word", lineHeight: "1.5" }}>{renderFormattedContent(children)}</td>,
                           a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>{children}</a>,
-                          img: ({ src, alt }) => <img src={src} alt={alt || ""} loading="lazy" style={{ maxWidth: "100%", height: "auto", display: "block", margin: "8px auto", borderRadius: "8px", border: "1px solid #eee" }} />
+                          img: ({ src, alt }) => <ResolvedImage src={src} alt={alt} style={{ maxWidth: "100%", height: "auto", display: "block", margin: "8px auto", borderRadius: "8px", border: "1px solid #eee" }} />
                         }}
                       >
                         {latexToText(msg.text)}

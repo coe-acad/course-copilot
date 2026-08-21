@@ -24,20 +24,20 @@ export default function DashboardHeader({
       }}
     >
       {/* Left: Brand */}
-      <div 
+      <div
         style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
         onClick={() => navigate('/courses')}
       >
-        <img 
-          src="/favicon.svg" 
-          alt="Course Copilot Logo" 
+        <img
+          src="/logo.png"
+          alt="Course Copilot Logo"
           style={{
-            width: 40,
-            height: 40,
+            width: 176,
+            height: 34,
             marginRight: 14,
           }}
         />
-        <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span>
+        {/* <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span> */}
       </div>
 
       {/* Right: Buttons */}

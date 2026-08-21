@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FiX, FiCopy } from "react-icons/fi";
 import Modal from "./Modal";
 import ReactMarkdown from 'react-markdown';
@@ -6,6 +6,76 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import DownloadButton from "./DownloadButton";
 import { latexToText } from "../utils/latexToText";
+import { API_BASE } from "../utils/axiosConfig";
+
+// Resolve internal /courses/.../images/... URLs to authenticated object URLs
+function useResolvedImageSrc(src) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+  useEffect(() => {
+    if (!src) return;
+    if (src.startsWith('/courses/') && src.includes('/images/')) {
+      const fullUrl = `${API_BASE}${src}`;
+      const token = (() => {
+        try { return JSON.parse(localStorage.getItem('user') || '{}').token || ''; } catch { return ''; }
+      })();
+      fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        .then(r => r.ok ? r.blob() : null)
+        .then(blob => { if (blob) setResolvedSrc(URL.createObjectURL(blob)); })
+        .catch(() => {});
+    } else {
+      setResolvedSrc(src);
+    }
+  }, [src]);
+  return resolvedSrc;
+}
+
+function ResolvedImage({ src, alt, style }) {
+  const resolved = useResolvedImageSrc(src);
+  return <img src={resolved} alt={alt || ''} loading="lazy" style={style} />;
+}
+
+// Helper to clean <br> tags and ensure sub-questions (a), (b), (c), (i), (ii) have 
+// a clean 1-line gap between them when rendered in table cells or paragraphs.
+function renderFormattedContent(nodes) {
+  if (nodes === null || nodes === undefined) return null;
+  if (typeof nodes === "string") {
+    // Convert all literal <br> variants to \n
+    let cleaned = nodes.replace(/&lt;br\s*\/?&gt;|<br\s*\/?>/gi, "\n");
+    
+    // Ensure sub-questions like (a), (b), (c), (i), (ii) have a line break before them if following text
+    cleaned = cleaned.replace(
+      /(?:\s+|\n|^)(\((?:[a-z]|\d+|[ivx]+)\)\s+)/gi,
+      (match, p1, offset) => (offset === 0 ? p1 : `\n\n${p1.trimStart()}`)
+    );
+
+    const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    if (lines.length <= 1) {
+      return lines[0] !== undefined ? lines[0] : "";
+    }
+    return lines.map((line, idx) => (
+      <div
+        key={idx}
+        style={{
+          marginTop: idx > 0 ? "10px" : "0",
+          lineHeight: "1.5"
+        }}
+      >
+        {line}
+      </div>
+    ));
+  }
+
+  if (Array.isArray(nodes)) {
+    return nodes.map((child, idx) => {
+      if (typeof child === "string") {
+        return <React.Fragment key={idx}>{renderFormattedContent(child)}</React.Fragment>;
+      }
+      return <React.Fragment key={idx}>{child}</React.Fragment>;
+    });
+  }
+
+  return nodes;
+}
 
 export default function AssetViewModal({ open, onClose, assetData, courseId }) {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
@@ -217,7 +287,7 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
                 }
                 return <h3 style={{fontSize: '16px', fontWeight: 'bold', margin: '12px 0 6px 0', color: '#1f2937'}} {...props}>{children}</h3>;
               },
-              p: (props) => <p style={{margin: '8px 0', color: '#374151'}} {...props} />,
+              p: ({children, ...props}) => <div style={{margin: '8px 0', color: '#374151', lineHeight: '1.6'}} {...props}>{renderFormattedContent(children)}</div>,
               strong: (props) => <strong style={{fontWeight: 'bold', color: '#1f2937'}} {...props} />,
               em: (props) => <em style={{fontStyle: 'italic', color: '#374151'}} {...props} />,
               code: ({inline, ...props}) => 
@@ -226,13 +296,13 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
                   <code style={{background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '13px', display: 'block', margin: '8px 0'}} {...props} />,
               ul: (props) => <ul style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
               ol: (props) => <ol style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
-              li: (props) => <li style={{margin: '4px 0', color: '#374151'}} {...props} />,
+              li: ({ordered, ...props}) => <li style={{margin: ordered ? '12px 0' : '4px 0', color: '#374151'}} {...props} />,
               blockquote: (props) => <blockquote style={{borderLeft: '4px solid #2563eb', paddingLeft: '12px', margin: '8px 0', color: '#6b7280', fontStyle: 'italic'}} {...props} />,
               a: ({href, children, ...props}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{color: '#2563eb', textDecoration: 'underline'}} {...props}>{children}</a>,
               table: (props) => <table style={{borderCollapse: 'collapse', width: '100%', margin: '8px 0'}} {...props} />,
-              th: (props) => <th style={{border: '1px solid #d1d5db', padding: '8px', background: '#f9fafb', fontWeight: 'bold'}} {...props} />,
-              td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />,
-              img: ({src, alt}) => <img src={src} alt={alt || ''} loading="lazy" style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />
+              th: ({children, ...props}) => <th style={{border: '1px solid #d1d5db', padding: '10px 8px', background: '#f9fafb', fontWeight: 'bold'}} {...props}>{renderFormattedContent(children)}</th>,
+              td: ({children, ...props}) => <td style={{border: '1px solid #d1d5db', padding: '10px 8px', verticalAlign: 'top', lineHeight: '1.5'}} {...props}>{renderFormattedContent(children)}</td>,
+              img: ({src, alt}) => <ResolvedImage src={src} alt={alt} style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />
             }}
           >
             {latexToText(assetData.asset_content)}
