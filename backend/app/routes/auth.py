@@ -37,6 +37,7 @@ AUTH_URL = (
     f"redirect_uri={quote(REDIRECT_URI)}&"
     f"response_type=code&"
     f"scope=openid%20email%20profile&"
+    f"hd=atriauniversity.edu.in&"   # This ensures only Atria University users can log in
     f"access_type=offline&"
     f"prompt=select_account"
 )
@@ -50,6 +51,15 @@ async def signup(request: Request):
         name = data.get("name")
         if not email or not password or not name:
             raise HTTPException(status_code=400, detail="Missing email, password, or name")
+        
+        allowed_domains = getattr(settings, "ALLOWED_EMAIL_DOMAINS", ["atriauniversity.edu.in"])
+        email_domain = email.split("@")[-1].lower() if "@" in email else ""
+        if email_domain not in allowed_domains:
+            allowed_str = ", ".join("@" + d for d in allowed_domains)
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Registration is restricted to official organization email addresses ({allowed_str}) only."
+            )
         user = auth.create_user(email=email, password=password, display_name=name)
         logger.info(f"User signed up: {email}")
         # Ensure user exists in Mongo
@@ -148,6 +158,39 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
         decoded_token = auth.verify_id_token(firebase_tokens["idToken"])
         user_id = decoded_token["uid"]
         email = decoded_token.get("email", "unknown")
+        
+        # This is allow the domains belong to the atriauniversity domains only
+        allowed_domains = getattr(settings, "ALLOWED_EMAIL_DOMAINS", ["atriauniversity.edu.in"])
+        email_domain = email.split("@")[-1].lower() if "@" in email else ""
+        if email_domain not in allowed_domains:
+            logger.warning(f"Unauthorized login attempt from restricted domain: {email}")
+            allowed_domains_str = ", ".join("@" + d for d in allowed_domains)
+            return HTMLResponse(
+                content=f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Access Denied</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                        .card {{ background: white; border-radius: 8px; padding: 30px; max-width: 420px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        .title {{ color: #dc2626; font-size: 22px; font-weight: bold; margin-bottom: 12px; }}
+                        .desc {{ color: #4b5563; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }}
+                        .btn {{ background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <div class="title">Access Denied</div>
+                        <div class="desc">Only official organization email addresses ({allowed_domains_str}) are permitted to log in.</div>
+                        <button class="btn" onclick="window.close()">Close Window</button>
+                    </div>
+                </body>
+                </html>
+                """,
+                status_code=403
+            )
+
         logger.info(f"Google login successful for user: {email}")
 
         # Store user info in Firestore (optional, for consistency)

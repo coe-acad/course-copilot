@@ -23,6 +23,10 @@ class Settings:
     FIREBASE_CLIENT_X509_CERT_URL: Optional[str] = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
     
     # Application Configuration
+    # Allowing only those email which belong to the organisation's domain
+    ALLOWED_EMAIL_DOMAINS: List[str] = [
+        d.strip().lower() for d in os.getenv("ALLOWED_EMAIL_DOMAINS", "atriauniversity.edu.in").split(",") if d.strip()
+    ]
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     

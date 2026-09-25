@@ -16,7 +16,7 @@ export default function Login() {
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
         // Handle successful Google login
-        
+
         // Store complete user object
         localStorage.setItem('user', JSON.stringify({
           id: event.data.user.userId,
@@ -26,7 +26,7 @@ export default function Login() {
         }));
         localStorage.setItem('token', event.data.user.token);
         localStorage.setItem('refresh_token', event.data.user.refreshToken);
-        
+
         // Navigate to courses
         navigate("/courses");
       }
@@ -56,13 +56,13 @@ export default function Login() {
       // Open Google login in a new tab with proper opener reference
       const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login`;
       const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
-      
+
       if (!popup) {
         setError("Popup blocked. Please allow popups for this site.");
         setLoading(false);
         return;
       }
-      
+
       setLoading(false);
     } catch (err) {
       setError("Google login failed. Please try again.");
@@ -79,11 +79,17 @@ export default function Login() {
         {/* App Icon and Title */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
           <img
-            src={process.env.PUBLIC_URL + "/favicon.svg"}
+            src={process.env.PUBLIC_URL + "/logo.png"}
             alt="Course Copilot Logo"
-            style={{ width: 36, height: 36, borderRadius: 8, marginRight: 12, boxShadow: "0 2px 8px #0001" }}
+            style={{
+              width: 176,
+              height: 34,
+              borderRadius: 8,
+              marginRight: 12,
+              boxShadow: "0 2px 8px #0001"
+            }}
           />
-          <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
+          {/* <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span> */}
         </div>
 
         {/* Google Sign-In */}

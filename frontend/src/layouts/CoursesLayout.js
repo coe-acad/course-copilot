@@ -21,20 +21,20 @@ export default function CoursesLayout({ onAddCourse, onLogout, children }) {
         zIndex: 10,
         boxShadow: '0 2px 12px #2563eb0a',
       }}>
-        <div 
+        <div
           style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
           onClick={() => navigate('/courses')}
         >
-          <img 
-            src="/favicon.svg" 
-            alt="Course Copilot Logo" 
+          <img
+            src="/logo.png"
+            alt="Course Copilot Logo"
             style={{
-              width: 40,
-              height: 40,
+              width: 176,
+              height: 34,
               marginRight: 14,
             }}
           />
-          <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span>
+          {/* <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span> */}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <button

@@ -1,13 +1,12 @@
 from logging import log
 import logging
 import re
-import base64
 import asyncio
 import time
 from io import BytesIO
 from typing import Optional
 from ..config.settings import settings
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from datetime import datetime
@@ -17,6 +16,8 @@ from ..utils.openai_client import client
 from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.sprint_plan import build_sprint_plan
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_image_by_id
+from ..services.openai_service import clean_text, create_file, connect_file_to_vector_store
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names
 from ..services.task_manager import task_manager, TaskStatus
 
@@ -410,22 +411,122 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             logger.info(f"Completed background task {task_id} for asset '{asset_type_name}'")
             return
 
+        # # Prepare prompt
+        # input_variables = construct_input_variables(course, file_names, course_description)
+        # if sprint_plan_sources:
+        #     input_variables.update(sprint_plan_sources)
+        
+        # # Add extracted_questions to input_variables if mark-scheme
+        # if asset_type_name == "mark-scheme":
+        #     input_variables["extracted_questions"] = extracted_questions
+        
+        # parser = PromptParser()
+        # prompt = parser.get_asset_prompt(asset_type_name, input_variables)
+
         # Prepare prompt
-        input_variables = construct_input_variables(course, file_names, course_description)
+        input_variables = construct_input_variables(
+            course,
+            file_names,
+            course_description
+        )
+
         if sprint_plan_sources:
             input_variables.update(sprint_plan_sources)
-        
+
+
+        # ---------------------------------------------------------
+        # QUESTION PAPER: FIND SELECTED KNOWLEDGE-BASE IMAGES
+        # ---------------------------------------------------------
+        if asset_type_name == "question-paper":
+
+            IMAGE_EXTENSIONS = (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".webp"
+            )
+
+            available_images = []
+
+            for fname in file_names:
+
+                if not fname:
+                    continue
+
+                # Only process selected image files
+                if not fname.lower().endswith(IMAGE_EXTENSIONS):
+                    continue
+
+                # Get the EXACT selected resource from MongoDB
+                resource = get_resource_by_course_id_and_resource_name(
+                    course_id,
+                    fname
+                )
+
+                if not resource:
+                    logger.warning(
+                        f"[QP IMAGE] Selected image resource not found: {fname}"
+                    )
+                    continue
+
+                # Get the MongoDB resource ID
+                image_id = resource.get("_id")
+
+                if not image_id:
+                    logger.warning(
+                        f"[QP IMAGE] Image resource has no _id: {fname}"
+                    )
+                    continue
+
+                # Dynamic internal image path.
+                # This matches the format expected by text_to_pdf.py:
+                # /courses/{course_id}/images/{image_id}
+                image_path = (
+                    f"/courses/{course_id}/images/{str(image_id)}"
+                )
+
+                available_images.append(
+                    {
+                        "filename": fname,
+                        "image_path": image_path
+                    }
+                )
+
+                logger.info(
+                    f"[QP IMAGE] Available image: "
+                    f"{fname} -> {image_path}"
+                )
+
+
+            # Convert available images into text for the prompt
+            if available_images:
+
+                input_variables["available_images"] = "\n\n".join(
+                    [
+                        f"Filename: {image['filename']}\n"
+                        f"Image Path: {image['image_path']}"
+                        for image in available_images
+                    ]
+                )
+
+            else:
+
+                input_variables["available_images"] = (
+                    "No image resources were selected."
+                )
+
+
         # Add extracted_questions to input_variables if mark-scheme
         if asset_type_name == "mark-scheme":
             input_variables["extracted_questions"] = extracted_questions
-        
-        parser = PromptParser()
-        prompt = parser.get_asset_prompt(asset_type_name, input_variables)
 
-        # Figures (extracted images) available to this generation, resolved from
-        # the selected files for EVERY asset type below.
-        figures = []
-        allowed_image_ids = set()
+
+        parser = PromptParser()
+        prompt = parser.get_asset_prompt(
+            asset_type_name,
+            input_variables
+        )
+
 
         # Inject the ACTUAL content of the selected files into the prompt. Selection
         # otherwise only passes file NAMES, and with no file_search tool attached the
@@ -442,6 +543,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     + "\n\n".join(resolved_sections)
                 )
 
+        logger.info(f"Sending generation prompt for asset '{asset_type_name}' (course: {course_id}, prompt length: {len(prompt)} chars)")
         # AVAILABLE FIGURES — resolve extracted images for the selected files for
         # EVERY asset type, so the model can SEE them (vision, attached below) and
         # embed them where they add value. No images for the selection -> no-op and
@@ -538,7 +640,7 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                 model=settings.OPENAI_MODEL,
                 input=[
                     {"role": "system", "content": systemPrompt},
-                    {"role": "user", "content": user_content}
+                    {"role": "user", "content": prompt}
                 ],
                 temperature=temp
             ) as stream:
@@ -549,12 +651,9 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
             logger.warning(f"Stream interrupted in task {task_id}, but continuing to retrieve response: {stream_error}")
             # Continue - we can still get the response from thread messages even if stream was interrupted
 
-        # DEBUG: print raw response BEFORE stripping
-        print("\n\n===== RAW LLM RESPONSE =====\n")
-        print(handler.response_text)
-        print("\n===== END RAW RESPONSE =====\n")
         # Get complete response from handler
         complete_response = handler.response_text.strip()
+        logger.info(f"Received LLM response for task {task_id} ({len(complete_response)} chars)")
 
         # Fallback: if streaming returned nothing, retry with non-streaming call once
         if not complete_response:
@@ -564,18 +663,13 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
                     model=settings.OPENAI_MODEL,
                     input=[
                         {"role": "system", "content": systemPrompt},
-                        {"role": "user", "content": user_content}
+                        {"role": "user", "content": prompt}
                     ],
                     temperature=temp
                 )
                 complete_response = (response.output_text or "").strip()
             except Exception as retry_error:
                 logger.error(f"Non-stream retry failed for task {task_id}: {retry_error}")
-
-        # Turn valid image_ref:<id> links into absolute served-image URLs (and drop
-        # any hallucinated ids) so figures render wherever this content is shown.
-        if complete_response and "![" in complete_response:
-            complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
 
         if asset_type_name == "sprint-plan":
             if not complete_response:
@@ -632,27 +726,7 @@ async def create_asset_chat(course_id: str, asset_type_name: str, request: Asset
         course = get_course(course_id)
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
-
-        # Guard: selected PDFs are sent directly to the model, which limits how much
-        # file content it accepts per request. Block clearly if the selection is too big.
-        pdf_meta = get_resource_pdfs_meta_for_names(course_id, request.file_names)
-        if len(pdf_meta) > _MAX_CHAT_PDFS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"You can use at most {_MAX_CHAT_PDFS} PDFs per chat (selected {len(pdf_meta)}). Please deselect some.",
-            )
-        total_bytes = sum(int(d.get("size_bytes") or 0) for d in pdf_meta)
-        total_pages = sum(int(d.get("pages") or 0) for d in pdf_meta)
-        if total_bytes > _MAX_CHAT_PDF_BYTES or total_pages > _MAX_CHAT_PDF_PAGES:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Selected PDFs are too large to send to the model "
-                    f"({total_bytes / (1024 * 1024):.1f} MB, {total_pages} pages). "
-                    f"Limit is ~{_MAX_CHAT_PDF_BYTES // (1024 * 1024)} MB / {_MAX_CHAT_PDF_PAGES} pages — please deselect some."
-                ),
-            )
-
+        
         # Create task with creation timestamp
         task_id = task_manager.create_task(
             task_type="asset_chat_create",
@@ -719,25 +793,8 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
             for event in stream:
                 handler.handle(event)
 
-        # DEBUG: print raw response BEFORE stripping
-        print("\n\n===== RAW LLM RESPONSE (FOLLOW-UP) =====\n")
-        print(handler.response_text)
-        print("\n===== END RAW RESPONSE (FOLLOW-UP) =====\n")
         complete_response = handler.response_text.strip()
-
-        # Turn valid image_ref:<id> links into absolute served-image URLs (and drop
-        # any hallucinated ids), same as the initial generation. On follow-up turns
-        # the original file selection is unknown, so every image of the course is a
-        # valid target — the model can only re-emit ids it was shown earlier anyway.
-        if complete_response and "![" in complete_response:
-            try:
-                allowed_image_ids = set(get_resource_image_ids_for_course(course_id))
-            except Exception as img_err:
-                allowed_image_ids = set()
-                logger.warning(f"[figures] course image lookup failed: {img_err}")
-            complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
-
-
+        
         # Mark task as completed with result
         result = {
             "response": complete_response,
@@ -845,23 +902,28 @@ def generate_asset_pdf(
     user_id: str = Depends(verify_token),
 ):
     """Generate a PDF from provided text content and stream it back to the client."""
+    try:
+        course = get_course(course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
 
-    course = get_course(course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
+        content = request.content.strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="Content must not be empty")
 
-    content = request.content.strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Content must not be empty")
+        pdf_bytes = text_to_pdf(content)
+        filename = request.filename or f"{course_id}-asset.pdf"
 
-    pdf_bytes = text_to_pdf(content)
-    filename = request.filename or f"{course_id}-asset.pdf"
-
-    return StreamingResponse(
-        BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate PDF for course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 @router.post("/courses/{course_id}/assets/docx")
 def generate_asset_docx(
@@ -870,21 +932,29 @@ def generate_asset_docx(
     user_id: str = Depends(verify_token),
 ):
     """Generate a DOCX from provided text content and stream it back to the client."""
-    if not course_id:
-        raise HTTPException(status_code=400, detail="Course ID is required")
+    try:
+        if not course_id:
+            raise HTTPException(status_code=400, detail="Course ID is required")
 
-    content = request.content.strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Content must not be empty")
+        content = request.content.strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="Content must not be empty")
 
-    docx_bytes = text_to_docx(content)
-    filename = request.filename or f"{course_id}-asset.docx"
+        docx_bytes = text_to_docx(content)
+        filename = request.filename or f"{course_id}-asset.docx"
 
-    return StreamingResponse(
-        BytesIO(docx_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate DOCX for course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
+
 
 @router.get("/courses/{course_id}/assets", response_model=AssetListResponse)
 def get_assets(course_id: str, user_id: str = Depends(verify_token)):
@@ -927,6 +997,30 @@ def create_image(course_id: str, asset_type_name: str, user_id: str = Depends(ve
     image_url = image.data[0].url
 
     return ImageResponse(image_url=image_url)
+
+# Serve a knowledge-base image stored in MongoDB resource_images.
+# This is the endpoint the frontend uses to render images inside the
+# question paper chat view via the /courses/{id}/images/{id} path.
+@router.get("/courses/{course_id}/images/{image_id}")
+def serve_resource_image(course_id: str, image_id: str):
+    """Return raw image bytes for a knowledge-base image stored in MongoDB."""
+    import base64
+    img_doc = get_resource_image_by_id(course_id, image_id)
+    if not img_doc:
+        raise HTTPException(status_code=404, detail="Image not found")
+    image_base64 = img_doc.get("image_base64", "")
+    if not image_base64:
+        raise HTTPException(status_code=404, detail="Image data missing")
+    # Strip data URI prefix if present
+    if "," in image_base64 and image_base64.startswith("data:"):
+        image_base64 = image_base64.split(",", 1)[1]
+    try:
+        img_bytes = base64.b64decode(image_base64)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decode image")
+    mime = img_doc.get("image_mime", "image/png")
+    return Response(content=img_bytes, media_type=mime)
+
 
 #delete asset
 @router.delete("/courses/{course_id}/assets/{asset_name}", response_model=AssetCreateResponse)
