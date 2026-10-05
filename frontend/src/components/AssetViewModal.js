@@ -46,12 +46,14 @@ function renderFormattedContent(nodes) {
     // Ensure sub-questions like (a), (b), (c), (i), (ii) have a line break before them if following text
     cleaned = cleaned.replace(
       /(?:\s+|\n|^)(\((?:[a-z]|\d+|[ivx]+)\)\s+)/gi,
-      (match, p1, offset) => (offset === 0 ? p1 : `\n\n${p1.trimStart()}`)
+      (match, p1, offset) => (offset === 0 ? match : `\n\n${p1.trimStart()}`)
     );
 
     const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
     if (lines.length <= 1) {
-      return lines[0] !== undefined ? lines[0] : "";
+      // Keep the edge spaces: markdown splits "to **bold** and" into separate text
+      // nodes around the bold, and trimming them glues the words together.
+      return cleaned.replace(/\n+/g, " ");
     }
     return lines.map((line, idx) => (
       <div
