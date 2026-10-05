@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { FiDownload, FiFileText, FiFile } from "react-icons/fi";
+import { FiDownload, FiFileText, FiFile, FiGrid } from "react-icons/fi";
 import { ModalBase } from "./Modal";
 import { assetService } from "../services/asset";
 
 /**
  * Common download control used everywhere content can be downloaded (chat
  * message, asset card view, resource view). Renders a trigger, opens a
- * PDF / Word format chooser, and downloads through assetService.downloadContent
+ * PDF / Word / Excel format chooser, and downloads through assetService.downloadContent
  * so the output format is identical no matter where it is triggered from.
  *
  * Props:
@@ -118,7 +118,7 @@ export default function DownloadButton({
       <ModalBase
         open={showFormatModal}
         onClose={closeModal}
-        modalStyle={{ minWidth: 380, maxWidth: 440 }}
+        modalStyle={{ minWidth: 380, maxWidth: 480 }}
       >
         <h3
           style={{
@@ -131,8 +131,8 @@ export default function DownloadButton({
           Choose download format
         </h3>
         <p style={{ margin: "0 0 16px 0", fontSize: "14px", color: "#6b7280" }}>
-          The document keeps its formatting — headings, tables, images and code
-          — in either format.
+          Word and PDF keep the full document formatting. Excel puts tables into
+          real spreadsheet cells, including the colour-coded sprint structure.
         </p>
         <label
           style={{
@@ -177,6 +177,13 @@ export default function DownloadButton({
             sub=".pdf"
             disabled={downloading}
             onClick={() => handleFormatSelect("pdf")}
+          />
+          <FormatOption
+            icon={<FiGrid size={22} />}
+            label="Excel"
+            sub=".xlsx"
+            disabled={downloading}
+            onClick={() => handleFormatSelect("xlsx")}
           />
         </div>
         {downloading && (

@@ -81,6 +81,28 @@ async def login(request: Request):
         password = data.get("password")
         if not email or not password:
             raise HTTPException(status_code=400, detail="Missing email or password")
+
+        # Only organisation domains may log in. Checked before authenticating so a
+        # disallowed domain never reaches credential verification.
+        # TEMPORARILY BYPASSABLE: set ENFORCE_LOGIN_EMAIL_DOMAIN=false to let an
+        # existing account outside the domain sign in. Signup (above) and Google
+        # login are NOT affected — they stay restricted regardless of this flag.
+        if getattr(settings, "ENFORCE_LOGIN_EMAIL_DOMAIN", True):
+            allowed_domains = getattr(settings, "ALLOWED_EMAIL_DOMAINS", ["atriauniversity.edu.in"])
+            email_domain = email.split("@")[-1].lower() if "@" in email else ""
+            if email_domain not in allowed_domains:
+                logger.warning(f"Unauthorized login attempt from restricted domain: {email}")
+                allowed_str = ", ".join("@" + d for d in allowed_domains)
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Login is restricted to official organization email addresses ({allowed_str}) only."
+                )
+        else:
+            logger.warning(
+                f"Email domain check BYPASSED for login: {email} "
+                "(ENFORCE_LOGIN_EMAIL_DOMAIN=false)"
+            )
+
         user = firebase.auth().sign_in_with_email_and_password(email, password)
         user_id = user["localId"]
         id_token = user["idToken"]
@@ -93,6 +115,10 @@ async def login(request: Request):
         except Exception as e:
             logger.warning(f"Mongo user create (login) skipped or failed for {email}: {str(e)}")
         return JSONResponse(content={"message": "Login successful", "token": id_token, "refresh_token": refresh_token, "user_id": user_id}, status_code=200)
+    except HTTPException:
+        # Preserve the status and message of the checks above (400 / 403) instead of
+        # reporting them as invalid credentials.
+        raise
     except Exception as e:
         logger.error(f"Login failed: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -213,15 +239,11 @@ async def google_callback(code: Optional[str] = None, error: Optional[str] = Non
         except Exception as e:
             logger.warning(f"Mongo user create/update (google) skipped or failed for {email}: {str(e)}")
 
-        # Store token in a simple in-memory store (for demo purposes)
-        # In production, use Redis or a proper session store
-        global _temp_tokens
-        if '_temp_tokens' not in globals():
-            _temp_tokens = {}
-        
-        # Store token with a simple key (in production, use proper session management)
-        token_key = f"google_token_{user_id}"
-        _temp_tokens[token_key] = firebase_tokens["idToken"]
+        # NOTE: the ID token is deliberately NOT kept server-side. It is handed to
+        # the opener window below and stored by the browser only. A previous
+        # in-memory `_temp_tokens` store existed here and was readable by anyone
+        # through an unauthenticated GET /get-token, which leaked a signed-in
+        # user's token to any caller. Do not reintroduce a shared token store.
 
         # Get additional user info from Firebase
         user_info = {
@@ -350,21 +372,9 @@ async def refresh_token_endpoint(request: Request):
         logger.error(f"Token refresh error: {str(e)}")
         raise HTTPException(status_code=500, detail="Token refresh failed")
 
-@router.get("/get-token")
-async def get_token(request: Request):
-    # First try to get token from cookie
-    id_token = request.cookies.get("id_token")
-    if id_token:
-        logger.info("Retrieved token from cookie")
-        return {"id_token": id_token}
-    
-    # If no cookie, check if we have any stored tokens (for demo purposes)
-    global _temp_tokens
-    if '_temp_tokens' in globals() and _temp_tokens:
-        # Return the first available token (in production, use proper session management)
-        first_token = list(_temp_tokens.values())[0]
-        logger.info("Retrieved token from temporary storage")
-        return {"id_token": first_token}
-    
-    logger.error("No token available")
-    raise HTTPException(status_code=400, detail="No token available")
+# REMOVED: GET /get-token.
+# It was unauthenticated and returned the first token out of a process-global
+# store, i.e. it handed a signed-in user's Firebase ID token to any anonymous
+# caller, who could then act as that user against every protected endpoint.
+# Nothing in the frontend used it. Clients get their token from the login
+# response or the OAuth popup, and renew it via POST /refresh-token.

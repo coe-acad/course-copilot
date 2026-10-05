@@ -42,7 +42,7 @@ export const assetService = {
   },
 
   // Continue asset chat conversation (async with polling)
-  continueAssetChat: async (courseId, assetName, responseId, userPrompt) => {
+  continueAssetChat: async (courseId, assetName, responseId, userPrompt, onPartial = null) => {
     try {
       // Start the background task
       const res = await axiosInstance.put(`/courses/${courseId}/asset_chat/${assetName}?response_id=${responseId}`,
@@ -51,14 +51,17 @@ export const assetService = {
       const taskData = res.data; // { task_id, status, message }
 
       // Poll for completion
-      return await assetService.pollTaskUntilComplete(taskData.task_id);
+      // 500ms cadence so streamed text arrives smoothly (same ~6 min timeout)
+      return await assetService.pollTaskUntilComplete(taskData.task_id, 720, 500, onPartial);
     } catch (error) {
       handleAxiosError(error);
     }
   },
 
   // Poll task status until completion
-  pollTaskUntilComplete: async (taskId, maxAttempts = 180, intervalMs = 1000) => {
+  // `onPartial(text)` (optional) is called with the text streamed so far while the
+  // task is still running, so the UI can render the answer as it is generated.
+  pollTaskUntilComplete: async (taskId, maxAttempts = 180, intervalMs = 1000, onPartial = null) => {
     let attempts = 0;
 
     while (attempts < maxAttempts) {
@@ -75,7 +78,10 @@ export const assetService = {
           throw new Error('Task was cancelled');
         }
 
-        // Status is 'pending' or 'processing', wait and retry
+        // Status is 'pending' or 'processing': surface streamed text, wait and retry
+        if (onPartial && typeof taskStatus.partial === 'string' && taskStatus.partial) {
+          onPartial(taskStatus.partial);
+        }
         await new Promise(resolve => setTimeout(resolve, intervalMs));
         attempts++;
       } catch (error) {
@@ -196,17 +202,19 @@ export const assetService = {
         throw new Error('Content is required');
       }
 
-      const fmt = format === 'docx' ? 'docx' : 'pdf';
+      const fmt = ['docx', 'xlsx'].includes(format) ? format : 'pdf';
       const safeBase = (baseName || 'document')
         .toString()
-        .replace(/\.(pdf|docx|txt)$/i, '')
+        .replace(/\.(pdf|docx|xlsx|txt)$/i, '')
         // eslint-disable-next-line no-control-regex
         .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
         .trim() || 'document';
       const filename = `${safeBase}.${fmt}`;
-      const mime = fmt === 'docx'
-        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        : 'application/pdf';
+      const mime = {
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        pdf: 'application/pdf',
+      }[fmt];
 
       const response = await axiosInstance.post(
         `/courses/${courseId}/assets/${fmt}`,

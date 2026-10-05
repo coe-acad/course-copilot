@@ -49,7 +49,7 @@ export async function loginToLMS(email, password) {
       message: response.data.message
     };
   } catch (error) {
-    console.error('LMS login error:', error);
+    console.error('LMS login error:', error.response?.status, error.response?.data?.detail || error.message);
     throw error.response?.data || { detail: 'LMS login failed' };
   }
 }
@@ -77,7 +77,7 @@ export async function getLMSCourses() {
       message: response.data.message
     };
   } catch (error) {
-    console.error('Get LMS courses error:', error);
+    console.error('Get LMS courses error:', error.response?.status, error.response?.data?.detail || error.message);
     
     // If cookies expired or invalid, clear LMS data
     if (error.response?.status === 401 || error.response?.status === 403) {
@@ -103,13 +103,6 @@ export async function getLMSModules(lmsCourseId) {
     }
     const lmsCookies = getLMSCookies();
 
-    // Log the request data for debugging
-    console.log('getLMSModules - Request data:', {
-      lms_cookies: lmsCookies ? `${lmsCookies.substring(0, 50)}...` : 'MISSING',
-      lms_course_id: lmsCourseId || 'MISSING',
-      lmsCourseIdType: typeof lmsCourseId
-    });
-
     // Validate required data
     if (!lmsCookies) {
       throw new Error('LMS cookies not found. Please login to LMS first.');
@@ -132,8 +125,7 @@ export async function getLMSModules(lmsCourseId) {
       message: response.data.message
     };
   } catch (error) {
-    console.error('Get LMS modules error:', error);
-    console.error('Error response data:', error.response?.data);
+    console.error('Get LMS modules error:', error.response?.status, error.response?.data?.detail || error.message);
     
     // If cookies expired or invalid, clear LMS data
     if (error.response?.status === 401 || error.response?.status === 403) {
@@ -160,16 +152,6 @@ export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
       throw new Error('User not authenticated. Please log in first.');
     }
     const lmsCookies = getLMSCookies();
-
-    // Log the request data for debugging
-    console.log('createLMSModule - Request data:', {
-      lms_cookies: lmsCookies ? `${lmsCookies.substring(0, 50)}...` : 'MISSING',
-      lms_course_id: lmsCourseId || 'MISSING',
-      module_title: moduleTitle || 'MISSING',
-      order: order,
-      lmsCourseIdType: typeof lmsCourseId,
-      moduleTitleType: typeof moduleTitle
-    });
 
     // Validate required data
     if (!lmsCookies) {
@@ -198,8 +180,7 @@ export async function createLMSModule(lmsCourseId, moduleTitle, order = 1) {
       message: response.data.message
     };
   } catch (error) {
-    console.error('Create LMS module error:', error);
-    console.error('Error response data:', error.response?.data);
+    console.error('Create LMS module error:', error.response?.status, error.response?.data?.detail || error.message);
     
     // If cookies expired or invalid, clear LMS data
     if (error.response?.status === 401 || error.response?.status === 403) {

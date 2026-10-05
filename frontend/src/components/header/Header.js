@@ -32,20 +32,20 @@ export default function Header({
       zIndex: 10,
       boxShadow: '0 2px 12px #2563eb0a',
     }}>
-      <div
+      <div 
         style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
         onClick={() => navigate('/courses')}
       >
-        <img
-          src="/logo.png"
-          alt="Course Copilot Logo"
+        <img 
+          src="/favicon.svg" 
+          alt="Course Copilot Logo" 
           style={{
-            width: 176,
-            height: 34,
+            width: 40,
+            height: 40,
             marginRight: 14,
           }}
         />
-        {/* <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>{title}</span> */}
+        <span style={{ fontWeight: 700, fontSize: 22, color: "#222", letterSpacing: 0.5 }}>{title}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         {/* Save Button - Show when onSave is provided */}
@@ -86,7 +86,7 @@ export default function Header({
             {backLabel}
           </button>
         )}
-
+        
         {/* Grid/List Toggle - Show when onGridView/onListView are provided */}
         {onGridView && onListView && (
           <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#f5f8ff", borderRadius: 8, border: "1px solid #e0e7ef", overflow: "hidden", height: 38 }}>
@@ -131,7 +131,7 @@ export default function Header({
             </button>
           </div>
         )}
-
+        
         {/* Settings Button - Show when onSettings is provided */}
         {onSettings && (
           <button
@@ -151,7 +151,7 @@ export default function Header({
             Settings
           </button>
         )}
-
+        
         {/* Export to LMS Button - Show when onExport is provided */}
         {onExport && (
           <button
@@ -171,7 +171,7 @@ export default function Header({
             Export to LMS
           </button>
         )}
-
+        
         {/* Export Sprint Plan Button - Show when onExportSprintPlan is provided */}
         {onExportSprintPlan && (
           <button
@@ -191,7 +191,7 @@ export default function Header({
             Sprint Plan
           </button>
         )}
-
+        
         {/* Logout Button */}
         <button
           onClick={onLogout}

@@ -49,3 +49,41 @@ th {
   font-weight: bold;
   background-color: #f5f5f5;
 }
+
+/* Slim, unobtrusive scrollbar for in-panel scroll areas (AI Studio chat, resources) */
+.cc-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.cc-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cc-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cc-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.cc-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Knowledge Base rows: hover affordance while browsing the list */
+.cc-kb-row {
+  transition: background 0.12s ease;
+}
+
+.cc-kb-row:hover {
+  background: #f8fafc !important;
+}
+
+/* Keep selected rows blue on hover instead of reverting to the grey hover tint */
+.cc-kb-row.cc-kb-row--selected:hover {
+  background: #e3edfd !important;
+}

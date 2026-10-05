@@ -534,10 +534,9 @@ export default function Evaluation() {
      // Changes saved successfully - no popup needed
       
     } catch (error) {
-      console.error('Error saving changes:', error);
-      console.error('Error details:', {
+      console.error('Error saving changes:', {
         message: error.message,
-        response: error.response?.data,
+        detail: error.response?.data?.detail,
         status: error.response?.status
       });
       alert('Failed to save changes: ' + error.message);

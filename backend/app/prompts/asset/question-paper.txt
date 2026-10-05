@@ -141,34 +141,34 @@ Never:
 - invent, recreate, modify, or generate a visual
 - hard-code or assume an image filename
 - invent an image filename, URL, identifier, or path
-- modify an Image Path
+- modify an Image Reference
 - use internet, external, localhost, or frontend URLs
 - replace a required visual with unsupported information
 
-When an available image is required, copy its exact Image Path from `{{available_images}}` without modification and use standard Markdown image syntax:
+When an available image is required, copy its exact Image Reference from `{{available_images}}` without modification and use standard Markdown image syntax:
 
-![brief descriptive alt text](exact-image-path)
+![brief descriptive alt text](exact-image-reference)
 
 Do not use normal Markdown links:
 
-[brief descriptive alt text](exact-image-path)
+[brief descriptive alt text](exact-image-reference)
 
 For example, if the available image is:
 
 Filename: example.png
-Image Path: /courses/123/images/456
+Image Reference: image_ref:res_example_png
 
 use:
 
-![brief descriptive alt text](/courses/123/images/456)
+![brief descriptive alt text](image_ref:res_example_png)
 
-Never replace the Image Path with the filename.
+Never replace the Image Reference with the filename. Keep the `image_ref:` prefix exactly as given — do not convert it into a URL or a path.
 
 Keep the Markdown image inside the Questions column of the same table row. Use `<br>` to separate question text, the image, and sub-questions where necessary.
 
 Only include visuals that are genuinely necessary. Do not include decorative or unnecessary images.
 
-If no valid image is available, do not invent one. If a visual is required but no valid Image Path exists, use that material only if the resulting question remains valid and answerable without the visual.
+If no valid image is available, do not invent one. If a visual is required but no valid Image Reference exists, use that material only if the resulting question remains valid and answerable without the visual.
 
 OUTPUT FORMAT
 

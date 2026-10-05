@@ -17,6 +17,11 @@ from docx.shared import Pt, RGBColor, Inches, Emu
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.opc.constants import RELATIONSHIP_TYPE as _RT
+from docx.enum.section import WD_ORIENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from . import sprint_structure as ss
 
 _IMAGE_LINE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
 _COURSE_IMAGE_RE = re.compile(r"/courses/([^/]+)/images/([^/?#\s]+)")
@@ -151,6 +156,14 @@ def text_to_docx(
         section.bottom_margin = Inches(1.0)
         section.left_margin = Inches(0.85)
         section.right_margin = Inches(0.85)
+
+    # Sprint timetables and other wide tables are laid out on landscape pages.
+    if ss.needs_landscape(_split_blocks(text)):
+        for section in doc.sections:
+            section.orientation = WD_ORIENT.LANDSCAPE
+            section.page_width, section.page_height = section.page_height, section.page_width
+            section.top_margin = section.bottom_margin = Inches(0.7)
+            section.left_margin = section.right_margin = Inches(0.6)
 
     _apply_default_styles(doc)
     _ensure_hyperlink_style(doc)
@@ -309,8 +322,17 @@ def _set_paragraph_color(para, rgb: RGBColor):
 
 def _markdown_to_docx(doc: Document, text: str):
     """Parse markdown blocks and add them to the document."""
-    for block in _split_blocks(text):
+    blocks = _split_blocks(text)
+    has_sprint = ss.has_sprint_table(blocks)
+    for block in blocks:
         b_type = block.get("type")
+
+        if b_type == "table" and ss.is_sprint_table(block.get("headers", [])):
+            _add_sprint_table(doc, block["headers"], block.get("rows", []))
+            continue
+        if ss.is_sprint_legend(block, has_sprint):
+            _add_sprint_legend(doc, block["headers"], block.get("rows", []))
+            continue
 
         if b_type == "header1":
             p = doc.add_heading(block["text"], level=1)
@@ -872,6 +894,132 @@ def _add_cell_content(cell, text: str, img_max_width: Optional[int] = None):
     if after:
         para = cell.paragraphs[0] if first_para else cell.add_paragraph()
         _add_inline_runs(para, after)
+
+
+def _usable_width(doc: Document) -> int:
+    section = doc.sections[-1]
+    return section.page_width - section.left_margin - section.right_margin
+
+
+def _set_cell_margins(cell, twips: int):
+    tcPr = cell._tc.get_or_add_tcPr()
+    mar = OxmlElement("w:tcMar")
+    for side in ("top", "left", "bottom", "right"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:w"), str(twips))
+        el.set(qn("w:type"), "dxa")
+        mar.append(el)
+    tcPr.append(mar)
+
+
+def _set_table_borders(table, hex_color: str, size: int = 8):
+    tblPr = table._tbl.tblPr
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{edge}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), str(size))
+        el.set(qn("w:color"), hex_color)
+        borders.append(el)
+    tblPr.append(borders)
+
+
+def _set_fixed_layout(table, widths: List[int]):
+    """Fixed column widths (Word otherwise autofits and squeezes short columns)."""
+    table.autofit = False
+    layout = OxmlElement("w:tblLayout")
+    layout.set(qn("w:type"), "fixed")
+    table._tbl.tblPr.append(layout)
+    for row in table.rows:
+        for c, cell in enumerate(row.cells):
+            cell.width = widths[c]
+
+
+def _sprint_run(para, text: str, fg: str, *, bold=False, size=8):
+    run = para.add_run(text)
+    run.bold = bold
+    run.font.size = Pt(size)
+    run.font.color.rgb = RGBColor.from_string(fg)
+    return run
+
+
+def _fill_sprint_cell(cell, text: str):
+    """Activity cell: activity label above its topic, in the activity's legend colours."""
+    colour = ss.activity_colour(text)
+    fg = colour[1] if colour else "111827"
+    bold = bool(colour and colour[2])  # only activities the legend marks bold
+    if colour:
+        _shade_cell(cell, colour[0])
+    para = cell.paragraphs[0]
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    para.paragraph_format.space_after = Pt(0)
+    split = ss.split_label(text)
+    if split:
+        _sprint_run(para, split[0], fg, bold=bold)
+        _sprint_run(para, "\n" + split[1], fg, bold=bold, size=7.5)
+    else:
+        _sprint_run(para, ss.plain(text), fg, bold=bold)
+
+
+def _add_sprint_table(doc: Document, headers: List[str], rows: List[List[str]]):
+    """Colour-coded sprint timetable: black header, activity colours, merged grey breaks."""
+    col_count = len(headers)
+    rows = [(list(r) + [""] * col_count)[:col_count] for r in rows]
+    table = doc.add_table(rows=1 + len(rows), cols=col_count)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_table_borders(table, "000000", size=8)
+
+    weights = ss.column_weights(headers, rows)
+    usable = _usable_width(doc)
+    _set_fixed_layout(table, [int(w / sum(weights) * usable) for w in weights])
+
+    for c, h in enumerate(headers):
+        cell = table.rows[0].cells[c]
+        _shade_cell(cell, ss.HEADER_BG)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        _set_cell_margins(cell, 30 if ss.is_break(h) else 60)
+        para = cell.paragraphs[0]
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        label = "\n".join(ss.plain(h).split()) if ss.is_break(h) else ss.plain(h)
+        _sprint_run(para, label, ss.HEADER_FG, bold=True, size=6 if ss.is_break(h) else 8.5)
+    # Repeat the header row on every page.
+    trPr = table.rows[0]._tr.get_or_add_trPr()
+    trPr.append(OxmlElement("w:tblHeader"))
+
+    for r, row in enumerate(rows, start=1):
+        cells = table.rows[r].cells
+        weekend = ss.is_weekend_row(row)
+        for c, text in enumerate(row):
+            cell = cells[c]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            _set_cell_margins(cell, 30 if ss.is_break(headers[c]) else 60)
+            if weekend:
+                _shade_cell(cell, ss.WEEKEND_BG)
+                if c == 0:
+                    _sprint_run(cells[0].paragraphs[0], ss.plain(text), ss.WEEKEND_FG, bold=True)
+            elif ss.is_break(text):
+                _shade_cell(cell, ss.BREAK_BG)  # grey band; the header names the break
+            else:
+                _fill_sprint_cell(cell, text)
+        # Keep each day on one page.
+        table.rows[r]._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+
+    for c, first, last in ss.break_runs(headers, rows):
+        if last > first:
+            table.cell(first + 1, c).merge(table.cell(last + 1, c))
+
+
+def _add_sprint_legend(doc: Document, headers: List[str], rows: List[List[str]]):
+    """The sprint "Colour Key" table, each activity shown in its colour."""
+    table = doc.add_table(rows=1 + len(rows), cols=1)
+    _set_table_borders(table, "000000", size=8)
+    _set_fixed_layout(table, [Inches(2.2)])
+    head = table.rows[0].cells[0]
+    _shade_cell(head, ss.HEADER_BG)
+    head.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _sprint_run(head.paragraphs[0], ss.plain(headers[0]), ss.HEADER_FG, bold=True, size=9)
+    for r, row in enumerate(rows, start=1):
+        _fill_sprint_cell(table.rows[r].cells[0], row[0] if row else "")
 
 
 def _add_horizontal_rule(doc: Document):

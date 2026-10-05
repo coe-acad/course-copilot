@@ -16,7 +16,10 @@ export default function KnowledgeBase({
   onDelete = () => { }, // Callback to refresh resources after deletion
   onAddResource, // <-- new prop
   courseId, // <-- add courseId prop
-  isUploading = false // <-- new prop for upload loading state
+  isUploading = false, // <-- new prop for upload loading state
+  // When the parent already provides a bounded, card-styled container (AI Studio),
+  // fill it instead of adding a second card with its own vh-based scroll area.
+  fillHeight = false
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const menuRef = useRef(null);
@@ -195,17 +198,23 @@ export default function KnowledgeBase({
           100% { transform: rotate(360deg); }
         }
       `}</style>
-      <div style={{
-        background: "#fff",
+      <div className={fillHeight ? undefined : "cc-scroll"} style={{
+        background: fillHeight ? "transparent" : "#fff",
         borderRadius: 12,
-        boxShadow: "0 1px 4px #0001",
-        padding: 18,
-        minHeight: '60vh',
-        maxHeight: '65vh',
-        overflowY: 'auto',
+        boxShadow: fillHeight ? "none" : "0 1px 4px #0001",
+        padding: fillHeight ? 0 : 18,
+        height: fillHeight ? '100%' : undefined,
+        minHeight: fillHeight ? 0 : '60vh',
+        maxHeight: fillHeight ? '100%' : '65vh',
+        // fillHeight: the header stays put and only the list below scrolls.
+        display: fillHeight ? 'flex' : undefined,
+        flexDirection: fillHeight ? 'column' : undefined,
+        overflowY: fillHeight ? 'hidden' : 'auto',
         overflowX: 'visible',
         position: 'relative'
       }}>
+        {/* Fixed head: title, add button, upload state, select-all */}
+        <div style={fillHeight ? { flexShrink: 0 } : undefined}>
         <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
         <div style={{ color: "#888", fontSize: 13, marginBottom: 10 }}>
           Add resources from the web or course documents you’ve already created — this helps AI give relevant results.
@@ -332,20 +341,37 @@ export default function KnowledgeBase({
             </label>
           </div>
         )}
+        </div>
 
+        {/* Scrolling region: the resource list only */}
+        <div
+          className={fillHeight ? "cc-scroll" : undefined}
+          style={fillHeight ? {
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            // Reserve the scrollbar track so rows don't shift when it appears
+            scrollbarGutter: "stable",
+            paddingRight: 4,
+            borderTop: "1px solid #f1f5f9"
+          } : undefined}
+        >
         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {resources.length === 0 ? (
-            <li style={{ color: '#888' }}>No resources uploaded yet.</li>
+            <li style={{ color: '#94a3b8', fontSize: 14, padding: "14px 8px" }}>No resources uploaded yet.</li>
           ) : (
             resources.map((res, i) => {
               const id = res.id || res.resourceName || res.fileName || i;
               return (
-                <li key={id} style={{
+                <li key={id} className={`cc-kb-row${selected.includes(id) ? " cc-kb-row--selected" : ""}`} style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  padding: "7px 0",
-                  borderBottom: i < resources.length - 1 ? "1px solid #f0f0f0" : "none",
+                  gap: 8,
+                  padding: "8px 8px",
+                  borderRadius: 8,
+                  background: selected.includes(id) ? "#eff6ff" : "transparent",
+                  borderBottom: i < resources.length - 1 ? "1px solid #f4f6f9" : "none",
                   position: "relative"
                 }}>
                   <label style={{
@@ -379,6 +405,7 @@ export default function KnowledgeBase({
             })
           )}
         </ul>
+        </div>
       </div>
 
       {/* Portal-based dropdown */}

@@ -5,7 +5,7 @@ const curriculumOptions = [
   { label: "Lecture", desc: "Plan each session with defined objectives, activities, and resources.", url: "lecture" },
   { label: "Course Notes", desc: "Add notes to support student understanding and revision.", url: "course-notes" },
   { label: "Concept Plan", desc: "Generate a session-by-session concept plan aligned with best-practice learning design.", url: "concept-plan" },
-  { label: "Sprint Plan", desc: "Create a comprehensive 3-week sprint planning document with outcomes, modules, and PO-PSO mappings.", url: "sprint-plan" }
+  { label: "Sprint Structure", desc: "Generate the 3-week sprint timetable: daily sessions colour-coded by activity type.", url: "sprint-structure" }
 ];
 
 export default curriculumOptions;

@@ -109,7 +109,7 @@ export const evaluationService = {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        data: error.response?.data,
+        detail: error.response?.data?.detail,
         evaluationId: evaluationId,
         code: error.code
       });

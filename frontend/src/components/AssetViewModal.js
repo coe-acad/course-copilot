@@ -7,6 +7,7 @@ import remarkBreaks from 'remark-breaks';
 import DownloadButton from "./DownloadButton";
 import { latexToText } from "../utils/latexToText";
 import { API_BASE } from "../utils/axiosConfig";
+import { isSprintStructure, sprintStructureComponents } from "../utils/sprintStructure";
 
 // Resolve internal /courses/.../images/... URLs to authenticated object URLs
 function useResolvedImageSrc(src) {
@@ -302,7 +303,9 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               table: (props) => <table style={{borderCollapse: 'collapse', width: '100%', margin: '8px 0'}} {...props} />,
               th: ({children, ...props}) => <th style={{border: '1px solid #d1d5db', padding: '10px 8px', background: '#f9fafb', fontWeight: 'bold'}} {...props}>{renderFormattedContent(children)}</th>,
               td: ({children, ...props}) => <td style={{border: '1px solid #d1d5db', padding: '10px 8px', verticalAlign: 'top', lineHeight: '1.5'}} {...props}>{renderFormattedContent(children)}</td>,
-              img: ({src, alt}) => <ResolvedImage src={src} alt={alt} style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />
+              img: ({src, alt}) => <ResolvedImage src={src} alt={alt} style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />,
+              // Sprint Structure timetables keep their activity colour-coding here too.
+              ...(isSprintStructure(assetData.asset_type) ? sprintStructureComponents : {})
             }}
           >
             {latexToText(assetData.asset_content)}

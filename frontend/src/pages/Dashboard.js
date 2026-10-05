@@ -305,13 +305,6 @@ export default function Dashboard() {
 
   const handleCurriculumSubmit = (selected) => {
     setShowCurriculumModal(false);
-
-    // Special handling for sprint-plan: use dedicated modal instead of asset studio
-    if (selected.url === 'sprint-plan') {
-      setShowExportSprintPlanModal(true);
-      return;
-    }
-
     setSelectedComponent(selected.url);
     setShowKBModal(true);
   };

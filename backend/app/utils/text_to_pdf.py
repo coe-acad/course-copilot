@@ -16,7 +16,7 @@ from typing import List, Optional, Union
 from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.pagesizes import LETTER, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
@@ -34,6 +34,8 @@ from reportlab.platypus import (
 
 import base64
 import requests
+
+from . import sprint_structure as ss
 
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -273,6 +275,13 @@ def text_to_pdf(
     text = latex_to_text(text)
 
     title = _extract_title(text) or _DEFAULT_TITLE
+
+    # Sprint timetables and other wide tables are laid out on landscape pages.
+    blocks = _split_blocks(text)
+    has_sprint = ss.has_sprint_table(blocks)
+    if ss.needs_landscape(blocks) and page_size == _DEFAULT_PAGE_SIZE:
+        page_size = landscape(_DEFAULT_PAGE_SIZE)
+
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -285,6 +294,9 @@ def text_to_pdf(
     )
 
     styles = _build_styles(font_name, font_size)
+    # Layout facts the table builder needs (it only receives the styles dict).
+    styles["_content_width"] = page_size[0] - 2 * _H_MARGIN
+    styles["_has_sprint"] = has_sprint
     flowables = _markdown_to_flowables(text, styles, title)
 
     decorator = lambda canvas, doc_: _decorate_page(canvas, doc_, title)
@@ -1142,6 +1154,12 @@ def _build_table(block: dict, styles: dict, fallback_images: bool = False):
     if col_count == 0:
         return None
 
+    content_width = styles.get("_content_width", _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN)
+    if ss.is_sprint_table(headers):
+        return _build_sprint_table(headers, rows, styles, content_width)
+    if ss.is_sprint_legend(block, styles.get("_has_sprint", False)):
+        return _build_sprint_legend(headers, rows, styles)
+
     cell_style = ParagraphStyle(
         "TableCell",
         parent=styles["body"],
@@ -1156,8 +1174,6 @@ def _build_table(block: dict, styles: dict, fallback_images: bool = False):
         fontName=f"{styles['body'].fontName}-Bold",
         textColor=colors.HexColor("#1f2937"),
     )
-
-    content_width = _DEFAULT_PAGE_SIZE[0] - 2 * _H_MARGIN
 
     # Calculate proportional column widths
     lower_headers = [h.strip().lower() for h in headers]
@@ -1186,6 +1202,12 @@ def _build_table(block: dict, styles: dict, fallback_images: bool = False):
         total_len = sum(col_text_lens)
         col_widths = [(l / total_len) * content_width for l in col_text_lens]
 
+    col_widths = _enforce_min_widths(
+        col_widths,
+        content_width,
+        _column_min_widths(headers, rows, col_count, header_style.fontName, header_style.fontSize, content_width),
+    )
+
     def _pad(cells, style):
         padded = list(cells) + [""] * (col_count - len(cells))
         return [_build_cell(c, style, max(col_widths[i] - 12 if i < len(col_widths) else 24, 24), fallback_images=fallback_images) for i, c in enumerate(padded)]
@@ -1194,7 +1216,7 @@ def _build_table(block: dict, styles: dict, fallback_images: bool = False):
     for row in rows:
         data.append(_pad(row, cell_style))
 
-    table = Table(data, colWidths=col_widths, hAlign="LEFT")
+    table = Table(data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
     table.setStyle(
         TableStyle(
             [
@@ -1208,6 +1230,180 @@ def _build_table(block: dict, styles: dict, fallback_images: bool = False):
             ]
         )
     )
+    return table
+
+
+_MIN_COL_WIDTH = 28  # points; narrower columns leave no room for text after padding
+
+
+def _enforce_min_widths(col_widths: List[float], content_width: float,
+                        min_widths: Optional[List[float]] = None) -> List[float]:
+    """Raise narrow proportional columns to their minimum, shrinking the others.
+
+    Without this a short column (e.g. "Day", "Marks") next to long ones gets a
+    width below its longest word, or even below its cell padding, in which case
+    words split mid-word or ReportLab cannot lay the table out at all.
+    """
+    n = len(col_widths)
+    mins = [max(m, _MIN_COL_WIDTH) for m in (min_widths or [_MIN_COL_WIDTH] * n)]
+    if n == 0:
+        return []
+    if sum(mins) >= content_width:
+        # Not enough room for every minimum: share the page in proportion to them.
+        return [m / sum(mins) * content_width for m in mins]
+    widths = list(col_widths)
+    fixed: set = set()
+    for _ in range(n):
+        newly = [i for i in range(n) if i not in fixed and widths[i] < mins[i]]
+        if not newly:
+            break
+        fixed.update(newly)
+        flexible = sum(w for i, w in enumerate(widths) if i not in fixed)
+        remaining = content_width - sum(mins[i] for i in fixed)
+        widths = [mins[i] if i in fixed else (w * remaining / flexible if flexible else w)
+                  for i, w in enumerate(widths)]
+    return widths
+
+
+def _column_min_widths(headers: List[str], rows: List[List[str]], col_count: int,
+                       font_name: str, font_size: float, content_width: float) -> List[float]:
+    """Width each column needs to fit its longest word without breaking it."""
+    padding = 14  # left + right cell padding plus a little slack
+    mins = []
+    for c in range(col_count):
+        texts = [headers[c] if c < len(headers) else ""] + [r[c] if c < len(r) else "" for r in rows]
+        words = [w for t in texts for w in re.sub(r"[*_`]|<br\s*/?>", " ", t or "").split()]
+        longest = max((pdfmetrics.stringWidth(w, font_name, font_size) for w in words), default=0)
+        mins.append(min(longest + padding, content_width / 3))
+    return mins
+
+
+def _sprint_styles(styles: dict):
+    """Paragraph styles for sprint timetable cells, keyed by text colour."""
+    base = ParagraphStyle(
+        "SprintCell",
+        parent=styles["body"],
+        fontSize=7.5,
+        leading=9.2,
+        alignment=TA_CENTER,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    cache = {}
+
+    def get(fg: str, bold: bool = False, size: Optional[float] = None):
+        key = (fg, bold, size)
+        if key not in cache:
+            cache[key] = ParagraphStyle(
+                f"SprintCell-{fg}-{bold}-{size}",
+                parent=base,
+                textColor=colors.HexColor(f"#{fg}"),
+                fontName=f"{styles['body'].fontName}-Bold" if bold else styles["body"].fontName,
+                fontSize=size or base.fontSize,
+                leading=(size or base.fontSize) * 1.22,
+            )
+        return cache[key]
+
+    return get
+
+
+def _sprint_cell_paragraph(text: str, style_for):
+    """Activity cell: activity label above its topic, in the activity's legend font."""
+    colour = ss.activity_colour(text)
+    fg = colour[1] if colour else "111827"
+    bold = bool(colour and colour[2])  # only activities the legend marks bold
+    split = ss.split_label(text)
+    if split:
+        label, topic = split
+        xml = f"{_convert_inline(label)}<br/>{_convert_inline(topic)}"
+    else:
+        xml = _convert_inline(ss.plain(text))
+    if bold:
+        xml = f"<b>{xml}</b>"
+    return _safe_paragraph(xml, style_for(fg))
+
+
+def _build_sprint_table(headers: List[str], rows: List[List[str]], styles: dict, content_width: float):
+    """Colour-coded sprint timetable: black header, activity colours, merged grey breaks."""
+    col_count = len(headers)
+    rows = [(list(r) + [""] * col_count)[:col_count] for r in rows]
+    style_for = _sprint_styles(styles)
+
+    weights = ss.column_weights(headers, rows)
+    col_widths = [w / sum(weights) * content_width for w in weights]
+
+    data = [[
+        _safe_paragraph(
+            # "Coffee<br/>Break": one word per line fits the narrow break column.
+            "<b>" + "<br/>".join(_convert_inline(w) for w in ss.plain(h).split()) + "</b>"
+            if ss.is_break(h) else f"<b>{_convert_inline(ss.plain(h))}</b>",
+            style_for(ss.HEADER_FG, size=6 if ss.is_break(h) else 8),
+        )
+        for h in headers
+    ]]
+    commands = [
+        ("GRID", (0, 0), (-1, -1), 0.75, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{ss.HEADER_BG}")),
+    ]
+    for c, h in enumerate(headers):
+        if ss.is_break(h):
+            commands += [("LEFTPADDING", (c, 0), (c, -1), 1), ("RIGHTPADDING", (c, 0), (c, -1), 1)]
+
+    row_heights = [None]
+    for r, row in enumerate(rows, start=1):
+        if ss.is_weekend_row(row):
+            data.append([_safe_paragraph(f"<b>{_convert_inline(ss.plain(row[0]))}</b>", style_for(ss.WEEKEND_FG))]
+                        + [""] * (col_count - 1))
+            commands.append(("BACKGROUND", (0, r), (-1, r), colors.HexColor(f"#{ss.WEEKEND_BG}")))
+            row_heights.append(16)
+            continue
+        cells = []
+        for c, text in enumerate(row):
+            if ss.is_break(text):
+                cells.append("")  # grey band; the header names the break
+                commands.append(("BACKGROUND", (c, r), (c, r), colors.HexColor(f"#{ss.BREAK_BG}")))
+                continue
+            colour = ss.activity_colour(text)
+            if colour:
+                commands.append(("BACKGROUND", (c, r), (c, r), colors.HexColor(f"#{colour[0]}")))
+            cells.append(_sprint_cell_paragraph(text, style_for))
+        data.append(cells)
+        row_heights.append(None)
+
+    # Each week's break cells read as one grey band: paint the grid lines between
+    # them grey. (Not a SPAN — a spanned block can't split across pages, and a
+    # week of long cells is taller than a page.)
+    for c, first, last in ss.break_runs(headers, rows):
+        if last > first:
+            commands.append(("LINEBELOW", (c, first + 1), (c, last), 0.75, colors.HexColor(f"#{ss.BREAK_BG}")))
+
+    table = Table(data, colWidths=col_widths, rowHeights=row_heights, hAlign="LEFT", repeatRows=1)
+    table.setStyle(TableStyle(commands))
+    return table
+
+
+def _build_sprint_legend(headers: List[str], rows: List[List[str]], styles: dict):
+    """The sprint "Colour Key" table, each activity shown in its colour."""
+    style_for = _sprint_styles(styles)
+    data = [[_safe_paragraph(f"<b>{_convert_inline(ss.plain(headers[0]))}</b>", style_for(ss.HEADER_FG, size=8))]]
+    commands = [
+        ("GRID", (0, 0), (-1, -1), 0.75, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(f"#{ss.HEADER_BG}")),
+    ]
+    for r, row in enumerate(rows, start=1):
+        text = row[0] if row else ""
+        colour = ss.activity_colour(text)
+        if colour:
+            commands.append(("BACKGROUND", (0, r), (0, r), colors.HexColor(f"#{colour[0]}")))
+        data.append([_sprint_cell_paragraph(text, style_for)])
+    table = Table(data, colWidths=[170], hAlign="LEFT")
+    table.setStyle(TableStyle(commands))
     return table
 
 

@@ -27,6 +27,11 @@ class Settings:
     ALLOWED_EMAIL_DOMAINS: List[str] = [
         d.strip().lower() for d in os.getenv("ALLOWED_EMAIL_DOMAINS", "atriauniversity.edu.in").split(",") if d.strip()
     ]
+    # TEMPORARY ESCAPE HATCH — applies to the email/password /login endpoint ONLY.
+    # Set to "false" to let accounts outside ALLOWED_EMAIL_DOMAINS sign in with an
+    # existing password account. Signup and Google login stay restricted either way.
+    # Defaults to True so the restriction is on unless it is explicitly switched off.
+    ENFORCE_LOGIN_EMAIL_DOMAIN: bool = os.getenv("ENFORCE_LOGIN_EMAIL_DOMAIN", "True").lower() == "true"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     

@@ -8,7 +8,7 @@ export default function StudioHeader({
   onLogout,
   onBack
 }) {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
   return (
     <div
       style={{
@@ -21,20 +21,20 @@ export default function StudioHeader({
       }}
     >
       {/* Left: Brand */}
-      <div
+      <div 
         style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
         onClick={() => navigate('/courses')}
       >
-        <img
-          src="/logo.png"
-          alt="Course Copilot Logo"
+        <img 
+          src="/favicon.svg" 
+          alt="Course Copilot Logo" 
           style={{
-            width: 176,
-            height: 34,
+            width: 40,
+            height: 40,
             marginRight: 14,
           }}
         />
-        {/* <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span> */}
+        <span style={{ fontWeight: 700, fontSize: 20, color: "#222", letterSpacing: 0.5 }}>Course Copilot</span>
       </div>
 
       {/* Right: Buttons */}

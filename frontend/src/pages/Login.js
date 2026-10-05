@@ -11,9 +11,21 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Listen for messages from the Google login popup
+  // Listen for messages from the Google login popup.
+  // The origin MUST be checked: without it any page that can get a handle to
+  // this window could postMessage a forged GOOGLE_LOGIN_SUCCESS and plant an
+  // arbitrary token in localStorage. The popup is served by the API, so the
+  // only acceptable sender is the API origin (or our own origin in dev).
   React.useEffect(() => {
+    const apiOrigin = new URL(
+      process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'
+    ).origin;
+
     const handleMessage = (event) => {
+      if (event.origin !== apiOrigin && event.origin !== window.location.origin) {
+        console.warn('Ignored login message from unexpected origin:', event.origin);
+        return;
+      }
       if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
         // Handle successful Google login
 
@@ -79,17 +91,11 @@ export default function Login() {
         {/* App Icon and Title */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
           <img
-            src={process.env.PUBLIC_URL + "/logo.png"}
+            src={process.env.PUBLIC_URL + "/favicon.svg"}
             alt="Course Copilot Logo"
-            style={{
-              width: 176,
-              height: 34,
-              borderRadius: 8,
-              marginRight: 12,
-              boxShadow: "0 2px 8px #0001"
-            }}
+            style={{ width: 36, height: 36, borderRadius: 8, marginRight: 12, boxShadow: "0 2px 8px #0001" }}
           />
-          {/* <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span> */}
+          <span style={{ fontWeight: 600, fontSize: 20, color: "#222" }}>Course Copilot</span>
         </div>
 
         {/* Google Sign-In */}
