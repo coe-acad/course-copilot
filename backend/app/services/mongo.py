@@ -189,13 +189,15 @@ def get_course_owner_email(course_id: str):
     return get_email_by_user_id(owner_id)
 
 # Resources
-def create_resource(course_id: str, resource_name: str, content: str = None):
+def create_resource(course_id: str, resource_name: str, content: str = None) -> bool:
+    """Insert a resource. Returns False (nothing written) if the name is already taken."""
     if get_resource_by_course_id_and_resource_name(course_id, resource_name):
-        return
+        return False
     resource_data = {"course_id": course_id, "resource_name": resource_name}
     if content is not None:
         resource_data["content"] = content
     add_to_collection("resources", resource_data)
+    return True
 
 def get_resources_by_course_id(course_id: str):
     return get_many_from_collection("resources", {"course_id": course_id})

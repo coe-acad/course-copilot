@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import AssetStudioLayout from "../layouts/AssetStudioLayout";
 import KnowledgeBase from "../components/KnowledgBase";
@@ -234,15 +234,19 @@ const markdownComponents = {
 // Sprint Structure renders its timetable colour-coded by activity type.
 const sprintMarkdownComponents = { ...markdownComponents, ...sprintStructureComponents };
 
-function BotMarkdown({ text, components = markdownComponents, className }) {
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+
+// Memoized: the page re-renders every reveal frame while streaming, and re-parsing
+// every earlier answer each time is what made long chats stutter.
+const BotMarkdown = memo(function BotMarkdown({ text, components = markdownComponents, className }) {
   return (
     <div className={className} style={{ fontSize: CHAT_TEXT, lineHeight: CHAT_LEADING, color: TEXT_COLOR }}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
         {latexToText(text)}
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 // Streaming reveal: the visible text eases toward whatever the backend has sent so
 // far (exponential approach with time constant REVEAL_TAU_S) plus a floor speed so
@@ -251,7 +255,10 @@ function BotMarkdown({ text, components = markdownComponents, className }) {
 const REVEAL_TAU_S = 0.35;
 const REVEAL_MIN_CPS = 120;
 // Re-parsing the markdown every frame is wasted work on long answers: ~30fps is smooth.
+// Past REVEAL_LONG_CHARS each parse gets expensive, so commit less often (~10fps).
 const REVEAL_COMMIT_MS = 33;
+const REVEAL_LONG_CHARS = 8000;
+const REVEAL_LONG_COMMIT_MS = 100;
 
 function useSmoothReveal(text, active) {
   const [shownLength, setShownLength] = useState(0);
@@ -285,7 +292,8 @@ function useSmoothReveal(text, active) {
       } else {
         carry = 0;
       }
-      if (shown !== shownRef.current && (shown === target || now - lastCommit >= REVEAL_COMMIT_MS)) {
+      const commitMs = target > REVEAL_LONG_CHARS ? REVEAL_LONG_COMMIT_MS : REVEAL_COMMIT_MS;
+      if (shown !== shownRef.current && (shown === target || now - lastCommit >= commitMs)) {
         shownRef.current = shown;
         lastCommit = now;
         setShownLength(shown);
@@ -329,10 +337,6 @@ export default function AssetStudioContent() {
   const selectedFiles = location.state?.selectedFiles || [];
   const initialSelectedIds = selectedFiles.map(file => file.id || file.fileName || file.name);
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
-
-  // Debug logging for file selection
-  console.log('Selected files from Dashboard:', selectedFiles);
-  console.log('Initial selected IDs:', initialSelectedIds);
 
   const [chatMessages, setChatMessages] = useState([]);
   const [streamingText, setStreamingText] = useState("");
@@ -693,7 +697,11 @@ export default function AssetStudioContent() {
     try {
       setIsUploadingResources(true);
       // PDF/image pipeline: raw bytes stored in Mongo; PDFs go directly to the model.
-      await extractResourceImages(courseId, files);
+      const uploadResult = await extractResourceImages(courseId, files);
+      // Surface files the backend skipped (too large, name clash, save failure)
+      if (uploadResult?.message?.includes('skipped')) {
+        alert(uploadResult.message);
+      }
       // Refresh resources
       const resourcesData = await getAllResources(courseId);
       setResources(resourcesData.resources);

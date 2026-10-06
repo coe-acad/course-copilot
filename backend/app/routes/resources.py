@@ -229,29 +229,50 @@ def upload_pdf_image_resources(course_id: str, files: List[UploadFile] = File(..
                     except Exception as pg_err:
                         pages = 0
                         logger.warning(f"[upload] page count failed for '{name}': {pg_err}")
-                    create_resource(course_id, name, "")
-                    save_resource_pdf(course_id, name, data, len(data), pages)
+                    # Claim the name first (create_resource never overwrites), so the
+                    # upserted bytes can't clobber another resource's PDF. If storing
+                    # the bytes fails, roll the entry back so no byte-less resource is
+                    # left behind that the model can't see.
+                    if not create_resource(course_id, name, ""):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    try:
+                        save_resource_pdf(course_id, name, data, len(data), pages)
+                    except Exception:
+                        delete_resource_in_db(course_id, name)
+                        delete_resource_pdf(course_id, name)
+                        raise
                     resources_added += 1
                     per_resource.append(PerResourceImages(resource_name=name, image_count=0))
                 elif is_image_filename(name):
                     ext = os.path.splitext(name)[1].lower().lstrip(".")
                     mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
-                    create_resource(course_id, name, "")
-                    save_resource_image(
-                        course_id, name, resource_image_id(name),
-                        base64.b64encode(data).decode("ascii"), mime, ext,
-                    )
+                    if not create_resource(course_id, name, ""):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    try:
+                        save_resource_image(
+                            course_id, name, resource_image_id(name),
+                            base64.b64encode(data).decode("ascii"), mime, ext,
+                        )
+                    except Exception:
+                        delete_resource_in_db(course_id, name)
+                        delete_resource_image(course_id, name)
+                        raise
                     resources_added += 1
                     total_images += 1
                     per_resource.append(PerResourceImages(resource_name=name, image_count=1))
                 else:
                     # Unexpected type for this button — store as a plain text resource.
-                    create_resource(course_id, name, data.decode("utf-8", errors="ignore"))
+                    if not create_resource(course_id, name, data.decode("utf-8", errors="ignore")):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
                     resources_added += 1
                     per_resource.append(PerResourceImages(resource_name=name, image_count=0))
 
             except Exception as file_err:
                 logger.error(f"[upload] failed for '{file.filename}': {file_err}")
+                skipped.append(f"{file.filename} (save failed)")
                 continue
 
         message = f"Uploaded {resources_added} resource(s); {total_images} image(s)"

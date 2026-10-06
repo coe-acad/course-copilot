@@ -1,6 +1,7 @@
 from logging import log
 import logging
 import re
+import io
 import base64
 import asyncio
 import time
@@ -16,8 +17,10 @@ from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.text_to_xlsx import text_to_xlsx
 from ..utils.sprint_plan import build_sprint_plan
-from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names
+from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resources_by_course_id, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names, save_resource_pdf
 from ..services.task_manager import task_manager, TaskStatus
+from .resources import ensure_unique_name, _MAX_PDF_BYTES
+from PyPDF2 import PdfReader
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
@@ -1057,11 +1060,40 @@ def save_asset_as_resource(course_id: str, asset_name: str, request: AssetCreate
         
         # 5. Save the content as a resource in Mongo. That is the knowledge base:
         # generation reads this content back via _resolve_selected_text_sections.
+        # The frontend dedupes against its (possibly stale) resource list, so pick a
+        # unique name server-side too; create_resource never overwrites, and a False
+        # return means another save took the name in between — retry with a fresh list.
         logger.info(f"Saving resource: {asset_name} with content length: {len(content)}")
-        create_resource(course_id, asset_name, content)
-        logger.info(f"Resource saved successfully: {asset_name}")
+        resource_name = None
+        for _ in range(3):
+            used = {r.get("resource_name") for r in (get_resources_by_course_id(course_id) or []) if r.get("resource_name")}
+            candidate = ensure_unique_name(asset_name, used)
+            if create_resource(course_id, candidate, content):
+                resource_name = candidate
+                break
+        if not resource_name:
+            raise HTTPException(status_code=409, detail=f"Could not save '{asset_name}' as a resource: the name is already in use. Please try again.")
+        logger.info(f"Resource saved successfully: {resource_name}")
 
-        return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{asset_name}' successfully")
+        # Also store a rendered PDF (same renderer as the PDF download, so tables,
+        # math and embedded course images are kept) so that selecting this resource
+        # sends the PDF directly to the model, like an uploaded PDF. Best-effort: if
+        # rendering fails, the text saved above is still injected as a fallback.
+        try:
+            pdf_bytes = text_to_pdf(content)
+            if len(pdf_bytes) <= _MAX_PDF_BYTES:
+                try:
+                    pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+                except Exception:
+                    pages = 0
+                save_resource_pdf(course_id, resource_name, pdf_bytes, len(pdf_bytes), pages)
+                logger.info(f"[pdf] stored rendered PDF for resource '{resource_name}' ({len(pdf_bytes)} bytes, {pages} pages)")
+            else:
+                logger.warning(f"[pdf] rendered PDF for '{resource_name}' exceeds {_MAX_PDF_BYTES} bytes; text only")
+        except Exception as pdf_err:
+            logger.warning(f"[pdf] could not render PDF for resource '{resource_name}'; text only: {pdf_err}")
+
+        return AssetCreateResponse(message=f"Asset '{asset_name}' saved as resource '{resource_name}' successfully")
     except HTTPException:
         raise
     except Exception as e:

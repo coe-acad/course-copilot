@@ -373,7 +373,11 @@ export default function Dashboard() {
     setIsUploadingResources(true);
     try {
       // PDF/image pipeline: raw bytes stored in Mongo; PDFs go directly to the model.
-      await extractResourceImages(courseId, files);
+      const uploadResult = await extractResourceImages(courseId, files);
+      // Surface files the backend skipped (too large, name clash, save failure)
+      if (uploadResult?.message?.includes('skipped')) {
+        alert(uploadResult.message);
+      }
       // Refresh resources
       const data = await getAllResources(courseId);
       const transformedResources = (data.resources || []).map(resource => ({
