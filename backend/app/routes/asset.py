@@ -17,6 +17,8 @@ from ..utils.text_to_pdf import text_to_pdf
 from ..utils.text_to_docx import text_to_docx
 from ..utils.text_to_xlsx import text_to_xlsx
 from ..utils.sprint_plan import build_sprint_plan
+from ..utils.markdown_tables import repair_pipe_tables
+from ..utils.mark_scheme_questions import restore_question_texts
 from ..services.mongo import get_course, create_asset, get_assets_by_course_id, get_asset_by_course_id_and_asset_name, delete_asset_from_db, create_resource, get_resources_by_course_id, get_resource_by_course_id_and_resource_name, get_user_display_name, get_resource_images_for_names, get_resource_image_ids_for_course, get_resource_pdf, get_resource_pdfs_meta_for_names, save_resource_pdf
 from ..services.task_manager import task_manager, TaskStatus
 from .resources import ensure_unique_name, _MAX_PDF_BYTES
@@ -632,6 +634,10 @@ def _process_asset_chat_background(task_id: str, course_id: str, asset_type_name
         if complete_response and "![" in complete_response:
             complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
 
+        if asset_type_name == "mark-scheme":
+            complete_response = restore_question_texts(complete_response, extracted_questions)
+        complete_response = repair_pipe_tables(complete_response)
+
         if asset_type_name == "sprint-plan":
             if not complete_response:
                 raise Exception("No sprint plan content returned from model")
@@ -787,6 +793,8 @@ def _process_continue_asset_chat_background(task_id: str, course_id: str, asset_
                 allowed_image_ids = set()
                 logger.warning(f"[figures] course image lookup failed: {img_err}")
             complete_response = _resolve_image_refs(complete_response, course_id, allowed_image_ids)
+
+        complete_response = repair_pipe_tables(complete_response)
 
         # Mark task as completed with result
         result = {

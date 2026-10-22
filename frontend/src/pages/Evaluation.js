@@ -4,7 +4,9 @@ import Header from "../components/header/Header";
 import SettingsModal from "../components/SettingsModal";
 import Modal from "../components/Modal";
 import { evaluationService } from "../services/evaluation";
-import { FiEye } from "react-icons/fi";
+import { trackPendingEvaluation } from "../components/EvaluationCompletionWatcher";
+import { buildStudentReportPdf, studentReportFileName, PASS_MARK } from "../utils/studentReportPdf";
+import { FiEye, FiEdit2, FiMail, FiX, FiChevronLeft, FiChevronRight, FiDownload, FiAlertTriangle, FiUploadCloud, FiFileText, FiCheck, FiCheckCircle, FiLock, FiInfo, FiArrowRight } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -42,9 +44,8 @@ export default function Evaluation() {
   const [showNameInputScreen, setShowNameInputScreen] = useState(false); // Show name input screen
   const [showProcessStartedPopup, setShowProcessStartedPopup] = useState(false); // Show process started popup
   const [showReportModal, setShowReportModal] = useState(false); // Show report modal
-  const [currentReport, setCurrentReport] = useState(''); // Current report content
-  const [reportTitle, setReportTitle] = useState(''); // Report title
   const [isLoadingReport, setIsLoadingReport] = useState(false); // Loading report
+  const [reportStudentIndex, setReportStudentIndex] = useState(null); // Student shown in the report modal
   const [showDownloadSuccessModal, setShowDownloadSuccessModal] = useState(false); // Show download success popup
   const pendingSavePromiseRef = React.useRef(null);
 
@@ -54,7 +55,7 @@ export default function Evaluation() {
   const courseTitle = localStorage.getItem("currentCourseTitle") || "Course";
   const openedFromCardRef = React.useRef(false);
 
-  
+
 
   const handleClose = () => {
     const maybeWaitForSave = async () => {
@@ -66,7 +67,7 @@ export default function Evaluation() {
             new Promise((resolve) => setTimeout(resolve, 1500))
           ]);
         }
-      } catch {}
+      } catch { }
       navigate('/dashboard');
     };
     maybeWaitForSave();
@@ -104,38 +105,15 @@ export default function Evaluation() {
         }
       })();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
-  
+
 
 
   // Force re-render when status changes
   useEffect(() => {
     // This effect will run whenever forceUpdate changes, forcing a re-render
   }, [forceUpdate]);
-
-  // While an evaluation is running, poll its status so completion or failure
-  // shows up live instead of only after a page reload.
-  useEffect(() => {
-    if (!isEvaluating || !evaluationId) return;
-    let cancelled = false;
-    const interval = setInterval(async () => {
-      try {
-        const status = await evaluationService.checkEvaluationStatus(evaluationId);
-        if (cancelled) return;
-        if (status.status === 'completed' && status.evaluation_result) {
-          setEvaluationResult({ evaluation_id: evaluationId, evaluation_result: status.evaluation_result });
-          setIsEvaluating(false);
-        } else if (status.status === 'failed') {
-          setEvaluationError(status.error || status.message || 'The evaluation process failed.');
-          setIsEvaluating(false);
-        }
-      } catch (e) {
-        // Transient network/server error — keep polling.
-      }
-    }, 10000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [isEvaluating, evaluationId]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -147,23 +125,23 @@ export default function Evaluation() {
     if (!fileToUpload) {
       return; // No need to show alert for auto-upload
     }
-    
+
     // Prevent duplicate uploads of the same file
     if (isUploadingMarkScheme) {
       return;
     }
-    
+
     try {
       setIsUploadingMarkScheme(true);
       const res = await evaluationService.uploadMarkScheme({
         courseId,
         markSchemeFile: fileToUpload
       });
-      
+
       // Backend now returns the format check result
       setEvaluationId(res.evaluation_id);
       setMarkSchemeUploaded(true);
-      
+
       // No popup for successful format - just proceed silently
       // The UI will show "✓ Mark Scheme Uploaded" status
     } catch (error) {
@@ -202,20 +180,20 @@ export default function Evaluation() {
     if (!filesToUpload || filesToUpload.length === 0) {
       return; // No need to show alert for auto-upload
     }
-    
+
     // Prevent duplicate uploads
     if (isUploadingAnswerSheets) {
       return;
     }
-    
+
     try {
       setIsUploadingAnswerSheets(true);
-      
+
       await evaluationService.uploadAnswerSheets({
         evaluationId,
         answerSheetFiles: filesToUpload
       });
-      
+
       setAnswerSheetsUploaded(true);
       // No success popup - just proceed silently
       // The UI will show "✓ Answer Sheets Uploaded" status
@@ -231,12 +209,12 @@ export default function Evaluation() {
       alert('Please upload both mark scheme and answer sheets first.');
       return;
     }
-    
+
     // Prevent duplicate evaluation calls
     if (evaluationInProgressRef.current || isEvaluating) {
       return;
     }
-    
+
     // Show name input screen
     setShowNameInputScreen(true);
   };
@@ -256,13 +234,13 @@ export default function Evaluation() {
     setShowProcessStartedPopup(true);
 
     // Save the evaluation with the provided name
-    const fileName = answerSheetFiles.length > 0 
+    const fileName = answerSheetFiles.length > 0
       ? `${answerSheetFiles.length}_students_evaluation_report`
       : 'evaluation_report';
 
     // Fire-and-forget save call
-    try { localStorage.setItem('pendingEvaluationAssetName', assetName.trim()); } catch {}
-    
+    try { localStorage.setItem('pendingEvaluationAssetName', assetName.trim()); } catch { }
+
     const savePromise = evaluationService.saveEvaluation(evaluationId, assetName.trim(), fileName)
       .then(() => {
         try {
@@ -278,36 +256,41 @@ export default function Evaluation() {
           el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
           el.style.zIndex = '2000';
           document.body.appendChild(el);
-          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
-        } catch {}
+          setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 2200);
+        } catch { }
       })
       .catch((error) => {
         console.error('Error saving evaluation:', error);
         alert('Failed to save evaluation: ' + (error?.message || 'Unknown error'));
       })
       .finally(() => {
-        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch { }
       });
     pendingSavePromiseRef.current = savePromise;
 
     // Clear any previous evaluation tracking state
     evaluationService.clearCompletedEvaluations();
-    
+
     evaluationInProgressRef.current = true;
-    
+
     try {
       setEvaluationError(null);
       setIsEvaluating(true);
 
       // Start the evaluation in the background
       await evaluationService.evaluateFiles(evaluationId);
-      
+
       // Evaluation started successfully
       evaluationInProgressRef.current = false;
-       
+      trackPendingEvaluation({ evaluationId, name: assetName.trim(), courseId, courseTitle });
+
     } catch (err) {
       console.error('Evaluation error:', err);
       evaluationInProgressRef.current = false;
+      // A request timeout still means the evaluation is running in the background
+      if ((err?.message || '').includes('Evaluation started successfully')) {
+        trackPendingEvaluation({ evaluationId, name: assetName.trim(), courseId, courseTitle });
+      }
       setIsEvaluating(false);
       setShowProcessStartedPopup(false);
       alert(err?.message || 'Failed to start evaluation');
@@ -317,28 +300,28 @@ export default function Evaluation() {
 
 
   const handleStudentClick = async (studentIndex) => {
-    
-    
+
+
     // Validate that we have the required data
     if (!evaluationResult || !evaluationResult.evaluation_result || !evaluationResult.evaluation_result.students) {
       alert('Evaluation data is not yet available. Please wait for the evaluation to complete.');
       return;
     }
-    
+
     if (studentIndex >= evaluationResult.evaluation_result.students.length) {
       alert('Student data not found. Please try again.');
       return;
     }
-    
+
     // Add additional validation
     try {
       const student = evaluationResult.evaluation_result.students[studentIndex];
-      
+
       if (!student) {
         alert('Student data is missing. Please try again.');
         return;
       }
-      
+
       // Check if we have the required data structure for the review page
       // Backend provides 'answers' array with scores, not 'question_scores'
       // We need either question_scores OR answers array with scores
@@ -346,26 +329,26 @@ export default function Evaluation() {
         (student.question_scores && Array.isArray(student.question_scores) && student.question_scores.length > 0) ||
         (student.answers && Array.isArray(student.answers) && student.answers.length > 0)
       );
-      
+
       if (!hasRequiredData) {
         alert('The evaluation data structure is incomplete. Please contact support.');
         return;
       }
-      
+
       // Update status to "opened" if it's currently "unopened"
       if (student.status === "unopened") {
-        
+
         // Update status locally
         setEvaluationResult(prevState => {
           const updatedState = JSON.parse(JSON.stringify(prevState));
           updatedState.evaluation_result.students[studentIndex].status = "opened";
           return updatedState;
         });
-        
+
         // Force a re-render by updating a separate state variable
         setForceUpdate(prev => prev + 1);
       }
-      
+
       setSelectedStudentIndex(studentIndex);
       setShowReview(true);
       setSelectedQuestionIndex(0);
@@ -392,31 +375,31 @@ export default function Evaluation() {
   const handleEdit = () => {
     if (evaluationResult && selectedStudentIndex !== null) {
       const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-      
-             // Initialize with current values - use helper function to extract scores
-       const currentScores = extractQuestionScores(student);
-       if (currentScores.length > 0) {
-         // Ensure 0 values are properly handled by converting to strings
-         const scoresForEditing = currentScores.map(score => {
-           if (score === 0) return '0';
-           if (score === null || score === undefined) return '';
-           return score.toString();
-         });
-         setEditedQuestionScores(scoresForEditing);
-       } else {
-         console.warn('No question scores available, initializing with empty array');
-         setEditedQuestionScores([]);
-       }
-       
-                      // Get feedback for each question individually
-        const currentFeedbackArray = [];
-        if (student.answers && Array.isArray(student.answers)) {
-          student.answers.forEach(answer => {
-            currentFeedbackArray.push(answer.feedback || '');
-          });
-        }
-        setEditedFeedback(currentFeedbackArray);
-      
+
+      // Initialize with current values - use helper function to extract scores
+      const currentScores = extractQuestionScores(student);
+      if (currentScores.length > 0) {
+        // Ensure 0 values are properly handled by converting to strings
+        const scoresForEditing = currentScores.map(score => {
+          if (score === 0) return '0';
+          if (score === null || score === undefined) return '';
+          return score.toString();
+        });
+        setEditedQuestionScores(scoresForEditing);
+      } else {
+        console.warn('No question scores available, initializing with empty array');
+        setEditedQuestionScores([]);
+      }
+
+      // Get feedback for each question individually
+      const currentFeedbackArray = [];
+      if (student.answers && Array.isArray(student.answers)) {
+        student.answers.forEach(answer => {
+          currentFeedbackArray.push(answer.feedback || '');
+        });
+      }
+      setEditedFeedback(currentFeedbackArray);
+
       setIsEditing(true);
     } else {
     }
@@ -426,113 +409,113 @@ export default function Evaluation() {
     if (!evaluationId || selectedStudentIndex === null) {
       return;
     }
-    
+
     setIsSaving(true); // Start loading state
-    
+
     try {
       // Validate question scores
       if (!Array.isArray(editedQuestionScores) || editedQuestionScores.length === 0) {
         alert('Question scores are required and must be an array');
         return;
       }
-      
-      
+
+
       // Ensure all scores are valid numbers and don't exceed max scores
       const validScores = editedQuestionScores.map((score, index) => {
         // Handle empty string or undefined values
         if (score === '' || score === undefined || score === null) {
           throw new Error(`Score at question ${index + 1} is required`);
         }
-        
+
         const numScore = parseFloat(score);
         if (isNaN(numScore) || numScore < 0) {
           throw new Error(`Invalid score at question ${index + 1}: ${score}`);
         }
-        
+
         // Check if score exceeds max score for this question
         const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
         const maxScore = extractMaxScores(student)[index] || 10;
         if (numScore > maxScore) {
           throw new Error(`Score at question ${index + 1} (${numScore}) exceeds maximum score (${maxScore})`);
         }
-        
+
         return numScore;
       });
-      
+
       const totalScore = validScores.reduce((sum, score) => sum + score, 0);
-      
-              // Validate and clean the feedback for each question
-        const cleanFeedbackArray = [];
-        if (Array.isArray(editedFeedback)) {
-          editedFeedback.forEach((feedback, index) => {
-            const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
-            cleanFeedbackArray.push(cleanFeedback);
+
+      // Validate and clean the feedback for each question
+      const cleanFeedbackArray = [];
+      if (Array.isArray(editedFeedback)) {
+        editedFeedback.forEach((feedback, index) => {
+          const cleanFeedback = typeof feedback === 'string' ? feedback.trim() : '';
+          cleanFeedbackArray.push(cleanFeedback);
+        });
+      }
+
+      // Call the backend to update each question result individually
+      // Backend expects individual question updates, not bulk updates
+      const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
+      const fileId = student.file_id;
+
+
+      if (!fileId) {
+        throw new Error('Student file ID not found. Cannot update results.');
+      }
+
+      // Update each question score and feedback
+      for (let i = 0; i < validScores.length; i++) {
+        const questionFeedback = cleanFeedbackArray[i] || '';
+
+        try {
+          // Ensure feedback is not undefined or null
+          const feedbackToSend = questionFeedback || '';
+
+          await evaluationService.editQuestionResult({
+            evaluationId,
+            fileId,
+            questionNumber: (i + 1).toString(),
+            score: parseFloat(validScores[i]), // Convert to float as backend expects
+            feedback: feedbackToSend
           });
+        } catch (error) {
+          console.error(`Failed to update question ${i + 1}:`, error);
+          throw error; // Re-throw to stop the process
         }
-      
-                     // Call the backend to update each question result individually
-        // Backend expects individual question updates, not bulk updates
-        const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-        const fileId = student.file_id;
-        
-        
-        if (!fileId) {
-          throw new Error('Student file ID not found. Cannot update results.');
-        }
-       
-               // Update each question score and feedback
-        for (let i = 0; i < validScores.length; i++) {
-          const questionFeedback = cleanFeedbackArray[i] || '';
-          
-          try {
-            // Ensure feedback is not undefined or null
-            const feedbackToSend = questionFeedback || '';
-            
-            await evaluationService.editQuestionResult({
-              evaluationId,
-              fileId,
-              questionNumber: (i + 1).toString(),
-              score: parseFloat(validScores[i]), // Convert to float as backend expects
-              feedback: feedbackToSend
-            });
-          } catch (error) {
-            console.error(`Failed to update question ${i + 1}:`, error);
-            throw error; // Re-throw to stop the process
-          }
-        }
-      
-      
-             // Update local state for immediate feedback
-       const updatedEvaluationResult = { ...evaluationResult };
-       const studentIndex = selectedStudentIndex;
-       
-       // Update the answers array with new scores and feedback
-       updatedEvaluationResult.evaluation_result.students[studentIndex].answers = 
-         updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
-           ...answer,
-           score: validScores[index], // Use the validated scores directly
-           feedback: cleanFeedbackArray[index] || answer.feedback
-         }));
-       
-               // Also update question_scores if it exists for backward compatibility
-        if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
-          updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
-        }
-       
-       // Update the student object
-       updatedEvaluationResult.evaluation_result.students[studentIndex] = {
-         ...updatedEvaluationResult.evaluation_result.students[studentIndex],
-         total_score: totalScore,
-         status: "modified"
-       };
-     
-     // Force a re-render by creating a new object reference
-     setEvaluationResult({...updatedEvaluationResult});
-     setIsEditing(false);
-     
-     
-     // Changes saved successfully - no popup needed
-      
+      }
+
+
+      // Update local state for immediate feedback
+      const updatedEvaluationResult = { ...evaluationResult };
+      const studentIndex = selectedStudentIndex;
+
+      // Update the answers array with new scores and feedback
+      updatedEvaluationResult.evaluation_result.students[studentIndex].answers =
+        updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
+          ...answer,
+          score: validScores[index], // Use the validated scores directly
+          feedback: cleanFeedbackArray[index] || answer.feedback
+        }));
+
+      // Also update question_scores if it exists for backward compatibility
+      if (updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores) {
+        updatedEvaluationResult.evaluation_result.students[studentIndex].question_scores = [...validScores];
+      }
+
+      // Update the student object
+      updatedEvaluationResult.evaluation_result.students[studentIndex] = {
+        ...updatedEvaluationResult.evaluation_result.students[studentIndex],
+        total_score: totalScore,
+        status: "modified"
+      };
+
+      // Force a re-render by creating a new object reference
+      setEvaluationResult({ ...updatedEvaluationResult });
+      setIsEditing(false);
+
+
+      // Changes saved successfully - no popup needed
+
     } catch (error) {
       console.error('Error saving changes:', {
         message: error.message,
@@ -558,7 +541,7 @@ export default function Evaluation() {
     }
 
     // Create a combined filename for the evaluation report
-    const fileName = answerSheetFiles.length > 0 
+    const fileName = answerSheetFiles.length > 0
       ? `${answerSheetFiles.length}_students_evaluation_report`
       : 'evaluation_report';
 
@@ -580,12 +563,12 @@ export default function Evaluation() {
       el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
       el.style.zIndex = '2000';
       document.body.appendChild(el);
-      setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 1800);
-    } catch {}
+      setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 1800);
+    } catch { }
 
     // Fire-and-forget save call; do not block UI
     // Mark a pending indicator for Dashboard to aggressively refresh assets
-    try { localStorage.setItem('pendingEvaluationAssetName', nameToSave); } catch {}
+    try { localStorage.setItem('pendingEvaluationAssetName', nameToSave); } catch { }
 
     const savePromise = evaluationService.saveEvaluation(evaluationId, nameToSave, fileName)
       .then(() => {
@@ -602,8 +585,8 @@ export default function Evaluation() {
           el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
           el.style.zIndex = '2000';
           document.body.appendChild(el);
-          setTimeout(() => { try { document.body.removeChild(el); } catch {} }, 2200);
-        } catch {}
+          setTimeout(() => { try { document.body.removeChild(el); } catch { } }, 2200);
+        } catch { }
       })
       .catch((error) => {
         console.error('Error saving evaluation:', error);
@@ -611,30 +594,12 @@ export default function Evaluation() {
       })
       .finally(() => {
         setIsSaving(false);
-        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch {}
+        try { localStorage.removeItem('pendingEvaluationAssetName'); } catch { }
       });
     pendingSavePromiseRef.current = savePromise;
   };
 
 
-
-  const formatScore = (score, maxScore) => {
-    const percentage = Math.round((score / maxScore) * 100);
-    return `${score}/${maxScore} (${percentage}%)`;
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'unopened':
-        return '#6c757d'; // Gray
-      case 'opened':
-        return '#2563eb'; // Blue
-      case 'modified':
-        return '#dc3545'; // Red
-      default:
-        return '#6c757d'; // Gray
-    }
-  };
 
 
 
@@ -643,26 +608,33 @@ export default function Evaluation() {
     if (student.question_scores && Array.isArray(student.question_scores)) {
       return student.question_scores;
     }
-    
+
     if (student.answers && Array.isArray(student.answers)) {
       // Backend provides answers array with scores, extract them
       return student.answers.map(answer => answer.score || 0);
     }
-    
+
     return [];
   };
 
   // Helper function to get max scores from backend data structure
+  // Section-wise numbering (Mettl answer sheets); old sheets have no section and use the list position
+  const getQuestionSection = (answer) => (
+    answer && answer.section != null && answer.section_question_number != null
+      ? { section: answer.section, number: answer.section_question_number }
+      : null
+  );
+
   const extractMaxScores = (student) => {
     if (student.max_scores && Array.isArray(student.max_scores)) {
       return student.max_scores;
     }
-    
+
     if (student.answers && Array.isArray(student.answers)) {
       // Backend provides max_score in each answer
       return student.answers.map(answer => answer.max_score || 0);
     }
-    
+
     return [];
   };
 
@@ -672,175 +644,22 @@ export default function Evaluation() {
       return;
     }
 
-    setIsLoadingReport(true);
+    // The modal and its PDF are built from the loaded results
+    setReportStudentIndex(studentIndex);
     setShowReportModal(true);
-    
-    try {
-      const reportData = await evaluationService.getStudentReport(evaluationId, studentIndex);
-      setCurrentReport(reportData.report);
-      const fileName = answerSheetFiles[studentIndex]?.name || `Student ${studentIndex + 1}`;
-      setReportTitle(`Report: ${fileName}`);
-    } catch (error) {
-      console.error('Error fetching student report:', error);
-      alert(error.message || 'Failed to load student report');
-      setShowReportModal(false);
-    } finally {
-      setIsLoadingReport(false);
-    }
   };
 
   const handleDownloadReport = () => {
-    if (!currentReport) {
+    const student = evaluationResult?.evaluation_result?.students?.[reportStudentIndex];
+    if (!student) {
       alert('No report to download');
       return;
     }
 
     try {
-      // Create PDF
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 15;
-      const maxWidth = pageWidth - 2 * margin;
-      let yPosition = margin;
-
-      // Helper function to render text with inline bold formatting
-      const renderTextWithFormatting = (text, xPos, yPos, fontSize, maxW) => {
-        doc.setFontSize(fontSize);
-        let currentX = xPos;
-        let currentY = yPos;
-        const lineHeight = fontSize * 0.5;
-        
-        // Split text by bold markers
-        const parts = text.split(/(\*\*.*?\*\*)/g);
-        
-        parts.forEach(part => {
-          if (part.startsWith('**') && part.endsWith('**')) {
-            // Bold text
-            const boldText = part.replace(/\*\*/g, '');
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(31, 41, 55);
-            
-            // Check if text fits on current line
-            const textWidth = doc.getTextWidth(boldText);
-            if (currentX + textWidth > xPos + maxW && currentX > xPos) {
-              // Move to next line
-              currentY += lineHeight;
-              currentX = xPos;
-              
-              // Check if new page needed
-              if (currentY > pageHeight - margin) {
-                doc.addPage();
-                currentY = margin;
-              }
-            }
-            
-            doc.text(boldText, currentX, currentY);
-            currentX += textWidth;
-          } else if (part) {
-            // Normal text
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(51, 51, 51);
-            
-            // Split by spaces to wrap words
-            const words = part.split(' ');
-            words.forEach((word, idx) => {
-              const wordText = idx === 0 ? word : ' ' + word;
-              const wordWidth = doc.getTextWidth(wordText);
-              
-              // Check if word fits on current line
-              if (currentX + wordWidth > xPos + maxW && currentX > xPos) {
-                // Move to next line
-                currentY += lineHeight;
-                currentX = xPos;
-                
-                // Check if new page needed
-                if (currentY > pageHeight - margin) {
-                  doc.addPage();
-                  currentY = margin;
-                }
-              }
-              
-              doc.text(wordText.trim(), currentX, currentY);
-              currentX += wordWidth;
-            });
-          }
-        });
-        
-        return currentY;
-      };
-
-      // Parse markdown and convert to PDF
-      const lines = currentReport.split('\n');
-      
-      lines.forEach((line, index) => {
-        // Check if we need a new page
-        if (yPosition > pageHeight - margin - 20) {
-          doc.addPage();
-          yPosition = margin;
-        }
-
-        // Handle different markdown elements
-        if (line.startsWith('# ')) {
-          // H1 - Main title
-          doc.setFontSize(24);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(30, 64, 175);
-          const text = line.replace('# ', '');
-          const textLines = doc.splitTextToSize(text, maxWidth);
-          doc.text(textLines, margin, yPosition);
-          yPosition += textLines.length * 12 + 8;
-        } else if (line.startsWith('## ')) {
-          // H2 - Section title
-          yPosition += 4; // Add some top margin
-          doc.setFontSize(18);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(37, 99, 235);
-          const text = line.replace('## ', '');
-          const textLines = doc.splitTextToSize(text, maxWidth);
-          doc.text(textLines, margin, yPosition);
-          yPosition += textLines.length * 9 + 6;
-        } else if (line.startsWith('### ')) {
-          // H3 - Subsection
-          yPosition += 2;
-          doc.setFontSize(14);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(55, 65, 81);
-          const text = line.replace('### ', '');
-          const textLines = doc.splitTextToSize(text, maxWidth);
-          doc.text(textLines, margin, yPosition);
-          yPosition += textLines.length * 7 + 4;
-        } else if (line.trim() === '---') {
-          // Horizontal rule
-          yPosition += 4;
-          doc.setDrawColor(233, 236, 239);
-          doc.setLineWidth(0.5);
-          doc.line(margin, yPosition, pageWidth - margin, yPosition);
-          yPosition += 6;
-        } else if (line.trim() === '') {
-          // Empty line - add spacing
-          yPosition += 4;
-        } else if (line.includes('**')) {
-          // Line contains inline bold formatting
-          const newY = renderTextWithFormatting(line, margin, yPosition, 10, maxWidth);
-          yPosition = newY + 6;
-        } else if (line.trim()) {
-          // Regular text without formatting
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(51, 51, 51);
-          const textLines = doc.splitTextToSize(line, maxWidth);
-          doc.text(textLines, margin, yPosition);
-          yPosition += textLines.length * 5 + 3;
-        }
-      });
-
-      // Generate filename based on report type
-      const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `${reportTitle.replace('Report: ', '').replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
-      
-      // Save the PDF
-      doc.save(filename);
+      const name = answerSheetFiles[reportStudentIndex]?.name || `Student ${reportStudentIndex + 1}`;
+      const doc = buildStudentReportPdf(jsPDF, { student, name });
+      doc.save(studentReportFileName(name));
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Failed to generate PDF. Please try again.');
@@ -868,6 +687,92 @@ export default function Evaluation() {
       setIsLoadingReport(false);
     }
   };
+
+  // Shared styles for the upload and results views, matching the Dashboard card theme
+  const evalCardStyle = { background: '#fff', borderRadius: 14, padding: '24px 26px', border: '1px solid #e8ecf2', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 18, minHeight: 420 };
+  const stepBadgeStyle = (done, muted = false) => ({ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, background: done ? '#ecfdf5' : muted ? '#f1f5f9' : '#eff4ff', color: done ? '#059669' : muted ? '#94a3b8' : '#2563eb' });
+  const dropzoneStyle = (busy) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '26px 16px', border: '1.5px dashed #c7d2fe', borderRadius: 12, background: '#f8faff', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, textAlign: 'center', transition: 'background 0.15s ease' });
+  const fileRowStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: '1px solid #e8ecf2', borderRadius: 8, background: '#fff', fontSize: 13, color: '#374151' };
+  const statusStyle = (kind) => ({ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, fontSize: 14, ...(kind === 'success' ? { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' } : { background: '#eff4ff', border: '1px solid #c7d2fe', color: '#1d4ed8', alignItems: 'center', fontWeight: 600 }) });
+  const evalSpinnerStyle = { width: 14, height: 14, border: '2px solid #bfdbfe', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'cc-spin 0.8s linear infinite', flexShrink: 0 };
+
+  const statTileStyle = { background: '#fff', borderRadius: 14, padding: '16px 20px', border: '1px solid #e8ecf2', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)' };
+  const statLabelStyle = { fontSize: 13, fontWeight: 500, color: '#6b7280' };
+  const statValueStyle = { fontSize: 26, fontWeight: 700, color: '#111827', marginTop: 4 };
+  const resultsGridColumns = 'minmax(0, 2.4fr) 1.2fr 1fr 1fr 72px';
+  const pillStyle = (kind) => {
+    const palette = {
+      success: { background: '#ecfdf5', color: '#047857' },
+      danger: { background: '#fef2f2', color: '#b91c1c' },
+      warning: { background: '#fff7ed', color: '#c2410c' },
+      neutral: { background: '#f1f5f9', color: '#64748b' }
+    };
+    return { display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, ...palette[kind] };
+  };
+  // Colour a question's score: full marks green, partial amber, zero red
+  const scoreToneStyle = (score, max) => {
+    if (!max) return { background: '#f1f5f9', color: '#64748b' };
+    if (score >= max) return { background: '#ecfdf5', color: '#047857' };
+    if (score > 0) return { background: '#fff7ed', color: '#c2410c' };
+    return { background: '#fef2f2', color: '#b91c1c' };
+  };
+  // Structured answers (tables/images) are stored as a JSON array string; render them as Markdown
+  const formatStudentAnswer = (raw) => {
+    if (typeof raw !== 'string' || !raw.trim()) return '';
+    if (!raw.trim().startsWith('[')) return raw;
+    try {
+      const items = JSON.parse(raw);
+      if (!Array.isArray(items)) return raw;
+      return items.map(item => {
+        if (item?.type === 'text') return item.content || '';
+        if (item?.type === 'table' && Array.isArray(item.content) && item.content.length) {
+          const rows = item.content.map(r => (Array.isArray(r) ? r : []).map(c => String(c ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')));
+          const width = Math.max(...rows.map(r => r.length));
+          const pad = r => [...r, ...Array(width - r.length).fill('')];
+          const [head, ...body] = rows.map(pad);
+          return [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...body.map(r => `| ${r.join(' | ')} |`)].join('\n');
+        }
+        if (item?.type === 'image') return '_[Image attached to this answer]_';
+        return '';
+      }).filter(Boolean).join('\n\n');
+    } catch {
+      return raw;
+    }
+  };
+  // Question text from the answer sheet, noting any question images that were sent to the model
+  const formatQuestionText = (answer) => {
+    const text = answer?.question_text || '';
+    const imageCount = Array.isArray(answer?.question_images) ? answer.question_images.length : 0;
+    if (!imageCount) return text;
+    const note = `_[${imageCount === 1 ? 'Image' : `${imageCount} images`} attached to this question]_`;
+    return text ? `${text}\n\n${note}` : note;
+  };
+  const reportMdComponents = (codeBg = '#1f2937') => ({
+    p: ({ node, ...props }) => <p style={{ margin: '0 0 8px 0', lineHeight: 1.65 }} {...props} />,
+    strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+    ul: ({ node, ...props }) => <ul style={{ margin: '0 0 8px 0', paddingLeft: 20 }} {...props} />,
+    ol: ({ node, ...props }) => <ol style={{ margin: '0 0 8px 0', paddingLeft: 20 }} {...props} />,
+    li: ({ node, ...props }) => <li style={{ marginBottom: 4 }} {...props} />,
+    pre: ({ node, ...props }) => <pre style={{ margin: '4px 0 8px 0', background: codeBg, borderRadius: 8, overflow: 'auto' }} {...props} />,
+    code: ({ node, inline, ...props }) =>
+      inline ?
+        <code style={{ background: '#eef2f7', padding: '1px 5px', borderRadius: 4, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+        <code style={{ display: 'block', color: '#f3f4f6', padding: 12, fontSize: 13, fontFamily: 'monospace', whiteSpace: 'pre' }} {...props} />,
+    table: ({ node, ...props }) => <table style={{ borderCollapse: 'collapse', margin: '4px 0 8px 0', fontSize: 13 }} {...props} />,
+    th: ({ node, ...props }) => <th style={{ border: '1px solid #e2e8f0', padding: '6px 10px', background: '#f8fafc', textAlign: 'left', fontWeight: 600 }} {...props} />,
+    td: ({ node, ...props }) => <td style={{ border: '1px solid #e2e8f0', padding: '6px 10px' }} {...props} />
+  });
+  // Summary numbers for the results tiles (only once grading has finished)
+  const resultStats = (() => {
+    const students = (evaluationResult?.evaluation_result?.students || []).filter(s => !s?.skipped);
+    if (students.length === 0) return null;
+    const pcts = students.map(s => (s.max_total_score ? s.total_score / s.max_total_score : 0));
+    return {
+      total: students.length,
+      passed: pcts.filter(p => p >= PASS_MARK).length,
+      avgPct: Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 100)
+    };
+  })();
 
   // If showing review page, display the review interface
   if (showReview && selectedStudentIndex !== null && evaluationResult) {
@@ -903,9 +808,9 @@ export default function Evaluation() {
         </div>
       );
     }
-    
+
     const student = evaluationResult.evaluation_result.students[selectedStudentIndex];
-    
+
     if (!student) {
       console.error('Student data not found for index:', selectedStudentIndex);
       return (
@@ -937,8 +842,55 @@ export default function Evaluation() {
         </div>
       );
     }
-    
+
     const fileName = answerSheetFiles[selectedStudentIndex]?.name || `Student ${selectedStudentIndex + 1}`;
+    const questionScores = extractQuestionScores(student);
+    const maxScores = extractMaxScores(student);
+    const questionCount = questionScores.length;
+    const currentScore = questionScores[selectedQuestionIndex] || 0;
+    const currentMax = maxScores[selectedQuestionIndex];
+    const currentSectionInfo = getQuestionSection(student?.answers?.[selectedQuestionIndex]);
+    const totalPct = student.max_total_score ? student.total_score / student.max_total_score : null;
+    // Colour a question's score: full marks green, partial amber, zero red
+    const scoreTone = (score, max) => {
+      if (!max) return { background: '#f1f5f9', color: '#64748b' };
+      if (score >= max) return { background: '#ecfdf5', color: '#047857' };
+      if (score > 0) return { background: '#fff7ed', color: '#c2410c' };
+      return { background: '#fef2f2', color: '#b91c1c' };
+    };
+    // Group consecutive questions by section for the left nav, with per-section subtotals
+    const questionGroups = [];
+    questionScores.forEach((score, index) => {
+      const sectionInfo = getQuestionSection(student?.answers?.[index]);
+      const section = sectionInfo ? sectionInfo.section : null;
+      let group = questionGroups[questionGroups.length - 1];
+      if (!group || group.section !== section) {
+        group = { section, score: 0, max: 0, items: [] };
+        questionGroups.push(group);
+      }
+      const max = maxScores[index];
+      group.score += Number(score) || 0;
+      group.max += Number(max) || 0;
+      group.items.push({ index, score, max, number: sectionInfo ? sectionInfo.number : index + 1 });
+    });
+    questionGroups.forEach(group => {
+      group.score = Math.round(group.score * 100) / 100;
+      group.max = Math.round(group.max * 100) / 100;
+    });
+    const reviewMdComponents = (inlineCodeBg) => ({
+      p: ({ node, ...props }) => <p style={{ margin: '0 0 10px 0', lineHeight: '1.65' }} {...props} />,
+      strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
+      ul: ({ node, ...props }) => <ul style={{ marginBottom: 10, paddingLeft: 20 }} {...props} />,
+      ol: ({ node, ...props }) => <ol style={{ marginBottom: 10, paddingLeft: 20 }} {...props} />,
+      li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
+      code: ({ node, inline, ...props }) =>
+        inline ?
+          <code style={{ background: inlineCodeBg, padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
+          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
+    });
+    const reviewPanelStyle = { background: '#fff', borderRadius: 14, border: '1px solid #e8ecf2', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', boxSizing: 'border-box' };
+    const sectionLabelStyle = { margin: '0 0 8px 0', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' };
+    const navBtnStyle = (disabled) => ({ width: 34, height: 34, borderRadius: 8, border: '1px solid #e8ecf2', background: '#fff', color: disabled ? '#cbd5e1' : '#374151', cursor: disabled ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' });
 
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -955,279 +907,317 @@ export default function Evaluation() {
         />
 
         {/* Breadcrumb */}
-        <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={handleBackToResults}>Evaluation</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ fontWeight: 700 }}>Review - {fileName}</span>
+        <div style={{ maxWidth: 1680, padding: '0 32px', boxSizing: 'border-box', margin: '20px auto 4px auto', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500, minWidth: 0 }}>
+            <span style={{ color: '#2563eb', cursor: 'pointer', flexShrink: 0 }} onClick={() => navigate('/courses')}>Courses</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#2563eb', cursor: 'pointer', flexShrink: 0 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#2563eb', cursor: 'pointer', flexShrink: 0 }} onClick={handleBackToResults}>Evaluation</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Review</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fileName}>{fileName}</h1>
+            {totalPct !== null && (
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>
+                {student.total_score}<span style={{ color: '#94a3b8', fontWeight: 500 }}>/{student.max_total_score}</span>
+                <span style={{ marginLeft: 4, fontSize: 13, fontWeight: 500, color: '#6b7280' }}>({Math.round(totalPct * 100)}%)</span>
+              </span>
+            )}
+            {totalPct !== null && (
+              <span style={pillStyle(totalPct >= PASS_MARK ? 'success' : 'danger')}>{totalPct >= PASS_MARK ? 'Passed' : 'Failed'}</span>
+            )}
+            {student.status === 'modified' && <span style={pillStyle('warning')}>Modified</span>}
+          </div>
         </div>
 
         {/* Review Content */}
-        <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 20, width: '100%', maxWidth: 1680, margin: '0 auto', padding: '16px 32px 24px', boxSizing: 'border-box' }}>
           {/* Left Panel: Question Navigation */}
-          <div style={{ flex: 1, maxWidth: 300, overflowY: 'auto', padding: '24px 0' }}>
-            <div style={{ background: '#fff', borderRadius: 18, padding: '24px', boxShadow: '0 2px 7px #0002' }}>
-              <h3 style={{ margin: '0 0 20px 0', fontSize: 20, fontWeight: 600, color: '#1e40af' }}>Questions</h3>
-                             {(() => {
-                 const questionScores = extractQuestionScores(student);
-                 const maxScores = extractMaxScores(student);
-                 
-                 if (questionScores.length > 0) {
-                   return questionScores.map((score, index) => (
-                     <div
-                       key={index}
-                       style={{
-                         padding: '12px 16px',
-                         marginBottom: '8px',
-                         borderRadius: '8px',
-                         background: selectedQuestionIndex === index ? '#e0f2fe' : '#f8f9fa',
-                         border: selectedQuestionIndex === index ? '2px solid #0288d1' : '1px solid #e9ecef',
-                         cursor: 'pointer',
-                         transition: 'all 0.2s'
-                       }}
-                       onClick={() => setSelectedQuestionIndex(index)}
-                     >
-                       <div style={{ fontWeight: 600, marginBottom: '4px' }}>Question {index + 1}</div>
-                       <div style={{ fontSize: '14px', color: '#666' }}>{score}/{maxScores[index] || (score > 0 ? score : '?')}</div>
-                     </div>
-                   ));
-                 } else {
-                   return (
-                     <div style={{ padding: '16px', textAlign: 'center', color: '#666' }}>
-                       No question scores available
-                     </div>
-                   );
-                 }
-               })()}
+          <div style={{ ...reviewPanelStyle, width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: '16px 18px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>Questions</h3>
+              {questionCount > 0 && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', background: '#eff4ff', borderRadius: 999, padding: '2px 8px' }}>{questionCount}</span>
+              )}
+            </div>
+            <div className="cc-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 10px 12px' }}>
+              {questionCount > 0 ? (
+                questionGroups.map((group, groupIndex) => {
+                  const groupHasActive = group.items.some(item => item.index === selectedQuestionIndex);
+                  const groupPct = group.max > 0 ? Math.min(1, group.score / group.max) : 0;
+                  const groupBarColor = group.max > 0 && group.score >= group.max ? '#10b981' : group.score > 0 ? '#f59e0b' : '#ef4444';
+                  return (
+                    <div
+                      key={group.section ?? `ungrouped-${groupIndex}`}
+                      style={{
+                        marginBottom: 10,
+                        borderRadius: 10,
+                        border: `1px solid ${groupHasActive ? '#c7d7fe' : '#eef1f6'}`,
+                        background: '#fff'
+                      }}
+                    >
+                      {group.section != null && (
+                        <div
+                          style={{
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 1,
+                            padding: '10px 12px 8px',
+                            background: groupHasActive ? '#f5f8ff' : '#f8fafc',
+                            borderBottom: '1px solid #eef1f6',
+                            borderRadius: '10px 10px 0 0'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: groupHasActive ? '#1d4ed8' : '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Section {group.section}
+                              <span style={{ marginLeft: 6, fontWeight: 500, color: '#94a3b8', textTransform: 'none', letterSpacing: 0 }}>
+                                · {group.items.length} {group.items.length === 1 ? 'question' : 'questions'}
+                              </span>
+                            </span>
+                            {group.max > 0 && (
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
+                                {group.score}<span style={{ color: '#94a3b8', fontWeight: 500 }}>/{group.max}</span>
+                              </span>
+                            )}
+                          </div>
+                          {group.max > 0 && (
+                            <div style={{ marginTop: 6, height: 4, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
+                              <div style={{ width: `${groupPct * 100}%`, height: '100%', borderRadius: 999, background: groupBarColor, transition: 'width 0.2s ease' }} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div style={{ padding: 4 }}>
+                        {group.items.map(({ index, score, max, number }) => {
+                          const isActive = selectedQuestionIndex === index;
+                          const tone = scoreTone(score, max);
+                          return (
+                            <div
+                              key={index}
+                              className={isActive ? undefined : 'cc-kb-row'}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '8px 10px',
+                                borderRadius: 7,
+                                background: isActive ? '#eff4ff' : 'transparent',
+                                boxShadow: isActive ? 'inset 3px 0 0 #2563eb' : 'none',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => setSelectedQuestionIndex(index)}
+                            >
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: tone.color, opacity: 0.85 }} />
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: isActive ? 600 : 500, color: isActive ? '#1d4ed8' : '#374151' }}>
+                                Question {number}
+                              </span>
+                              <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '2px 8px', ...tone }}>
+                                {score}/{max || (score > 0 ? score : '?')}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ padding: '16px', textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>
+                  No question scores available
+                </div>
+              )}
             </div>
           </div>
 
           {/* Center Panel: Question Details */}
-          <div style={{ flex: 2, maxWidth: 600, overflowY: 'auto', padding: '24px 0' }}>
-            <div style={{ background: '#fff', borderRadius: 18, padding: '32px', boxShadow: '0 2px 7px #0002' }}>
-              <h3 style={{ margin: '0 0 20px 0', fontSize: 22, fontWeight: 600, color: '#1e40af' }}>
-                Question {selectedQuestionIndex + 1}
+          <div className="cc-scroll" style={{ ...reviewPanelStyle, flex: 1, minWidth: 0, overflowY: 'auto', padding: '22px 26px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827' }}>
+                {currentSectionInfo
+                  ? `Section ${currentSectionInfo.section} · Question ${currentSectionInfo.number}`
+                  : `Question ${selectedQuestionIndex + 1}`}
+                {questionCount > 0 && (
+                  <span style={{ fontSize: 14, fontWeight: 500, color: '#94a3b8' }}>
+                    {currentSectionInfo ? ` (${selectedQuestionIndex + 1} of ${questionCount})` : ` of ${questionCount}`}
+                  </span>
+                )}
               </h3>
-              
-              <div style={{ marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Question</h4>
-                <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', lineHeight: '1.6' }}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                    components={{
-                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                      code: ({node, inline, ...props}) => 
-                        inline ? 
-                          <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
-                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
-                    }}
-                  >
-                    {latexToText(student?.answers?.[selectedQuestionIndex]?.question_text || 'Question text not available')}
-                  </ReactMarkdown>
-                </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  title="Previous question"
+                  disabled={selectedQuestionIndex <= 0}
+                  onClick={() => setSelectedQuestionIndex(i => Math.max(0, i - 1))}
+                  style={navBtnStyle(selectedQuestionIndex <= 0)}
+                >
+                  <FiChevronLeft />
+                </button>
+                <button
+                  title="Next question"
+                  disabled={selectedQuestionIndex >= questionCount - 1}
+                  onClick={() => setSelectedQuestionIndex(i => Math.min(questionCount - 1, i + 1))}
+                  style={navBtnStyle(selectedQuestionIndex >= questionCount - 1)}
+                >
+                  <FiChevronRight />
+                </button>
               </div>
+            </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Student Answer</h4>
-                <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe', lineHeight: '1.6' }}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                    components={{
-                      p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                      ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                      li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                      code: ({node, inline, ...props}) => 
-                        inline ? 
-                          <code style={{ background: '#dbeafe', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
-                          <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
-                    }}
-                  >
-                    {latexToText(student?.answers?.[selectedQuestionIndex]?.student_answer || 'Student answer not available')}
-                  </ReactMarkdown>
-                </div>
+            <div style={{ marginBottom: 22 }}>
+              <h4 style={sectionLabelStyle}>Question</h4>
+              <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e8ecf2', fontSize: 15, color: '#1f2937' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reviewMdComponents('#e5e7eb')}>
+                  {latexToText(formatQuestionText(student?.answers?.[selectedQuestionIndex]) || 'Question text not available')}
+                </ReactMarkdown>
               </div>
+            </div>
 
+            <div>
+              <h4 style={sectionLabelStyle}>Student Answer</h4>
+              <div style={{ padding: '14px 16px', background: '#f5f8ff', borderRadius: 10, border: '1px solid #dbe5fb', fontSize: 15, color: '#1f2937' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reviewMdComponents('#dbeafe')}>
+                  {latexToText(formatStudentAnswer(student?.answers?.[selectedQuestionIndex]?.student_answer) || 'Student answer not available')}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
 
           {/* Right Panel: Marks & Feedback Editor */}
-          <div style={{ flex: 1, maxWidth: 400, overflowY: 'auto', padding: '24px 0' }}>
-            <div style={{ background: '#fff', borderRadius: 18, padding: '32px', boxShadow: '0 2px 7px #0002' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1e40af' }}>Marks & Feedback</h3>
-                {!isEditing ? (
+          <div className="cc-scroll" style={{ ...reviewPanelStyle, width: 400, flexShrink: 0, overflowY: 'auto', padding: '22px 24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>Marks & Feedback</h3>
+              {!isEditing ? (
+                <button
+                  className="cc-section-btn"
+                  style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #d6dde8', background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={handleEdit}
+                >
+                  <FiEdit2 size={13} /> Edit
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
                   <button
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      border: '1px solid #2563eb',
-                      background: '#fff',
-                      color: '#2563eb',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontSize: '14px'
-                    }}
-                    onClick={handleEdit}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #d6dde8', background: '#fff', color: '#4b5563', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                    onClick={handleCancelEdit}
                   >
-                    Edit
+                    Cancel
                   </button>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      disabled={isSaving}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '6px',
-                        border: '1px solid #28a745',
-                        background: isSaving ? '#6c757d' : '#28a745',
-                        color: '#fff',
-                        fontWeight: 600,
-                        cursor: isSaving ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        opacity: isSaving ? 0.6 : 1
-                      }}
-                      onClick={handleSave}
-                    >
-                      {isSaving ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '6px',
-                        border: '1px solid #dc3545',
-                        background: '#fff',
-                        color: '#dc3545',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontSize: '14px'
-                      }}
-                      onClick={handleCancelEdit}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
+                  <button
+                    disabled={isSaving}
+                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: 13, opacity: isSaving ? 0.6 : 1 }}
+                    onClick={handleSave}
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Marks obtained</h4>
-                {isEditing ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      max={extractMaxScores(student)[selectedQuestionIndex] || 10}
-                      step="0.1"
-                      value={editedQuestionScores[selectedQuestionIndex] ?? ''}
-                      onChange={(e) => {
-                        const inputValue = e.target.value;
-                        const maxScore = extractMaxScores(student)[selectedQuestionIndex] || 10;
-                        
-                        // Always allow the input to be updated first
-                        const newScores = [...editedQuestionScores];
-                        newScores[selectedQuestionIndex] = inputValue;
-                        setEditedQuestionScores(newScores);
-                        
-                        // Then validate and show any errors (but don't block the input)
-                        if (inputValue === '') {
-                          return; // Allow empty input
-                        }
-                        
-                        // Check for more than one decimal place
-                        if (inputValue.includes('.') && inputValue.split('.')[1]?.length > 1) {
-                          return; // Don't allow more than one decimal place
-                        }
-                        
-                        // Validate the number
-                        const numValue = parseFloat(inputValue);
-                        if (isNaN(numValue) || numValue < 0) {
-                          return; // Don't allow negative numbers or invalid input
-                        }
-                        
-                        if (numValue > maxScore) {
-                          return; // Don't allow score higher than max
-                        }
-                      }}
-                      style={{
-                        width: '80px',
-                        padding: '8px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '16px',
-                        fontWeight: 'bold',
-                        textAlign: 'center'
-                      }}
-                    />
-                    <span style={{ fontSize: '14px', color: '#666' }}>
-                      of {extractMaxScores(student)[selectedQuestionIndex] || '?'}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2563eb' }}>
-                      {extractQuestionScores(student)[selectedQuestionIndex] || 0}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>
-                      of {extractMaxScores(student)[selectedQuestionIndex] || '?'}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#374151' }}>Feedback</h4>
-                {isEditing ? (
-                  <textarea
-                    value={editedFeedback[selectedQuestionIndex] || ''}
+            <div style={{ marginBottom: 22 }}>
+              <h4 style={sectionLabelStyle}>Marks obtained</h4>
+              {isEditing ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    max={currentMax || 10}
+                    step="0.1"
+                    value={editedQuestionScores[selectedQuestionIndex] ?? ''}
                     onChange={(e) => {
-                      const newFeedbackArray = [...editedFeedback];
-                      newFeedbackArray[selectedQuestionIndex] = e.target.value;
-                      setEditedFeedback(newFeedbackArray);
+                      const inputValue = e.target.value;
+                      const maxScore = currentMax || 10;
+
+                      // Always allow the input to be updated first
+                      const newScores = [...editedQuestionScores];
+                      newScores[selectedQuestionIndex] = inputValue;
+                      setEditedQuestionScores(newScores);
+
+                      // Then validate and show any errors (but don't block the input)
+                      if (inputValue === '') {
+                        return; // Allow empty input
+                      }
+
+                      // Check for more than one decimal place
+                      if (inputValue.includes('.') && inputValue.split('.')[1]?.length > 1) {
+                        return; // Don't allow more than one decimal place
+                      }
+
+                      // Validate the number
+                      const numValue = parseFloat(inputValue);
+                      if (isNaN(numValue) || numValue < 0) {
+                        return; // Don't allow negative numbers or invalid input
+                      }
+
+                      if (numValue > maxScore) {
+                        return; // Don't allow score higher than max
+                      }
                     }}
-                    placeholder="Enter feedback for this question..."
                     style={{
-                      width: '100%',
-                      minHeight: '100px',
-                      padding: '12px',
-                      border: '1px solid #ddd',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      lineHeight: '1.5',
-                      resize: 'vertical'
+                      width: 90,
+                      padding: '8px 10px',
+                      border: '1px solid #c7d2fe',
+                      borderRadius: 8,
+                      fontSize: 18,
+                      fontWeight: 700,
+                      textAlign: 'center',
+                      color: '#111827',
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
-                ) : (
-                  <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', fontSize: '14px', lineHeight: '1.6' }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkBreaks]}
-                      components={{
-                        p: ({node, ...props}) => <p style={{ margin: '0 0 12px 0', lineHeight: '1.6' }} {...props} />,
-                        strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#1f2937' }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{ marginBottom: 12, paddingLeft: 20 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: 6 }} {...props} />,
-                        code: ({node, inline, ...props}) => 
-                          inline ? 
-                            <code style={{ background: '#e5e7eb', padding: '2px 4px', borderRadius: 3, fontSize: 13, fontFamily: 'monospace' }} {...props} /> :
-                            <code style={{ display: 'block', background: '#1f2937', color: '#f3f4f6', padding: 8, borderRadius: 4, overflow: 'auto', fontSize: 13, fontFamily: 'monospace' }} {...props} />
-                      }}
-                    >
-                      {latexToText(student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available')}
-                    </ReactMarkdown>
+                  <span style={{ fontSize: 15, color: '#6b7280' }}>
+                    of {currentMax || '?'}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 34, fontWeight: 700, color: '#111827', lineHeight: 1 }}>{currentScore}</span>
+                    <span style={{ fontSize: 16, fontWeight: 500, color: '#94a3b8' }}>/ {currentMax || '?'}</span>
                   </div>
-                )}
-              </div>
+                  {currentMax > 0 && (
+                    <div style={{ marginTop: 10, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, Math.round((currentScore / currentMax) * 100))}%`, background: scoreTone(currentScore, currentMax).color, borderRadius: 999, transition: 'width 0.2s ease' }} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
-
+            <div>
+              <h4 style={sectionLabelStyle}>Feedback</h4>
+              {isEditing ? (
+                <textarea
+                  value={editedFeedback[selectedQuestionIndex] || ''}
+                  onChange={(e) => {
+                    const newFeedbackArray = [...editedFeedback];
+                    newFeedbackArray[selectedQuestionIndex] = e.target.value;
+                    setEditedFeedback(newFeedbackArray);
+                  }}
+                  placeholder="Enter feedback for this question..."
+                  style={{
+                    width: '100%',
+                    minHeight: 140,
+                    padding: '12px',
+                    border: '1px solid #c7d2fe',
+                    borderRadius: 10,
+                    fontSize: 14,
+                    lineHeight: '1.55',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              ) : (
+                <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e8ecf2', fontSize: 14, color: '#374151' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reviewMdComponents('#e5e7eb')}>
+                    {latexToText(student?.answers?.[selectedQuestionIndex]?.feedback || 'No feedback available')}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1256,125 +1246,117 @@ export default function Evaluation() {
         />
 
         {/* Breadcrumb */}
-        <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ fontWeight: 700 }}>Evaluation</span>
+        <div style={{ maxWidth: 1680, padding: '0 32px', boxSizing: 'border-box', margin: '20px auto 4px auto', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500 }}>
+            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => navigate('/courses')}>Courses</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#6b7280' }}>Evaluation</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <h1 style={{ margin: '6px 0 0 0', fontSize: 26, fontWeight: 700, color: '#111827' }}>Evaluation Results</h1>
+              <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>
+                {isEvaluating ? "AI is grading the answer sheets. You'll get an email once it's complete." : 'Click an answer sheet to review and adjust marks.'}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            {evaluationResult && (
+              <button
+                className="cc-section-btn"
+                onClick={handleDownloadCSV}
+                disabled={isLoadingReport}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  border: '1px solid #d6dde8',
+                  background: '#fff',
+                  color: '#374151',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: isLoadingReport ? 'not-allowed' : 'pointer',
+                  opacity: isLoadingReport ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <FiDownload />
+                {isLoadingReport ? 'Downloading...' : 'Download CSV'}
+              </button>
+            )}
+          </div>
         </div>
 
-
-        {/* Evaluation failed banner */}
-        {evaluationError && (
-          <div style={{ maxWidth: 1200, margin: "0 auto 1rem auto", width: '100%' }}>
-            <div style={{
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '12px',
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '14px'
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                background: '#fee2e2',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                fontSize: '20px'
-              }}>
-                ⚠️
-              </div>
+        <div className="cc-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', width: '100%', maxWidth: 1680, margin: '0 auto', padding: '20px 32px 32px', boxSizing: 'border-box' }}>
+          {/* Evaluation failed banner */}
+          {evaluationError && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
+              <FiAlertTriangle style={{ fontSize: 20, color: '#dc2626', flexShrink: 0, marginTop: 2 }} />
               <div>
-                <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: '16px', marginBottom: '4px' }}>
+                <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: 15, marginBottom: 4 }}>
                   Evaluation failed — the process has stopped
                 </div>
-                <div style={{ color: '#7f1d1d', fontSize: '14px', lineHeight: 1.6 }}>
+                <div style={{ color: '#7f1d1d', fontSize: 14, lineHeight: 1.6 }}>
                   {evaluationError}
                 </div>
-                <div style={{ color: '#991b1b', fontSize: '13px', marginTop: '6px' }}>
+                <div style={{ color: '#991b1b', fontSize: 13, marginTop: 6 }}>
                   No answer sheets were evaluated. Please fix the issue above and start a new evaluation.
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Total Submissions Summary and Action Buttons */}
-        <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ 
-            display: 'inline-block',
-            background: '#e3f2fd', 
-            borderRadius: '12px', 
-            padding: '20px 32px',
-            border: '1px solid #bbdefb'
-          }}>
-            <div style={{ fontSize: '14px', color: '#1976d2', marginBottom: '8px' }}>Total Submissions</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#1565c0' }}>
-              {answerSheetFiles.length || 0}
-            </div>
-          </div>
-          
-          {/* Action Buttons */}
-          {evaluationResult && (
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {/* Download CSV Button */}
-              <button
-                onClick={handleDownloadCSV}
-                disabled={isLoadingReport}
-                style={{
-                  padding: '14px 28px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: isLoadingReport ? '#ccc' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#fff',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                  cursor: isLoadingReport ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isLoadingReport) {
-                    e.target.style.transform = 'translateY(-2px)';
-                    e.target.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.4)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isLoadingReport) {
-                    e.target.style.transform = 'translateY(0)';
-                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
-                  }
-                }}
-              >
-                <span style={{ fontSize: '18px' }}>📥</span>
-                {isLoadingReport ? 'Downloading...' : 'Download CSV'}
-              </button>
+          {/* Sheets that were uploaded but could not be read or graded */}
+          {evaluationResult?.evaluation_result?.skipped_sheets?.length > 0 && (
+            <div style={{ marginBottom: 20, padding: '14px 18px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a' }}>
+              <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 6 }}>
+                {evaluationResult.evaluation_result.skipped_sheets.length} answer sheet(s) were not evaluated
+              </div>
+              {evaluationResult.evaluation_result.skipped_sheets.map(s => (
+                <div key={s.file_id} style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6 }}>
+                  <strong>{s.filename || s.file_id}</strong>: {s.error}
+                </div>
+              ))}
             </div>
           )}
-        </div>
 
-        {/* Evaluation Results Table */}
-        <div style={{ maxWidth: 1200, margin: "0 auto 2rem auto", width: '100%', flex: 1, overflow: 'auto' }}>
-          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+          {/* Summary tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
+            <div style={statTileStyle}>
+              <div style={statLabelStyle}>Total submissions</div>
+              <div style={statValueStyle}>{answerSheetFiles.length || 0}</div>
+            </div>
+            <div style={statTileStyle}>
+              <div style={statLabelStyle}>Average score</div>
+              <div style={statValueStyle}>{resultStats ? `${resultStats.avgPct}%` : '—'}</div>
+            </div>
+            <div style={statTileStyle}>
+              <div style={statLabelStyle}>Passed</div>
+              <div style={statValueStyle}>
+                {resultStats ? <>{resultStats.passed}<span style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8' }}> / {resultStats.total}</span></> : '—'}
+              </div>
+            </div>
+          </div>
+
+          {/* Evaluation Results Table */}
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e8ecf2', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', overflow: 'hidden' }}>
             {/* Table Header */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
-              background: '#f8f9fa',
-              borderBottom: '1px solid #dee2e6',
-              padding: '16px 20px',
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: resultsGridColumns,
+              gap: 16,
+              background: '#f8fafc',
+              borderBottom: '1px solid #e8ecf2',
+              padding: '12px 20px',
               fontWeight: 600,
-              color: '#495057',
-              fontSize: '14px'
+              color: '#6b7280',
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
             }}>
               <div>Answer Sheet</div>
               <div>Marks</div>
@@ -1384,151 +1366,148 @@ export default function Evaluation() {
             </div>
 
             {/* Table Rows */}
-            {answerSheetFiles.map((file, index) => (
-              <div
-                key={index}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
-                  padding: '16px 20px',
-                  borderBottom: '1px solid #f1f3f4',
-                  alignItems: 'center',
-                  background: index % 2 === 0 ? '#fff' : '#fafbfc',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f8f9fa'}
-                onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? '#fff' : '#fafbfc'}
-              >
-                {/* Filename - Now Clickable */}
-                <div 
-                  style={{ 
-                    color: evaluationResult ? '#2563eb' : '#6c757d', 
-                    textDecoration: evaluationResult ? 'underline' : 'none', 
-                    cursor: evaluationResult ? 'pointer' : 'default',
-                    fontWeight: 500,
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    transition: 'all 0.2s ease',
-                    background: evaluationResult ? 'transparent' : 'transparent',
-                    ':hover': evaluationResult ? {
-                      background: '#f0f8ff',
-                      color: '#1e40af'
-                    } : {}
-                  }}
-                  onMouseEnter={(e) => {
-                    if (evaluationResult) {
-                      e.target.style.background = '#f0f8ff';
-                      e.target.style.color = '#1e40af';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (evaluationResult) {
-                      e.target.style.background = 'transparent';
-                      e.target.style.color = '#2563eb';
-                    }
+            {answerSheetFiles.map((file, index) => {
+              const student = evaluationResult?.evaluation_result?.students?.[index];
+              const isSkipped = !!student?.skipped;
+              const pct = student && student.max_total_score ? student.total_score / student.max_total_score : null;
+              const passed = pct !== null && pct >= PASS_MARK;
+              const isModified = student?.status === 'modified';
+              return (
+                <div
+                  key={index}
+                  className="cc-kb-row"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: resultsGridColumns,
+                    gap: 16,
+                    padding: '14px 20px',
+                    borderBottom: index === answerSheetFiles.length - 1 ? 'none' : '1px solid #f1f5f9',
+                    alignItems: 'center',
+                    background: '#fff',
+                    cursor: evaluationResult && !isSkipped ? 'pointer' : 'default'
                   }}
                   onClick={() => {
-                    if (evaluationResult) {
+                    if (evaluationResult && !isSkipped) {
                       handleStudentClick(index);
                     }
                   }}
                 >
-                  {file.name}
-                  {!evaluationResult && !evaluationError && (
-                    <div style={{ fontSize: '12px', color: '#dc3545', marginTop: '4px' }}>
-                      (evaluating....)
+                  {/* Filename - clickable row opens the review */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <span style={{ width: 36, height: 36, borderRadius: 8, background: '#eff4ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <FiFileText size={17} />
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={file.name}>
+                        {file.name}
+                      </div>
+                      <div
+                        style={{ fontSize: 12, marginTop: 2, color: evaluationError || isSkipped ? '#dc2626' : evaluationResult ? '#2563eb' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={isSkipped ? student.error : undefined}
+                      >
+                        {evaluationError ? 'Not evaluated' : isSkipped ? `Not evaluated: ${student.error || 'could not be read'}` : evaluationResult ? 'Click to review' : 'Evaluating...'}
+                      </div>
                     </div>
-                  )}
-                  {evaluationError && (
-                    <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px' }}>
-                      (not evaluated)
-                    </div>
-                  )}
-                  {evaluationResult && (
-                    <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px' }}>
-                      (Click to review)
-                    </div>
-                  )}
-                </div>
-                
-                {/* Marks */}
-                <div style={{
-                  fontWeight: 600,
-                  color: evaluationError ? '#dc2626' : isEvaluating ? '#6c757d' : '#28a745'
-                }}>
-                  {evaluationError ? 'Stopped' : isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
-                    formatScore(evaluationResult.evaluation_result.students[index].total_score, evaluationResult.evaluation_result.students[index].max_total_score) :
-                    'Pending'
-                  }
-                </div>
+                  </div>
 
-                {/* Result */}
-                <div style={{
-                  fontWeight: 600,
-                  color: evaluationError ? '#dc2626' : isEvaluating ? '#6c757d' : '#28a745'
-                }}>
-                  {evaluationError ? 'Stopped' : isEvaluating ? 'Processing...' : evaluationResult?.evaluation_result?.students?.[index] ?
-                    ((evaluationResult.evaluation_result.students[index].total_score / evaluationResult.evaluation_result.students[index].max_total_score) >= 0.6 ? 'Passed' : 'Failed') :
-                    'Pending'
-                  }
-                </div>
-                
-                {/* Status - Show modified or unmodified */}
-                <div style={{ 
-                  fontSize: '13px', 
-                  color: getStatusColor(evaluationResult?.evaluation_result?.students?.[index]?.status || 'unopened'),
-                  fontWeight: 500
-                }}>
-                  {evaluationResult?.evaluation_result?.students?.[index]?.status === 'modified' ? 'modified' : 'unmodified'}
-                </div>
+                  {/* Marks */}
+                  <div>
+                    {evaluationError || isSkipped ? (
+                      <span style={{ fontSize: 14, color: '#94a3b8' }}>—</span>
+                    ) : isEvaluating ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6b7280' }}>
+                        <span style={evalSpinnerStyle} /> Processing
+                      </span>
+                    ) : student ? (
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                          {student.total_score}<span style={{ color: '#94a3b8', fontWeight: 500 }}>/{student.max_total_score}</span>
+                          <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 500, color: '#6b7280' }}>({Math.round((pct || 0) * 100)}%)</span>
+                        </div>
+                        <div style={{ marginTop: 6, height: 4, width: '100%', maxWidth: 120, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, Math.round((pct || 0) * 100))}%`, background: passed ? '#10b981' : '#f87171', borderRadius: 999 }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#94a3b8' }}>Pending</span>
+                    )}
+                  </div>
 
-                {/* Eye Button - View Individual Report */}
-                <div style={{ textAlign: 'center' }}>
-                  {evaluationResult ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewStudentReport(index);
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid #2563eb',
-                        background: '#fff',
-                        color: '#2563eb',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s',
-                        width: '40px',
-                        height: '40px'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#2563eb';
-                        e.currentTarget.style.color = '#fff';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#fff';
-                        e.currentTarget.style.color = '#2563eb';
-                      }}
-                      title="View Report"
-                    >
-                      <FiEye size={18} />
-                    </button>
-                  ) : (
-                    <span style={{ color: '#ccc', fontSize: '18px' }}>-</span>
-                  )}
+                  {/* Result */}
+                  <div>
+                    {evaluationError ? (
+                      <span style={pillStyle('danger')}>Stopped</span>
+                    ) : isSkipped ? (
+                      <span style={pillStyle('warning')}>Skipped</span>
+                    ) : isEvaluating ? (
+                      <span style={pillStyle('neutral')}>Processing</span>
+                    ) : student ? (
+                      <span style={pillStyle(passed ? 'success' : 'danger')}>{passed ? 'Passed' : 'Failed'}</span>
+                    ) : (
+                      <span style={pillStyle('neutral')}>Pending</span>
+                    )}
+                  </div>
+
+                  {/* Status - Show modified or unmodified */}
+                  <div>
+                    <span style={pillStyle(isModified ? 'warning' : 'neutral')}>
+                      {isModified ? 'Modified' : 'Unmodified'}
+                    </span>
+                  </div>
+
+                  {/* Eye Button - View Individual Report */}
+                  <div style={{ textAlign: 'center' }}>
+                    {evaluationResult && !isSkipped ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewStudentReport(index);
+                        }}
+                        style={{
+                          borderRadius: 8,
+                          border: '1px solid #e8ecf2',
+                          background: '#fff',
+                          color: '#2563eb',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                          width: 36,
+                          height: 36
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#eff4ff';
+                          e.currentTarget.style.borderColor = '#2563eb';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#fff';
+                          e.currentTarget.style.borderColor = '#e8ecf2';
+                        }}
+                        title="View Report"
+                      >
+                        <FiEye size={17} />
+                      </button>
+                    ) : (
+                      <span style={{ color: '#cbd5e1', fontSize: 16 }}>—</span>
+                    )}
+                  </div>
                 </div>
+              );
+            })}
+
+            {answerSheetFiles.length === 0 && (
+              <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>
+                No answer sheets yet
               </div>
-            ))}
+            )}
           </div>
         </div>
 
 
 
         <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-        
+
         {/* Save Modal */}
         {showSaveModal && (
           <div style={{
@@ -1554,7 +1533,7 @@ export default function Evaluation() {
               <h3 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600 }}>
                 Save Evaluation
               </h3>
-              
+
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>
                   Evaluation Name:
@@ -1615,366 +1594,171 @@ export default function Evaluation() {
         )}
 
         {/* Report Modal */}
-        {showReportModal && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px'
-          }}>
-            <div style={{
-              background: '#fff',
-              borderRadius: 16,
-              padding: 32,
-              width: '900px',
-              maxWidth: '95vw',
-              maxHeight: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
-            }}>
-              {/* Modal Header */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: 24,
-                paddingBottom: 16,
-                borderBottom: '2px solid #e9ecef'
-              }}>
-                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#1e40af' }}>
-                  {reportTitle}
-                </h2>
-                <button
-                  onClick={() => setShowReportModal(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 28,
-                    cursor: 'pointer',
-                    color: '#666',
-                    padding: 0,
-                    width: 32,
-                    height: 32,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  title="Close"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Modal Content */}
-              <div style={{ 
-                flex: 1, 
-                overflowY: 'auto',
-                marginBottom: 24,
-                padding: '0 20px 0 4px'
-              }}>
-                {isLoadingReport ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    height: '300px'
-                  }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ 
-                        fontSize: 48, 
-                        marginBottom: 16,
-                        animation: 'spin 1s linear infinite'
-                      }}>⏳</div>
-                      <div style={{ color: '#666', fontSize: 16 }}>Loading report...</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                    fontSize: 15,
-                    lineHeight: 1.7,
-                    color: '#333'
-                  }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkBreaks]}
-                      components={{
-                        // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h1: ({node, ...props}) => <h1 style={{ fontSize: 32, fontWeight: 700, color: '#1e40af', marginTop: 0, marginBottom: 20, borderBottom: '3px solid #e3f2fd', paddingBottom: 12 }} {...props} />,
-                        // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h2: ({node, ...props}) => <h2 style={{ fontSize: 24, fontWeight: 600, color: '#2563eb', marginTop: 32, marginBottom: 16, borderBottom: '2px solid #e9ecef', paddingBottom: 8 }} {...props} />,
-                        // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h3: ({node, ...props}) => <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginTop: 24, marginBottom: 12 }} {...props} />,
-                        // eslint-disable-next-line jsx-a11y/heading-has-content
-                        h4: ({node, ...props}) => <h4 style={{ fontSize: 16, fontWeight: 600, color: '#4b5563', marginTop: 16, marginBottom: 8 }} {...props} />,
-                        p: ({node, ...props}) => <p style={{ marginTop: 0, marginBottom: 16, lineHeight: 1.7 }} {...props} />,
-                        strong: ({node, ...props}) => <strong style={{ fontWeight: 700, color: '#1f2937' }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
-                        ol: ({node, ...props}) => <ol style={{ marginBottom: 16, paddingLeft: 28 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: 8 }} {...props} />,
-                        code: ({node, inline, ...props}) => 
-                          inline ? 
-                            <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: 14, fontFamily: 'monospace', color: '#dc2626' }} {...props} /> :
-                            <code style={{ background: '#1f2937', color: '#f3f4f6', padding: 16, borderRadius: 8, display: 'block', overflow: 'auto', fontSize: 14, fontFamily: 'monospace' }} {...props} />,
-                        pre: ({node, ...props}) => <pre style={{ background: '#1f2937', borderRadius: 8, padding: 16, marginBottom: 16, overflow: 'auto' }} {...props} />,
-                        blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #2563eb', paddingLeft: 16, margin: '16px 0', color: '#4b5563', fontStyle: 'italic', background: '#f8f9fa', padding: '12px 16px', borderRadius: '0 8px 8px 0' }} {...props} />,
-                        hr: ({node, ...props}) => <hr style={{ border: 'none', borderTop: '2px solid #e9ecef', margin: '24px 0' }} {...props} />,
-                        table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, border: '1px solid #dee2e6' }} {...props} />,
-                        thead: ({node, ...props}) => <thead style={{ background: '#f8f9fa' }} {...props} />,
-                        th: ({node, ...props}) => <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontWeight: 600 }} {...props} />,
-                        td: ({node, ...props}) => <td style={{ padding: '12px', borderBottom: '1px solid #e9ecef' }} {...props} />,
-                        // eslint-disable-next-line jsx-a11y/anchor-has-content
-                        a: ({node, ...props}) => <a style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }} {...props} />
-                      }}
-                    >
-                      {latexToText(currentReport)}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'flex-end', 
-                gap: 12,
-                paddingTop: 16,
-                borderTop: '2px solid #e9ecef'
-              }}>
-                <button
-                  onClick={() => setShowReportModal(false)}
-                  style={{
-                    padding: '12px 24px',
-                    borderRadius: 8,
-                    border: '1px solid #dee2e6',
-                    background: '#fff',
-                    color: '#495057',
-                    cursor: 'pointer',
-                    fontSize: 15,
-                    fontWeight: 600,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f8f9fa';
-                    e.currentTarget.style.borderColor = '#adb5bd';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#fff';
-                    e.currentTarget.style.borderColor = '#dee2e6';
-                  }}
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleDownloadReport}
-                  disabled={isLoadingReport}
-                  style={{
-                    padding: '12px 24px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background: isLoadingReport ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: '#fff',
-                    cursor: isLoadingReport ? 'not-allowed' : 'pointer',
-                    fontSize: 15,
-                    fontWeight: 600,
-                    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                    transition: 'transform 0.2s, box-shadow 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isLoadingReport) {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isLoadingReport) {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-                    }
-                  }}
-                >
-                  <span>📥</span>
-                  Download Report
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Name input screen
-  if (showNameInputScreen) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Header
-          title="Evaluation"
-          onLogout={handleLogout}
-          onSettings={null}
-          onExport={null}
-          onGridView={null}
-          onListView={null}
-          isGridView={isGridView}
-          onBack={() => setShowNameInputScreen(false)}
-          backLabel="Back"
-        />
-
-        {/* Breadcrumb */}
-        <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ fontWeight: 700 }}>Evaluation</span>
-        </div>
-
-        {/* Name Input Content */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5vw' }}>
-          <div style={{ 
-            background: '#fff', 
-            borderRadius: 18, 
-            padding: '48px', 
-            boxShadow: '0 2px 7px #0002',
-            maxWidth: 500,
-            width: '100%'
-          }}>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: 28, fontWeight: 600, color: '#1e40af', textAlign: 'center' }}>
-              Name Your Evaluation
-            </h2>
-            <p style={{ margin: '0 0 32px 0', color: '#666', textAlign: 'center', fontSize: 16 }}>
-              Enter a name for this evaluation. It will be saved to Assets on the Evaluation Card.
-            </p>
-            
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, fontSize: 16 }}>
-                Evaluation Name:
-              </label>
-              <input
-                type="text"
-                value={assetName}
-                onChange={(e) => setAssetName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '16px',
-                  borderRadius: 8,
-                  border: '2px solid #e9ecef',
-                  fontSize: 16,
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s'
-                }}
-                placeholder="Enter evaluation name..."
-                autoFocus
-                onFocus={(e) => e.target.style.borderColor = '#2563eb'}
-                onBlur={(e) => e.target.style.borderColor = '#e9ecef'}
-              />
-            </div>
-
-            <button
-              onClick={handleStartEvaluation}
-              disabled={!assetName.trim()}
-              style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: '8px',
-                border: 'none',
-                background: !assetName.trim() ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '16px',
-                cursor: !assetName.trim() ? 'not-allowed' : 'pointer',
-                opacity: !assetName.trim() ? 0.5 : 1
-              }}
+        {showReportModal && (() => {
+          const reportStudent = evaluationResult?.evaluation_result?.students?.[reportStudentIndex];
+          const reportAnswers = reportStudent?.answers || [];
+          const reportName = answerSheetFiles[reportStudentIndex]?.name || `Student ${(reportStudentIndex ?? 0) + 1}`;
+          const reportPct = reportStudent?.max_total_score ? reportStudent.total_score / reportStudent.max_total_score : null;
+          const reportPassed = reportPct !== null && reportPct >= PASS_MARK;
+          const answeredCount = reportAnswers.filter(a => typeof a.student_answer === 'string' && a.student_answer.trim()).length;
+          const closeReport = () => setShowReportModal(false);
+          const reportLabelStyle = { margin: '0 0 6px 0', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' };
+          const reportTile = { flex: '1 1 150px', background: '#f8fafc', border: '1px solid #e8ecf2', borderRadius: 12, padding: '12px 16px' };
+          return (
+            <div
+              onClick={closeReport}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
             >
-              Start Evaluation →
-            </button>
-          </div>
-        </div>
+              <div
+                role="dialog"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
+                style={{ background: '#fff', borderRadius: 16, width: 960, maxWidth: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.18)', overflow: 'hidden' }}
+              >
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 24px', borderBottom: '1px solid #e8ecf2' }}>
+                  <span style={{ width: 40, height: 40, borderRadius: 10, background: '#eff4ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <FiFileText size={19} />
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Student report</div>
+                    <h2 style={{ margin: '2px 0 0 0', fontSize: 19, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={reportName}>{reportName}</h2>
+                  </div>
+                  <button
+                    title="Close"
+                    onClick={closeReport}
+                    style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid #e8ecf2', background: '#fff', color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                  >
+                    <FiX size={17} />
+                  </button>
+                </div>
 
-        <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-        
-        {/* Process Started Popup */}
-        {showProcessStartedPopup && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 3000
-          }}>
-            <div style={{
-              background: '#fff',
-              borderRadius: 16,
-              padding: 40,
-              width: '560px',
-              maxWidth: '92vw',
-              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.25)',
-              textAlign: 'center',
-              border: '1px solid #e5e7eb'
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                background: evaluationError ? '#fee2e2' : '#e0f2fe',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 20px auto'
-              }}>
-                <span style={{ fontSize: '40px', color: evaluationError ? '#dc2626' : '#2563eb' }}>
-                  {evaluationError ? '⚠️' : '📧'}
-                </span>
+                {/* Body */}
+                <div className="cc-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px', background: '#fafbfc' }}>
+                  {!reportStudent ? (
+                    <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>No results available for this answer sheet.</div>
+                  ) : (
+                    <>
+                      {/* Summary */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                        <div style={reportTile}>
+                          <div style={reportLabelStyle}>Total marks</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>
+                            {reportStudent.total_score}<span style={{ color: '#94a3b8', fontWeight: 500 }}>/{reportStudent.max_total_score}</span>
+                            {reportPct !== null && <span style={{ marginLeft: 6, fontSize: 13, fontWeight: 500, color: '#6b7280' }}>({Math.round(reportPct * 100)}%)</span>}
+                          </div>
+                          {reportPct !== null && (
+                            <div style={{ marginTop: 8, height: 4, background: '#e8ecf2', borderRadius: 999, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, Math.round(reportPct * 100))}%`, background: reportPassed ? '#10b981' : '#f87171', borderRadius: 999 }} />
+                            </div>
+                          )}
+                        </div>
+                        <div style={reportTile}>
+                          <div style={reportLabelStyle}>Result</div>
+                          {reportPct !== null ? <span style={pillStyle(reportPassed ? 'success' : 'danger')}>{reportPassed ? 'Passed' : 'Failed'}</span> : <span style={pillStyle('neutral')}>—</span>}
+                        </div>
+                        <div style={reportTile}>
+                          <div style={reportLabelStyle}>Status</div>
+                          <span style={pillStyle(reportStudent.status === 'modified' ? 'warning' : 'neutral')}>{reportStudent.status === 'modified' ? 'Modified' : 'Unmodified'}</span>
+                        </div>
+                        <div style={reportTile}>
+                          <div style={reportLabelStyle}>Answered</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>
+                            {answeredCount}<span style={{ color: '#94a3b8', fontWeight: 500 }}>/{reportAnswers.length}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Questions */}
+                      {reportAnswers.map((answer, index) => {
+                        const hasSection = answer.section != null && answer.section_question_number != null;
+                        const prev = reportAnswers[index - 1];
+                        const startsSection = hasSection && (!prev || prev.section !== answer.section);
+                        const score = answer.score ?? 0;
+                        const studentAnswer = formatStudentAnswer(answer.student_answer);
+                        return (
+                          <React.Fragment key={index}>
+                            {startsSection && (
+                              <div style={{ margin: index === 0 ? '0 0 10px 2px' : '22px 0 10px 2px', fontSize: 12, fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Section {answer.section}
+                              </div>
+                            )}
+                            <div style={{ background: '#fff', border: '1px solid #e8ecf2', borderRadius: 14, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', marginBottom: 12, overflow: 'hidden' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 18px', borderBottom: '1px solid #f1f5f9' }}>
+                                <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                                  Question {hasSection ? answer.section_question_number : index + 1}
+                                </span>
+                                <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', ...scoreToneStyle(score, answer.max_score) }}>
+                                  {score}/{answer.max_score ?? '?'}
+                                </span>
+                              </div>
+                              <div style={{ padding: '14px 18px', display: 'grid', gap: 14 }}>
+                                <div>
+                                  <h4 style={reportLabelStyle}>Question</h4>
+                                  <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e8ecf2', fontSize: 14, color: '#1f2937' }}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reportMdComponents()}>
+                                      {latexToText(formatQuestionText(answer) || 'Question text not available')}
+                                    </ReactMarkdown>
+                                  </div>
+                                </div>
+                                <div>
+                                  <h4 style={reportLabelStyle}>Student answer</h4>
+                                  <div style={{ padding: '10px 14px', background: '#f5f8ff', borderRadius: 10, border: '1px solid #dbe5fb', fontSize: 14, color: '#1f2937' }}>
+                                    {studentAnswer ? (
+                                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reportMdComponents()}>
+                                        {latexToText(studentAnswer)}
+                                      </ReactMarkdown>
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Not attempted</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {answer.feedback && (
+                                  <div>
+                                    <h4 style={reportLabelStyle}>Feedback</h4>
+                                    <div style={{ fontSize: 14, color: '#374151' }}>
+                                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reportMdComponents()}>
+                                        {latexToText(answer.feedback)}
+                                      </ReactMarkdown>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 24px', borderTop: '1px solid #e8ecf2', background: '#fff' }}>
+                  <button
+                    className="cc-section-btn"
+                    onClick={closeReport}
+                    style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid #d6dde8', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleDownloadReport}
+                    disabled={!reportStudent}
+                    style={{
+                      padding: '9px 18px', borderRadius: 10, border: 'none', fontWeight: 600, fontSize: 14,
+                      background: reportStudent ? '#2563eb' : '#93c5fd', color: '#fff',
+                      cursor: reportStudent ? 'pointer' : 'not-allowed',
+                      display: 'inline-flex', alignItems: 'center', gap: 8
+                    }}
+                  >
+                    <FiDownload />
+                    Download PDF
+                  </button>
+                </div>
               </div>
-              <h3 style={{ margin: '0 0 18px 0', fontSize: 26, fontWeight: 700, color: evaluationError ? '#b91c1c' : '#111827' }}>
-                {evaluationError ? 'Evaluation Failed' : 'Evaluation Started'}
-              </h3>
-              <p style={{ margin: '0 0 28px 0', fontSize: 18, color: '#374151', lineHeight: 1.6 }}>
-                {evaluationError
-                  ? <>The evaluation process has stopped due to an error:<br />
-                      <span style={{ fontSize: 15, color: '#7f1d1d' }}>{evaluationError}</span></>
-                  : 'The evaluation has started. You will be notified on email once it is completed. You can see the results on the evaluation card.'}
-              </p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
-                <button
-                  onClick={() => {
-                    setShowProcessStartedPopup(false);
-                    navigate('/dashboard');
-                  }}
-                  style={{
-                    padding: '14px 28px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: '#2563eb',
-                    color: '#fff',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    letterSpacing: '0.2px'
-                  }}
-                >
-                  Go to Course Page
-                </button>
-              </div>
-              {/* Removed auto-redirect notice; user will click the button to proceed */}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     );
   }
@@ -1995,25 +1779,35 @@ export default function Evaluation() {
       />
 
       {/* Breadcrumb */}
-      <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: '100%', display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
-        <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
-        <span style={{ color: '#888' }}>{'>'}</span>
-        <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
-        <span style={{ color: '#888' }}>{'>'}</span>
-        <span style={{ fontWeight: 700 }}>Evaluation</span>
+      <div style={{ maxWidth: 1680, padding: '0 32px', boxSizing: 'border-box', margin: '20px auto 4px auto', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500 }}>
+          <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => navigate('/courses')}>Courses</span>
+          <span style={{ color: '#9ca3af' }}>/</span>
+          <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => navigate('/dashboard')}>{courseTitle}</span>
+          <span style={{ color: '#9ca3af' }}>/</span>
+          <span style={{ color: '#6b7280' }}>Evaluation</span>
+        </div>
+        <h1 style={{ margin: '6px 0 0 0', fontSize: 26, fontWeight: 700, color: '#111827' }}>Evaluation</h1>
+        <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Upload a mark scheme, then the student's answer sheets, and let AI grade them.</div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflow: 'hidden', justifyContent: 'space-around' }}>
-        {/* Left Section: Mark Scheme Upload */}
-        <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
-          <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: 'fit-content', margin: '1em' }}>            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Mark Scheme</h2>
-            <p style={{ marginTop: 8, color: '#444', marginBottom: 20 }}>Upload your evaluation mark scheme first</p>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '8px' }}>Mark Scheme File</label>
+      <div className="cc-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', width: '100%', maxWidth: 1680, margin: '0 auto', padding: '20px 32px 32px', boxSizing: 'border-box' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 24, alignItems: 'stretch' }}>
+          {/* Left Section: Mark Scheme Upload */}
+          <div style={evalCardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={stepBadgeStyle(markSchemeUploaded)}>{markSchemeUploaded ? <FiCheck /> : '1'}</span>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827' }}>Mark Scheme</h2>
+                <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Upload your evaluation mark scheme first</div>
+              </div>
+            </div>
+
+            <label style={dropzoneStyle(isUploadingMarkScheme)}>
               <input
                 type="file"
                 accept=".pdf,.doc,.docx,.txt"
+                disabled={isUploadingMarkScheme}
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   setMarkSchemeFile(file);
@@ -2022,77 +1816,58 @@ export default function Evaluation() {
                     handleUploadMarkScheme(file);
                   }
                 }}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px'
-                }}
+                style={{ display: 'none' }}
               />
-              {markSchemeFile && (
-                <div style={{ marginTop: '8px', fontSize: '14px', color: '#555' }}>
-                  Selected: {markSchemeFile.name}
-                </div>
-              )}
-            </div>
+              <FiUploadCloud style={{ fontSize: 28, color: '#2563eb' }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                {markSchemeFile ? 'Choose a different file' : 'Click to choose a mark scheme'}
+              </div>
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>PDF · uploads automatically</div>
+            </label>
+
+            {markSchemeFile && (
+              <div style={fileRowStyle}>
+                <FiFileText style={{ color: '#64748b', flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{markSchemeFile.name}</span>
+              </div>
+            )}
 
             {isUploadingMarkScheme && (
-              <div style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '8px',
-                border: 'none',
-                background: '#2563eb',
-                color: '#fff',
-                fontWeight: 600,
-                textAlign: 'center',
-                marginBottom: '16px'
-              }}>
-                Uploading Mark Scheme...
+              <div style={statusStyle('info')}>
+                <span style={evalSpinnerStyle} />
+                Uploading mark scheme...
               </div>
             )}
 
-            {markSchemeUploaded && (
-              <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
-                <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Mark Scheme Uploaded</div>
-                <div style={{ fontSize: '14px', color: '#666' }}>Evaluation ID: {evaluationId}</div>
-                <div style={{ fontSize: '14px', color: '#666' }}>Ready to upload answer sheets</div>
+            {markSchemeUploaded && !isUploadingMarkScheme && (
+              <div style={statusStyle('success')}>
+                <FiCheckCircle style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Mark scheme uploaded</div>
+                  <div style={{ fontSize: 13, color: '#4b5563', marginTop: 2 }}>Ready to upload answer sheets</div>
+                </div>
               </div>
             )}
+          </div>
 
-            <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Tips</div>
-              <div style={{ color: '#555', fontSize: 14 }}>
-                <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                  <li>Mark scheme should contain questions, correct answers, and scoring criteria</li>
-                  <li>Supported formats: PDF</li>
-                  <li>Mark scheme uploads automatically when file is selected</li>
-                  <li>Answer sheets upload automatically when files are selected</li>
-                  <li>AI evaluation may take several minutes depending on file size and number of students</li>
-                </ul>
+          {/* Right Section: Answer Sheets Upload */}
+          <div style={evalCardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={stepBadgeStyle(answerSheetsUploaded, !markSchemeUploaded)}>{answerSheetsUploaded ? <FiCheck /> : '2'}</span>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: markSchemeUploaded ? '#111827' : '#9ca3af' }}>Answer Sheets</h2>
+                <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Upload one file per student</div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Right Section: Answer Sheets Upload */}
-        <div style={{ flex: 1, maxWidth: 500, overflowY: 'auto', padding: '24px 0' }}>
-          <div style={{ background: 'rgb(255, 255, 255)', borderRadius: '18px', padding: '32px', boxShadow: 'rgba(0, 0, 0, 0.35) 0px 5px 15px', height: '80%', width: '80%', margin: '1em' }}>
-            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: '#1e40af' }}>Answer Sheets</h2>
-            
             {markSchemeUploaded ? (
-              <div style={{ marginTop: 20 }}>
-                <div style={{ padding: '16px', background: '#f0f8ff', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
-                  <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>✓ Mark Scheme Ready</div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>You can now upload answer sheets</div>
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', fontWeight: 600, marginBottom: '8px' }}>Answer Sheets</label>
+              <>
+                <label style={dropzoneStyle(isUploadingAnswerSheets)}>
                   <input
                     type="file"
                     multiple
                     accept=".pdf,.doc,.docx,.txt"
+                    disabled={isUploadingAnswerSheets}
                     onChange={(e) => {
                       const files = Array.from(e.target.files || []);
                       setAnswerSheetFiles(files);
@@ -2101,40 +1876,45 @@ export default function Evaluation() {
                         handleUploadAnswerSheets(files);
                       }
                     }}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px'
-                    }}
+                    style={{ display: 'none' }}
                   />
-                  {answerSheetFiles && answerSheetFiles.length > 0 && (
-                    <div style={{ marginTop: '8px', fontSize: '14px', color: '#555' }}>
-                      Selected ({answerSheetFiles.length}): {answerSheetFiles.map(f => f.name).join(', ')}
-                    </div>
-                  )}
-                </div>
+                  <FiUploadCloud style={{ fontSize: 28, color: '#2563eb' }} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                    {answerSheetFiles.length > 0 ? 'Choose different files' : 'Click to choose answer sheets'}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#94a3b8' }}>Select multiple files · uploads automatically</div>
+                </label>
 
-                {isUploadingAnswerSheets && (
-                  <div style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: '#2563eb',
-                    color: '#fff',
-                    fontWeight: 600,
-                    textAlign: 'center',
-                    marginBottom: '16px'
-                  }}>
-                    Uploading Answer Sheets...
+                {answerSheetFiles && answerSheetFiles.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>
+                      {answerSheetFiles.length} {answerSheetFiles.length === 1 ? 'file' : 'files'}
+                    </div>
+                    <div className="cc-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                      {answerSheetFiles.map((f, i) => (
+                        <div key={i} style={fileRowStyle}>
+                          <FiFileText style={{ color: '#64748b', flexShrink: 0 }} />
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {answerSheetsUploaded && (
-                  <div style={{ padding: '16px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #7dd3fc', marginBottom: '20px' }}>
-                    <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>✓ Answer Sheets Uploaded</div>
-                    <div style={{ fontSize: '14px', color: '#666' }}>Ready to start evaluation</div>
+                {isUploadingAnswerSheets && (
+                  <div style={statusStyle('info')}>
+                    <span style={evalSpinnerStyle} />
+                    Uploading answer sheets...
+                  </div>
+                )}
+
+                {answerSheetsUploaded && !isUploadingAnswerSheets && (
+                  <div style={statusStyle('success')}>
+                    <FiCheckCircle style={{ flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 600 }}>Answer sheets uploaded</div>
+                      <div style={{ fontSize: 13, color: '#4b5563', marginTop: 2 }}>Ready to start evaluation</div>
+                    </div>
                   </div>
                 )}
 
@@ -2142,33 +1922,207 @@ export default function Evaluation() {
                   onClick={handleEvaluate}
                   disabled={isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current}
                   style={{
+                    marginTop: 'auto',
                     width: '100%',
-                    padding: '16px',
-                    borderRadius: '8px',
+                    padding: '12px 16px',
+                    borderRadius: 10,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: '#2563eb',
                     color: '#fff',
                     fontWeight: 600,
-                    fontSize: '16px',
+                    fontSize: 15,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: '0 1px 3px rgba(37, 99, 235, 0.3)',
+                    transition: 'background 0.15s ease',
                     cursor: isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current ? 'not-allowed' : 'pointer',
                     opacity: isEvaluating || !answerSheetsUploaded || evaluationInProgressRef.current ? 0.5 : 1
                   }}
+                  onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = '#1d4ed8'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#2563eb'; }}
                 >
-                  {isEvaluating ? 'Evaluating...' : 'Next →'}
+                  {isEvaluating ? 'Evaluating...' : <>Next <FiArrowRight /></>}
                 </button>
-              </div>
+              </>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#666' }}>
-                <div style={{ fontSize: '18px', marginBottom: '8px' }}>Upload mark scheme first</div>
-                <div style={{ fontSize: '14px' }}>Complete the left side to upload answer sheets</div>
+              <div style={{ flex: 1, minHeight: 200, padding: '28px 16px', border: '1px dashed #d6dde8', borderRadius: 10, background: '#fafbfd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center' }}>
+                <FiLock style={{ fontSize: 22, color: '#94a3b8' }} />
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#64748b' }}>Upload mark scheme first</div>
+                <div style={{ fontSize: 13, color: '#94a3b8' }}>Complete step 1 to unlock answer sheet upload</div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Tips */}
+        <div style={{ marginTop: 24, padding: '16px 20px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e8ecf2', display: 'flex', gap: 12 }}>
+          <FiInfo style={{ fontSize: 18, color: '#2563eb', flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 6 }}>Tips</div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: '#4b5563', fontSize: 13, lineHeight: 1.7 }}>
+              <li>Mark scheme should contain questions, correct answers, and scoring criteria</li>
+              <li>Supported formats: PDF</li>
+              <li>Mark scheme and answer sheets upload automatically when files are selected</li>
+              <li>AI evaluation may take several minutes depending on file size and number of students. You'll get an email once it's complete</li>
+            </ul>
           </div>
         </div>
       </div>
 
       <SettingsModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
-      
+
+      {/* Name + start dialog: floats over the upload screen without darkening it */}
+      {(showNameInputScreen || showProcessStartedPopup) && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(248, 250, 252, 0.55)',
+          backdropFilter: 'blur(2px)',
+          WebkitBackdropFilter: 'blur(2px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 3000,
+          padding: 16
+        }}>
+          <div style={{
+            position: 'relative',
+            background: '#fff',
+            borderRadius: 16,
+            border: '1px solid #e8ecf2',
+            padding: '28px 32px',
+            width: 600,
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.18)'
+          }}>
+            {showProcessStartedPopup ? (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 56,
+                  height: 56,
+                  background: evaluationError ? '#fef2f2' : '#eff4ff',
+                  color: evaluationError ? '#dc2626' : '#2563eb',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 14px auto'
+                }}>
+                  {evaluationError ? <FiAlertTriangle size={24} /> : <FiMail size={24} />}
+                </div>
+                <h3 style={{ margin: '0 0 8px 0', fontSize: 20, fontWeight: 700, color: evaluationError ? '#b91c1c' : '#111827' }}>
+                  {evaluationError ? 'Evaluation failed' : 'Evaluation started'}
+                </h3>
+                <p style={{ margin: '0 auto 22px auto', maxWidth: 460, fontSize: 14, color: '#4b5563', lineHeight: 1.6 }}>
+                  {evaluationError
+                    ? <>The evaluation process has stopped due to an error:<br />
+                      <span style={{ fontSize: 13, color: '#7f1d1d' }}>{evaluationError}</span></>
+                    : <>We're grading the answer sheets now. <strong style={{ color: '#111827' }}>You'll receive an email and a notification here once it's complete</strong>, and the results will be available on the Evaluation card.</>}
+                </p>
+                <button
+                  onClick={() => {
+                    setShowProcessStartedPopup(false);
+                    navigate('/dashboard');
+                  }}
+                  style={{ padding: '11px 28px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 15 }}
+                >
+                  Go to Course Page
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  title="Close"
+                  onClick={() => setShowNameInputScreen(false)}
+                  style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <FiX size={18} />
+                </button>
+
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#111827' }}>
+                  Name your evaluation
+                </h2>
+                <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: 14, lineHeight: 1.55 }}>
+                  This name is used to save the evaluation under Assets on the Evaluation card.
+                </p>
+
+                <label htmlFor="evaluation-name" style={{ display: 'block', margin: '20px 0 8px', fontWeight: 600, fontSize: 14, color: '#374151' }}>
+                  Evaluation name
+                </label>
+                <input
+                  id="evaluation-name"
+                  type="text"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && assetName.trim()) handleStartEvaluation();
+                    if (e.key === 'Escape') setShowNameInputScreen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #d6dde8',
+                    fontSize: 15,
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    transition: 'border-color 0.15s, box-shadow 0.15s'
+                  }}
+                  placeholder="e.g. Mid-term exam – Section A"
+                  autoFocus
+                  onFocus={(e) => { e.target.style.borderColor = '#2563eb'; e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.12)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = '#d6dde8'; e.target.style.boxShadow = 'none'; }}
+                />
+
+                {/* Email notice */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 16, padding: '12px 14px', background: '#f5f8ff', border: '1px solid #dbe5fb', borderRadius: 10 }}>
+                  <FiMail style={{ fontSize: 17, color: '#2563eb', flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.55 }}>
+                    <span style={{ fontWeight: 600, color: '#1e3a8a' }}>You'll get an email when results are ready.</span>{' '}
+                    Grading can take several minutes. You can leave this page; results will also appear on the Evaluation card.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+                  <button
+                    onClick={() => setShowNameInputScreen(false)}
+                    style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #d6dde8', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStartEvaluation}
+                    disabled={!assetName.trim()}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: '#2563eb',
+                      color: '#fff',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: '0 1px 3px rgba(37, 99, 235, 0.3)',
+                      cursor: !assetName.trim() ? 'not-allowed' : 'pointer',
+                      opacity: !assetName.trim() ? 0.5 : 1
+                    }}
+                  >
+                    Start Evaluation <FiArrowRight />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Format Error Modal */}
       {showFormatError && (
         <div style={{
@@ -2211,7 +2165,7 @@ export default function Evaluation() {
                 {formatErrorMessage}
               </p>
             </div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
               <button
                 onClick={handleReuploadMarkScheme}
@@ -2255,8 +2209,8 @@ export default function Evaluation() {
       )}
 
       {/* Download Success Modal */}
-      <Modal 
-        open={showDownloadSuccessModal} 
+      <Modal
+        open={showDownloadSuccessModal}
         onClose={() => setShowDownloadSuccessModal(false)}
         modalStyle={{
           minWidth: 400,
@@ -2266,13 +2220,13 @@ export default function Evaluation() {
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-          <div style={{ 
-            width: '60px', 
-            height: '60px', 
-            borderRadius: '50%', 
-            background: '#10b981', 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: '#10b981',
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
             fontSize: '24px',
             color: 'white'

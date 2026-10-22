@@ -1,12 +1,7 @@
 {
     "id": "qp-extraction",
-    "prompt": "Extract the questions verbatim from {{file_names}}, Do not use any other resources. Do not paraphrase. Continue a question until the next top-level number (^\\d+[.)-)\\s). Ignore headers/footers like Generated on… Page…. Also make sure to extract the marks given in the paper. If marks for each question is given use that if total marks is given divide that amongst the questions and give the marks for each question.\n\nHandling sub-questions:\nIf a question has sub-parts (e.g., 1(a), 1(b), 1(c)), keep it as one question in the output.\nIf marks are given for each sub-part, use exactly those marks.\nIf only a total mark is given, allocate marks across sub-parts using judgement.\n\nOutput only JSON: [{'Question number', 'Question text', 'Marks'}].",
+    "prompt": "Extract the questions verbatim from {{file_names}}, Do not use any other resources. Do not paraphrase. Continue a question until the next top-level number (^\\d+[.)-)\\s). Ignore headers/footers like Generated on… Page…. Also make sure to extract the marks given in the paper. If marks for each question is given use that if total marks is given divide that amongst the questions and give the marks for each question.\n\nHandling sub-questions:\nIf a question has sub-parts (e.g., 1(a), 1(b), 1(c)), keep it as one question in the output.\nIf marks are given for each sub-part, use exactly those marks.\nIf only a total mark is given, allocate marks across sub-parts using judgement.\n\nPreserving structure inside \"Question text\" (use \\n for line breaks in the JSON string). \"Verbatim\" applies to the wording only — never copy the page layout. A table drawn as columns aligned with spaces, header text split across lines or letter-spaced (e.g. \"A r r a y a f t e r partition\" means \"Array after partition\"), or code shown in a box must be converted as follows:\n- Tables (e.g. trace tables to fill in) must be written as GitHub-flavored Markdown tables: a header row, then a separator row, then one row per table row, every row starting and ending with a pipe, and a blank line before and after the table. Keep every row and column, including empty cells. Example:\n| Partition | Pivot | No. of Swaps |\n| --- | --- | --- |\n| 1 |  |  |\n- Code, pseudocode and algorithms must be written inside fenced code blocks (```) with their original line breaks and indentation preserved.\n\nOutput only JSON: [{'Question number', 'Question text', 'Marks'}].",
     "required_input_variables": [
         "file_names"
     ]
 }
-
-
-
-
-

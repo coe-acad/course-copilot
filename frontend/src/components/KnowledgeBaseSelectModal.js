@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Modal from './Modal'; // Keep your existing modal structure
 import { FiCheckSquare, FiSquare } from "react-icons/fi";
+import ResourceSelectionToolbar from './ResourceSelectionToolbar';
 
 export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, files }) {
   const [selected, setSelected] = useState([]);
@@ -44,6 +45,14 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
         These files will be used by the AI to generate course content.
         You can select up to {MAX_SELECTED} files.
       </p>
+      <ResourceSelectionToolbar
+        total={files.length}
+        selectedCount={selected.length}
+        max={MAX_SELECTED}
+        onSelectAll={() => setSelected([...files])}
+        onClear={() => setSelected([])}
+        style={{ marginBottom: 8, padding: '0 2px' }}
+      />
       <div style={{
         maxHeight: 260,
         overflowY: 'auto',

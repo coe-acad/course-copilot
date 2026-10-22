@@ -469,17 +469,21 @@ export default function Dashboard() {
         />
 
         {/* Breadcrumb */}
-        <div style={{ maxWidth: 1200, margin: "1rem auto 0.5rem auto", width: "100%", display: 'flex', alignItems: 'center', gap: 10, fontSize: 18, fontWeight: 500 }}>
-          <span style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 600 }} onClick={() => navigate('/courses')}>Courses</span>
-          <span style={{ color: '#888' }}>{'>'}</span>
-          <span style={{ fontWeight: 700 }}>{localStorage.getItem("currentCourseTitle") || "Course Title"}</span>
+        <div style={{ maxWidth: 1680, padding: '0 32px', boxSizing: 'border-box', margin: "20px auto 4px auto", width: "100%" }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500 }}>
+            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => navigate('/courses')}>Courses</span>
+            <span style={{ color: '#9ca3af' }}>/</span>
+            <span style={{ color: '#6b7280' }}>{localStorage.getItem("currentCourseTitle") || "Course Title"}</span>
+          </div>
+          <h1 style={{ margin: '6px 0 0 0', fontSize: 26, fontWeight: 700, color: '#111827' }}>{localStorage.getItem("currentCourseTitle") || "Course Title"}</h1>
         </div>
 
         {/* Conditional main content: grid or list view */}
         {isGridView ? (
-          <div style={{ flex: 1, display: 'flex', gap: 24, padding: '0 5vw', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
-            {/* ...existing grid view code... */}
-            <div className="dashboard-scroll-area" style={{ flex: 2, maxWidth: 900, width: '100%', margin: '0 auto', overflowY: 'auto', padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 28 }}>
+          <div className="dashboard-scroll-area" style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 1680, margin: '0 auto', padding: '0 32px', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+          {/* The row takes its height from the sections; the Knowledge Base stretches to match */}
+          <div style={{ display: 'flex', gap: 28 }}>
+            <div style={{ flex: 2, minWidth: 0, padding: '18px 4px 24px', display: 'flex', flexDirection: 'column', gap: 17 }}>
               <SectionCard
                 title="Curriculum"
                 buttonLabel="Create"
@@ -491,7 +495,7 @@ export default function Dashboard() {
                 existingResources={resources}
               />
               <SectionCard
-                title="Assessments"
+                title="Assessment"
                 buttonLabel="Create"
                 onButtonClick={handleAssessmentCreate}
                 assets={assets.assessments}
@@ -512,8 +516,11 @@ export default function Dashboard() {
               />
             </div>
             {/* Right panel: Knowledge Base */}
-            <div style={{ flex: 1, marginTop: 24, minWidth: 340, maxWidth: 420 }}>
+            {/* Absolutely-positioned card adds no height of its own, so the panel's bottom lines up with the last section */}
+            <div style={{ flex: 1, minWidth: 340, maxWidth: 440, margin: '18px 0 24px', minHeight: 360, position: 'relative' }}>
+            <div style={{ position: 'absolute', inset: 0, padding: 20, background: '#fff', borderRadius: 14, border: '1px solid #e8ecf2', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
               <KnowledgeBase
+                fillHeight
                 resources={loadingResources ? [] : resources}
                 fileInputRef={{ current: null }}
                 onFileChange={() => { }}
@@ -526,6 +533,8 @@ export default function Dashboard() {
                 isUploading={isUploadingResources}
               />
             </div>
+            </div>
+          </div>
           </div>
         ) : (
           <div style={{ flex: 1, width: '100%', padding: '0 8vw', display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box', height: 'calc(100vh - 120px)' }}>

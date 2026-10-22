@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { hasUsableSession, logout } from "../services/auth";
+import EvaluationCompletionWatcher from "./EvaluationCompletionWatcher";
 
 export default function ProtectedRoute() {
     const location = useLocation();
@@ -16,5 +17,11 @@ export default function ProtectedRoute() {
         return <Navigate to="/login" replace state={{ from: location.pathname }} />;
     }
 
-    return <Outlet />;
+    return (
+        <>
+            <Outlet />
+            {/* Shows a popup when an evaluation started in this browser finishes, on any page */}
+            <EvaluationCompletionWatcher />
+        </>
+    );
 }

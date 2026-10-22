@@ -16,15 +16,16 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
   const [discoverError, setDiscoverError] = useState(null);
   const [selectedResources, setSelectedResources] = useState([]);  // Track selected resource URLs
 
-  // File types accepted by the PDF/image pipeline (bytes stored in Mongo;
-  // PDFs are sent directly to the model at generation time, images are figures).
+  // File types accepted by the PDF/Word/image pipeline (stored in Mongo; PDFs are
+  // sent directly to the model, Word files as extracted text, images are figures).
   const SUPPORTED_FILE_TYPES = [
-    '.pdf',
+    '.pdf', '.docx',
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'
   ];
 
   const SUPPORTED_MIME_TYPES = [
     'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/png',
     'image/jpeg',
     'image/gif',
@@ -195,7 +196,7 @@ export default function AddResourceModal({ open, onClose, onAdd, onRefresh }) { 
         >
           <FiUploadCloud size={32} style={{ color: '#2563eb', marginBottom: 8 }} />
           <div style={{ fontSize: 15, marginBottom: 6 }}>Drag and drop or <span style={{ color: '#2563eb', textDecoration: 'underline' }}>browse</span> files to upload</div>
-          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .png .jpg .jpeg .gif .bmp .tiff .webp</span></div>
+          <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>Accepted formats: <span style={{ color: '#2563eb' }}>.pdf .docx .png .jpg .jpeg .gif .bmp .tiff .webp</span></div>
           <input
             type="file"
             multiple

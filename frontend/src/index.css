@@ -87,3 +87,15 @@ th {
 .cc-kb-row.cc-kb-row--selected:hover {
   background: #e3edfd !important;
 }
+
+/* Dashboard section + Knowledge Base action buttons */
+.cc-section-btn:hover:not(:disabled) {
+  background: #f5f8ff !important;
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+}
+
+/* Inline loading spinner */
+@keyframes cc-spin {
+  to { transform: rotate(360deg); }
+}

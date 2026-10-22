@@ -293,10 +293,12 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               p: ({children, ...props}) => <div style={{margin: '8px 0', color: '#374151', lineHeight: '1.6'}} {...props}>{renderFormattedContent(children)}</div>,
               strong: (props) => <strong style={{fontWeight: 'bold', color: '#1f2937'}} {...props} />,
               em: (props) => <em style={{fontStyle: 'italic', color: '#374151'}} {...props} />,
-              code: ({inline, ...props}) => 
-                inline ? 
-                  <code style={{background: '#f3f4f6', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace', fontSize: '13px'}} {...props} /> :
-                  <code style={{background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '13px', display: 'block', margin: '8px 0'}} {...props} />,
+              // react-markdown v10 has no `inline` prop: fenced blocks carry a
+              // language-* class or span multiple lines; anything else is inline.
+              code: ({node, className, children, ...props}) =>
+                !(/language-/.test(className || '') || String(children).includes('\n')) ?
+                  <code className={className} style={{background: '#f3f4f6', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace', fontSize: '13px'}} {...props}>{children}</code> :
+                  <code className={className} style={{background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '13px', display: 'block', margin: '8px 0', whiteSpace: 'pre', overflowX: 'auto'}} {...props}>{children}</code>,
               ul: (props) => <ul style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
               ol: (props) => <ol style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
               li: ({ordered, ...props}) => <li style={{margin: ordered ? '12px 0' : '4px 0', color: '#374151'}} {...props} />,

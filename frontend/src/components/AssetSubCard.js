@@ -162,7 +162,7 @@ export default function AssetSubCard({
           border: "1px solid #e5e7eb",
           borderRadius: 14,
           boxShadow: "0 2px 8px #0001",
-          padding: "18px 20px",
+          padding: "16px 19px",
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-start",
@@ -284,7 +284,7 @@ export default function AssetSubCard({
             fontSize: 13,
             borderRadius: 16,
             padding: "2px 12px",
-            marginBottom: 10,
+            marginBottom: 8,
             display: "inline-block",
           }}
         >
@@ -295,7 +295,7 @@ export default function AssetSubCard({
           style={{
             fontWeight: 700,
             fontSize: 18,
-            marginBottom: 8,
+            marginBottom: 5,
             paddingRight: 120, // Increased padding for three buttons
           }}
         >

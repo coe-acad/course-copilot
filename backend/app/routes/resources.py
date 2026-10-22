@@ -12,6 +12,7 @@ from ..utils.pdf_image_extractor import (
     is_image_filename,
     resource_image_id,
 )
+from ..utils.docx_text import extract_docx_text
 from ..utils.verify_token import verify_token
 from fastapi.responses import Response
 from PyPDF2 import PdfReader
@@ -174,6 +175,12 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
                         content += page.extract_text() or ""
                 except Exception as text_err:
                     logger.warning(f"Text extraction failed for '{file.filename}': {text_err}")
+            elif file.filename.lower().endswith(".docx"):
+                file.file.seek(0)
+                try:
+                    content = extract_docx_text(file.file.read())
+                except Exception as text_err:
+                    logger.warning(f"Text extraction failed for '{file.filename}': {text_err}")
             else:
                 file.file.seek(0)
                 content = file.file.read().decode("utf-8", errors="ignore")
@@ -187,10 +194,11 @@ def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_i
 
 @router.post("/courses/{course_id}/resources/extract-images", response_model=ExtractImagesResponse)
 def upload_pdf_image_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
-    """Upload PDF / image resources whose bytes are stored in Mongo (not OpenAI).
+    """Upload PDF / Word / image resources whose bytes are stored in Mongo (not OpenAI).
 
     - PDFs (<= 15 MB): the real file bytes are stored in Mongo so the document can
       be viewed as-is and sent DIRECTLY to the model at generation time.
+    - Word (.docx): the extracted text is stored as the resource content.
     - Images (png/jpeg): bytes stored in Mongo (used as figures and served for view).
     Nothing here is uploaded to the OpenAI vector store — that stays on the plain
     POST /resources upload path.
@@ -262,6 +270,23 @@ def upload_pdf_image_resources(course_id: str, files: List[UploadFile] = File(..
                     resources_added += 1
                     total_images += 1
                     per_resource.append(PerResourceImages(resource_name=name, image_count=1))
+                elif lower.endswith(".docx"):
+                    try:
+                        text = extract_docx_text(data)
+                    except Exception as docx_err:
+                        used_names.discard(name)
+                        skipped.append(f"{name} (could not read Word file)")
+                        logger.warning(f"[upload] docx extraction failed for '{name}': {docx_err}")
+                        continue
+                    if not text.strip():
+                        used_names.discard(name)
+                        skipped.append(f"{name} (no text found)")
+                        continue
+                    if not create_resource(course_id, name, text):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    resources_added += 1
+                    per_resource.append(PerResourceImages(resource_name=name, image_count=0))
                 else:
                     # Unexpected type for this button — store as a plain text resource.
                     if not create_resource(course_id, name, data.decode("utf-8", errors="ignore")):

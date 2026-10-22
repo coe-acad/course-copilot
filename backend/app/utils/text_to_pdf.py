@@ -25,7 +25,6 @@ from reportlab.platypus import (
     ListFlowable,
     ListItem,
     Paragraph,
-    Preformatted,
     SimpleDocTemplate,
     Spacer,
     Table,
@@ -605,7 +604,7 @@ def _markdown_to_flowables(text: str, styles: dict, title: str, fallback_images:
                         )
             
         elif b_type == "code":
-            # Wrap code in Preformatted for proper line breaking
+            # Hard-wrap long lines so they stay inside the box
             code_text = block["text"]
             max_chars = 80
             lines = code_text.split("\n")
@@ -619,7 +618,28 @@ def _markdown_to_flowables(text: str, styles: dict, title: str, fallback_images:
                         wrapped_lines.append(line)
                 else:
                     wrapped_lines.append(line)
-            flowables.append(Preformatted("\n".join(wrapped_lines), styles["code"]))
+            # Preformatted ignores the style's backColor/border, so draw the code
+            # inside a shaded, boxed table — one row per line so long code can
+            # still split across pages. Plain-string cells keep leading spaces.
+            code = styles["code"]
+            code_table = Table([[l or " "] for l in wrapped_lines], colWidths=["100%"])
+            code_table.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, -1), code.fontName),
+                ("FONTSIZE", (0, 0), (-1, -1), code.fontSize),
+                ("LEADING", (0, 0), (-1, -1), code.leading),
+                ("TEXTCOLOR", (0, 0), (-1, -1), code.textColor),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#e2e8f0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+            ]))
+            flowables.append(Spacer(1, 6))
+            flowables.append(code_table)
+            flowables.append(Spacer(1, 6))
             
         elif b_type == "quote":
             quote_text = " ".join(block.get("lines", []))

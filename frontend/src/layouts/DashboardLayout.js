@@ -34,7 +34,7 @@ export default function DashboardLayout({ state }) {
       <div style={{ display: "flex", flex: 1, padding: "20px 5vw", gap: 24 }}>
         <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 24 }}>
           <SectionCard title="Curriculum" buttonLabel="Create" onButtonClick={state.handleCurriculumCreate} />
-          <SectionCard title="Assessments" buttonLabel="Create" onButtonClick={state.handleAssessmentsCreate} />
+          <SectionCard title="Assessment" buttonLabel="Create" onButtonClick={state.handleAssessmentsCreate} />
           <SectionCard title="Evaluation" buttonLabel="Start Evaluation" />
           <KnowledgeBase 
             onFileChange={() => {}} 

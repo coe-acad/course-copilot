@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { FiMoreVertical, FiAlertCircle } from "react-icons/fi";
+import { FiMoreVertical, FiAlertCircle, FiPlus, FiFolder } from "react-icons/fi";
 import { uploadCourseResources } from "../services/resources";
 import ResourceViewModal from "./ResourceViewModal";
+import ResourceSelectionToolbar from "./ResourceSelectionToolbar";
 // import { getResourceViewUrl, viewResourceFile, downloadResourceFile } from '../services/resources';
 
 export default function KnowledgeBase({
@@ -200,23 +201,31 @@ export default function KnowledgeBase({
       `}</style>
       <div className={fillHeight ? undefined : "cc-scroll"} style={{
         background: fillHeight ? "transparent" : "#fff",
-        borderRadius: 12,
-        boxShadow: fillHeight ? "none" : "0 1px 4px #0001",
-        padding: fillHeight ? 0 : 18,
+        borderRadius: 14,
+        border: fillHeight ? "none" : "1px solid #e8ecf2",
+        boxShadow: fillHeight ? "none" : "0 1px 3px rgba(15, 23, 42, 0.06)",
+        padding: fillHeight ? 0 : 20,
         height: fillHeight ? '100%' : undefined,
         minHeight: fillHeight ? 0 : '60vh',
         maxHeight: fillHeight ? '100%' : '65vh',
         // fillHeight: the header stays put and only the list below scrolls.
         display: fillHeight ? 'flex' : undefined,
         flexDirection: fillHeight ? 'column' : undefined,
-        overflowY: fillHeight ? 'hidden' : 'auto',
+        // fillHeight: the inner list scrolls, so the root needn't clip (hidden here would also clip
+        // horizontally and shave the first glyph of the title).
+        overflowY: fillHeight ? 'visible' : 'auto',
         overflowX: 'visible',
         position: 'relative'
       }}>
         {/* Fixed head: title, add button, upload state, select-all */}
         <div style={fillHeight ? { flexShrink: 0 } : undefined}>
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Knowledge Base</div>
-        <div style={{ color: "#888", fontSize: 13, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>Knowledge Base</span>
+          {resources.length > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#2563eb", background: "#eff4ff", borderRadius: 999, padding: "2px 8px" }}>{resources.length}</span>
+          )}
+        </div>
+        <div style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.45, marginBottom: 14 }}>
           Add resources from the web or course documents you’ve already created — this helps AI give relevant results.
         </div>
 
@@ -230,21 +239,29 @@ export default function KnowledgeBase({
         />
 
         <button
+          className="cc-section-btn"
           style={{
             width: "100%",
             marginBottom: 12,
-            padding: "8px 0",
-            borderRadius: 6,
-            border: "1px solid #bbb",
+            padding: "9px 0",
+            borderRadius: 8,
+            border: "1px solid #d0d7e2",
             background: isUploading ? "#f5f5f5" : "#fff",
+            color: "#1f2937",
             fontWeight: 500,
-            fontSize: 15,
+            fontSize: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            transition: "background 0.15s, border-color 0.15s, color 0.15s",
             cursor: isUploading ? "not-allowed" : "pointer",
             opacity: isUploading ? 0.6 : 1
           }}
           onClick={onAddResource}
           disabled={isUploading}
         >
+          {!isUploading && <FiPlus />}
           {isUploading ? "Uploading..." : "Add Resource"}
         </button>
 
@@ -311,35 +328,14 @@ export default function KnowledgeBase({
         )}
 
         {showCheckboxes && (
-          <div style={{ marginBottom: 8 }}>
-            <label style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontWeight: 500,
-              fontSize: 14
-            }}>
-              <input
-                type="checkbox"
-                checked={selected.length === resources.length && resources.length > 0}
-                onChange={(e) => {
-                  const allIds = resources.map(
-                    (res, i) => res.id || res.resourceName || res.fileName || i
-                  );
-                  if (e.target.checked) {
-                    if (allIds.length > 10) {
-                      alert('You can select at most 10 documents per chat.');
-                      return;
-                    }
-                    onSelectAll(allIds);
-                  } else {
-                    onSelectAll([]);
-                  }
-                }}
-              />
-              Select All References
-            </label>
-          </div>
+          <ResourceSelectionToolbar
+            total={resources.length}
+            selectedCount={selected.length}
+            max={10}
+            onSelectAll={() => onSelectAll(resources.map((res, i) => res.id || res.resourceName || res.fileName || i))}
+            onClear={() => onSelectAll([])}
+            style={{ padding: "0 8px 8px" }}
+          />
         )}
         </div>
 
@@ -358,7 +354,10 @@ export default function KnowledgeBase({
         >
         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {resources.length === 0 ? (
-            <li style={{ color: '#94a3b8', fontSize: 14, padding: "14px 8px" }}>No resources uploaded yet.</li>
+            <li style={{ color: '#94a3b8', fontSize: 14, padding: "28px 12px", marginTop: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center", border: "1px dashed #d6dde8", borderRadius: 10, background: "#fafbfd" }}>
+              <FiFolder style={{ fontSize: 22, color: "#cbd5e1" }} />
+              No resources uploaded yet.
+            </li>
           ) : (
             resources.map((res, i) => {
               const id = res.id || res.resourceName || res.fileName || i;

@@ -279,9 +279,9 @@ export const evaluationService = {
       
       // Extract filename from response headers or use default
       const contentDisposition = res.headers['content-disposition'];
-      let filename = `evaluation_report_${evaluationId}.csv`;
+      let filename = `evaluation_results_${evaluationId}.csv`;
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
         if (filenameMatch && filenameMatch[1]) {
           filename = filenameMatch[1];
         }

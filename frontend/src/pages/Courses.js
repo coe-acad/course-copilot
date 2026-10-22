@@ -90,8 +90,9 @@ export default function Courses() {
         boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
         width: "100%",
         maxWidth: "280px",
-        minHeight: 90,
-        padding: "24px 20px",
+        minHeight: 128,
+        // Reserve space at the top when a sharing badge is shown so it never overlaps the title
+        padding: (course.is_shared || (course.is_owner && course.shared_count > 0)) ? "40px 20px 20px" : "24px 20px",
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
@@ -101,7 +102,7 @@ export default function Courses() {
         fontWeight: 600,
         color: "#222",
         position: 'relative',
-        transition: "transform 0.18s, box-shadow 0.18s, border 0.18s",
+        transition: "box-shadow 0.18s, border 0.18s",
         boxSizing: "border-box"
       }}
       onClick={e => {
@@ -112,17 +113,15 @@ export default function Courses() {
         navigate("/dashboard");
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.transform = "translateY(-4px) scale(1.03)";
         e.currentTarget.style.boxShadow = "0 6px 24px rgba(37,99,235,0.08)";
         e.currentTarget.style.border = "1.5px solid #2563eb";
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.transform = "none";
         e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
         e.currentTarget.style.border = "1.5px solid #f3f4f6";
       }}
     >
-      <span style={{ fontWeight: 700, fontSize: 18, marginBottom: 6, textAlign: 'center', width: '100%', textTransform: 'capitalize', letterSpacing: 0.2 }}>{course.name}</span>
+      <span title={course.name} style={{ fontWeight: 700, fontSize: 18, marginBottom: 6, textAlign: 'center', width: '100%', textTransform: 'capitalize', letterSpacing: 0.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{course.name}</span>
       
       {/* Badge for Courses Shared WITH You */}
       {course.is_shared && (

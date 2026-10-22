@@ -59,7 +59,7 @@ class Settings:
         "CORS_ALLOW_HEADERS",
         "*"
     ).split(",")
-    CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range").split(",")
+    CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range,Content-Disposition").split(",")
     CORS_MAX_AGE: int = int(os.getenv("CORS_MAX_AGE", "3600"))
     
     # Google OAuth Configuration
