@@ -14,8 +14,9 @@ from .routes import evaluation
 
 # Configure logging
 logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,9 +101,8 @@ app.add_middleware(TimingMiddleware)
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Add logging middleware for production debugging
-if not settings.DEBUG:
-    app.add_middleware(LoggingMiddleware)
+# Add logging middleware for all environments so API endpoint hits are visible
+app.add_middleware(LoggingMiddleware)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(course.router, prefix="/api")

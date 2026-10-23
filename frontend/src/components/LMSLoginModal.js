@@ -112,12 +112,8 @@ export default function LMSLoginModal({ open, onClose, onLoginSuccess }) {
         localStorage.setItem("lms_token", lmsToken);
       }
       
-      console.log("✅ LMS Login Success:", { 
-        cookies: lmsCookies ? lmsCookies.substring(0, 50) + "..." : "none",
-        token: lmsToken ? lmsToken.substring(0, 30) + "..." : "none",
-        user: lmsUser 
-      });
-      
+      console.log("✅ LMS Login Success");
+
       // Check if in mock mode
       const isMockMode = data.message?.includes("MOCK MODE");
       if (isMockMode) {

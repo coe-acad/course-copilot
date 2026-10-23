@@ -11,12 +11,24 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Listen for messages from the Google login popup
+  // Listen for messages from the Google login popup.
+  // The origin MUST be checked: without it any page that can get a handle to
+  // this window could postMessage a forged GOOGLE_LOGIN_SUCCESS and plant an
+  // arbitrary token in localStorage. The popup is served by the API, so the
+  // only acceptable sender is the API origin (or our own origin in dev).
   React.useEffect(() => {
+    const apiOrigin = new URL(
+      process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'
+    ).origin;
+
     const handleMessage = (event) => {
+      if (event.origin !== apiOrigin && event.origin !== window.location.origin) {
+        console.warn('Ignored login message from unexpected origin:', event.origin);
+        return;
+      }
       if (event.data && event.data.type === 'GOOGLE_LOGIN_SUCCESS') {
         // Handle successful Google login
-        
+
         // Store complete user object
         localStorage.setItem('user', JSON.stringify({
           id: event.data.user.userId,
@@ -26,7 +38,7 @@ export default function Login() {
         }));
         localStorage.setItem('token', event.data.user.token);
         localStorage.setItem('refresh_token', event.data.user.refreshToken);
-        
+
         // Navigate to courses
         navigate("/courses");
       }
@@ -56,13 +68,13 @@ export default function Login() {
       // Open Google login in a new tab with proper opener reference
       const loginUrl = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000'}/api/google-login`;
       const popup = window.open(loginUrl, '_blank', 'width=500,height=600,scrollbars=yes,resizable=yes');
-      
+
       if (!popup) {
         setError("Popup blocked. Please allow popups for this site.");
         setLoading(false);
         return;
       }
-      
+
       setLoading(false);
     } catch (err) {
       setError("Google login failed. Please try again.");

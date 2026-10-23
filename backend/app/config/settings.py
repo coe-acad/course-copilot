@@ -23,12 +23,26 @@ class Settings:
     FIREBASE_CLIENT_X509_CERT_URL: Optional[str] = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
     
     # Application Configuration
+    # Allowing only those email which belong to the organisation's domain
+    ALLOWED_EMAIL_DOMAINS: List[str] = [
+        d.strip().lower() for d in os.getenv("ALLOWED_EMAIL_DOMAINS", "atriauniversity.edu.in").split(",") if d.strip()
+    ]
+    # TEMPORARY ESCAPE HATCH — applies to the email/password /login endpoint ONLY.
+    # Set to "false" to let accounts outside ALLOWED_EMAIL_DOMAINS sign in with an
+    # existing password account. Signup and Google login stay restricted either way.
+    # Defaults to True so the restriction is on unless it is explicitly switched off.
+    ENFORCE_LOGIN_EMAIL_DOMAIN: bool = os.getenv("ENFORCE_LOGIN_EMAIL_DOMAIN", "True").lower() == "true"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
     # API Configuration
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
+
+    # Public base URL for building absolute links to server-served files (e.g.
+    # images embedded in generated content). Must be reachable by the browser AND
+    # by the PDF/DOCX exporters. Override per environment for deploys.
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     
     # CORS Configuration
     CORS_ORIGINS: List[str] = [
@@ -45,7 +59,7 @@ class Settings:
         "CORS_ALLOW_HEADERS",
         "*"
     ).split(",")
-    CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range").split(",")
+    CORS_EXPOSE_HEADERS: List[str] = os.getenv("CORS_EXPOSE_HEADERS", "Content-Length,Content-Range,Content-Disposition").split(",")
     CORS_MAX_AGE: int = int(os.getenv("CORS_MAX_AGE", "3600"))
     
     # Google OAuth Configuration

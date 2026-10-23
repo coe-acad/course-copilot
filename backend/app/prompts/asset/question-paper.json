@@ -1,5 +1,11 @@
 {
     "id": "question-paper",
     "prompt": "app/prompts/asset/question-paper.txt",
-    "required_input_variables": ["file_names"]
-  }
+    "required_input_variables": [
+        "file_names",
+        "available_images"
+    ],
+    "optional_input_variables": [
+        "course_name"
+    ]
+}

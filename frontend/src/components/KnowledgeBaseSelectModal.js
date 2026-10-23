@@ -1,25 +1,22 @@
 import React, { useState } from 'react';
 import Modal from './Modal'; // Keep your existing modal structure
 import { FiCheckSquare, FiSquare } from "react-icons/fi";
+import ResourceSelectionToolbar from './ResourceSelectionToolbar';
 
 export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, files }) {
   const [selected, setSelected] = useState([]);
 
-  const allSelectableFiles = files || [];
-  const isAllSelected = allSelectableFiles.length > 0 && selected.length === allSelectableFiles.length;
+  const MAX_SELECTED = 10;
 
   const handleToggle = (file) => {
-    setSelected((prev) =>
-      prev.includes(file) ? prev.filter(f => f !== file) : [...prev, file]
-    );
-  };
-
-  const handleToggleAll = () => {
-    if (isAllSelected) {
-      setSelected([]);
-    } else {
-      setSelected(allSelectableFiles);
-    }
+    setSelected((prev) => {
+      if (prev.includes(file)) return prev.filter(f => f !== file);
+      if (prev.length >= MAX_SELECTED) {
+        alert(`You can select at most ${MAX_SELECTED} documents. Please deselect one first.`);
+        return prev;
+      }
+      return [...prev, file];
+    });
   };
 
   const handleGenerate = () => {
@@ -46,7 +43,16 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
         fontFamily: 'Inter, sans-serif'
       }}>
         These files will be used by the AI to generate course content.
+        You can select up to {MAX_SELECTED} files.
       </p>
+      <ResourceSelectionToolbar
+        total={files.length}
+        selectedCount={selected.length}
+        max={MAX_SELECTED}
+        onSelectAll={() => setSelected([...files])}
+        onClear={() => setSelected([])}
+        style={{ marginBottom: 8, padding: '0 2px' }}
+      />
       <div style={{
         maxHeight: 260,
         overflowY: 'auto',
@@ -56,24 +62,6 @@ export default function KnowledgeBaseSelectModal({ open, onClose, onGenerate, fi
         marginBottom: 24,
         background: '#fafbfc'
       }}>
-        {files.length > 0 && (
-          <div
-            onClick={handleToggleAll}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '6px 4px 10px 4px',
-              borderBottom: '1px solid #f0f0f0',
-              cursor: 'pointer',
-              marginBottom: 4
-            }}
-          >
-            {isAllSelected ? <FiCheckSquare size={18} /> : <FiSquare size={18} />}
-            <span style={{ marginLeft: 12, fontSize: 14, fontWeight: 500 }}>
-              Select all resources
-            </span>
-          </div>
-        )}
         {files.length === 0 ? (
           <div style={{ color: "#888", fontSize: 14 }}>No resources found.</div>
         ) : (

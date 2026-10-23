@@ -38,7 +38,7 @@ function handleAxiosError(error) {
 }
 
 export async function uploadCourseResources(courseId, files) {
-  console.log('uploadCourseResources called with:', { courseId, filesCount: files?.length, files });
+  console.log('uploadCourseResources called with:', { courseId, filesCount: files?.length });
 
   if (!files || files.length === 0) {
     throw new Error('No files provided for upload');
@@ -51,8 +51,25 @@ export async function uploadCourseResources(courseId, files) {
     const res = await axiosInstance.post(`/courses/${courseId}/resources`, formData);
     return res.data;
   } catch (error) {
-    console.error('Upload error:', error);
-    console.error('Error response:', error.response?.data);
+    console.error('Upload error:', error.response?.status, error.response?.data?.detail || error.message);
+    handleAxiosError(error);
+  }
+}
+
+// Upload resources AND extract their embedded images to a local folder on the backend.
+export async function extractResourceImages(courseId, files) {
+  if (!files || files.length === 0) {
+    throw new Error('No files provided for extraction');
+  }
+
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+
+  try {
+    const res = await axiosInstance.post(`/courses/${courseId}/resources/extract-images`, formData);
+    return res.data;
+  } catch (error) {
+    console.error('Extract images error:', error);
     handleAxiosError(error);
   }
 }

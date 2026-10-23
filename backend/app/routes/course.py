@@ -1,19 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from ..services import openai_service
 import logging
 from ..utils.verify_token import verify_token
 from ..services.mongo import (
-    get_course, get_courses_by_user_id, create_course as create_course_in_db, 
-    update_course, delete_course as delete_course_in_db, get_resources_by_course_id,
+    get_course, get_courses_by_user_id, create_course as create_course_in_db,
+    update_course, delete_course as delete_course_in_db,
     get_user_by_email, share_course, get_course_shares, is_course_shared_with_user,
     revoke_course_share, is_course_accessible, get_email_by_user_id
 )
 from ..routes.resources import create_course_description_file
-from app.utils.openai_client import client
-from ..services.openai_service import create_vector_store, course_description
-from uuid import uuid4
+from ..services.openai_service import course_description
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,14 +74,10 @@ def get_courses(user_id: str = Depends(verify_token)):
 @router.post("/courses", response_model=CourseResponse)
 def create_course(request: CourseCreateRequest, user_id: str = Depends(verify_token)):
     try:
-        vector_store_id = create_vector_store(request.name)
-
-        # Save the course with the vector store ID
         course_id = create_course_in_db({
             "name": request.name,
             "description": request.description,
-            "user_id": user_id,
-            "vector_store_id": vector_store_id
+            "user_id": user_id
         })
         create_course_description_file(course_id, user_id)
         

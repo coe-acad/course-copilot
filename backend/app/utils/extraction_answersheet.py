@@ -5,10 +5,13 @@ import json
 import re
 import io
 import base64
+import hashlib
 import logging
+import threading
 from collections import defaultdict
 from ..utils.openai_client import client
 from ..config.settings import settings
+from .extraction_answersheet_mettl import is_mettl_report, parse_mettl_answer_sheet
 
 
 logger = logging.getLogger(__name__)
@@ -160,6 +163,16 @@ def _qa_pattern_alt():
         re.compile(r"(\d+\.\s+.*?)(?:\n| )Answer:\s*(.*?)(?=(?:\n?\d+\.\s+|$))", re.DOTALL),
     ]
     return patterns
+
+_QUESTION_LABEL_RE = re.compile(r"^\s*(?:Question\s*\d+|Q\s*\d+|\d+)\s*[.:)]?\s*", re.IGNORECASE)
+
+
+def _strip_question_label(text):
+    """'Question 3. What is ...' -> 'What is ...' (None when nothing is left)."""
+    if not isinstance(text, str):
+        return None
+    return _QUESTION_LABEL_RE.sub("", text, count=1).strip() or None
+
 
 def _qa_matches_to_results(matches):
     return [{
@@ -333,8 +346,22 @@ def extract_images_from_pdf(pdf_path):
         return []
 
 
+_upload_cache = {}  # sha256 of image bytes -> OpenAI file_id
+_upload_cache_lock = threading.Lock()
+
+
 def upload_image_to_openai(image_data, filename_prefix="image"):
-    """Upload image to OpenAI files API and return file_id."""
+    """Upload image to OpenAI files API and return file_id.
+
+    Identical images (e.g. the same question diagram on every student's sheet) are uploaded once
+    and share a file_id, so the evaluation request attaches them only once.
+    """
+    digest = hashlib.sha256(image_data).hexdigest()
+    with _upload_cache_lock:
+        cached = _upload_cache.get(digest)
+    if cached:
+        logger.info(f"Reusing uploaded image {cached} for {filename_prefix}")
+        return cached
     try:
         # Create a BytesIO object from image data
         image_file = io.BytesIO(image_data)
@@ -347,6 +374,8 @@ def upload_image_to_openai(image_data, filename_prefix="image"):
         )
         
         logger.info(f"Successfully uploaded image to OpenAI: {response.id}")
+        with _upload_cache_lock:
+            _upload_cache[digest] = response.id
         return response.id
         
     except Exception as e:
@@ -356,9 +385,9 @@ def upload_image_to_openai(image_data, filename_prefix="image"):
 
 def _assign_images_to_questions(images, q_anchors, results, pages_content, a_anchors=None):
     """Attach images to the correct question based on position.
-    
-    Only includes images that appear AFTER the "Answer:" line for each question,
-    to avoid including question diagrams as part of the student's answer.
+
+    Images AFTER the "Answer:" line are part of the student's answer; images between the
+    question line and the "Answer:" line are question diagrams and go to "question_images".
     """
     if not images or not q_anchors:
         logger.debug("No images or question anchors available for assignment")
@@ -367,7 +396,7 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content, a_anc
     logger.info(f"Assigning {len(images)} images to {len(q_anchors)} questions")
     
     assigned_count = 0
-    skipped_question_images = 0
+    question_image_count = 0
     
     for img_index, img in enumerate(images):
         try:
@@ -396,14 +425,25 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content, a_anc
                         logger.debug(f"Image {img_index + 1} matches question {idx + 1}: page {qp} y={qy:.1f} -> next page {next_p} y={next_y:.1f}")
                         break
 
+            # q_anchors can include more lines than the parsed Q&A pairs (e.g. "1." inside an answer)
+            if target is not None and target >= len(results):
+                logger.warning(f"Image {img_index + 1} is near question line {target + 1}, which has no parsed Q&A pair; skipping")
+                continue
+
             # Check if image is in the ANSWER area (after "Answer:" line), not the question area
             if target is not None and a_anchors and target < len(a_anchors):
                 answer_page, answer_y = a_anchors[target]
                 # Image must be at or below the "Answer:" line to be part of the student's answer
                 if page < answer_page or (page == answer_page and yc < answer_y):
-                    logger.debug(f"Skipping image {img_index + 1} - appears in question area (above Answer: line) for question {target + 1}")
-                    skipped_question_images += 1
-                    continue  # Skip this image - it's part of the question, not the answer
+                    # Part of the question, not the answer: send it to the model as a question image
+                    file_id = upload_image_to_openai(img["data"], f"question_q{target + 1}_img{img_index + 1}")
+                    if file_id:
+                        results[target].setdefault("question_images", []).append(file_id)
+                        question_image_count += 1
+                        logger.info(f"Assigned image {img_index + 1} to question {target + 1} as a question image (file_id: {file_id})")
+                    else:
+                        logger.warning(f"Failed to upload question image {img_index + 1} for question {target + 1}")
+                    continue
 
             if target is not None:
                 question_text = results[target].get("question", "Unknown question")[:100]
@@ -438,8 +478,8 @@ def _assign_images_to_questions(images, q_anchors, results, pages_content, a_anc
             logger.error(f"Error processing image {img_index + 1}: {e}")
             continue
 
-    if skipped_question_images > 0:
-        logger.info(f"Skipped {skipped_question_images} images that were in question areas (not student answers)")
+    if question_image_count > 0:
+        logger.info(f"Assigned {question_image_count} images in question areas as question images")
     logger.info(f"Successfully assigned {assigned_count}/{len(images)} images to questions")
     return results
 
@@ -452,12 +492,18 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
     Args:
         pages_content: List of page dictionaries with text, lines, and tables
         pdf_path: Optional path to PDF for image extraction and email extraction
-        answers_only: If True, returns only question numbers and answers (no question text)
-    
+        answers_only: If True, returns the simplified per-question format below
+
     Returns:
-        If answers_only=True: Dict with {"email": str or None, "answers": List of {"question_number": str, "student_answer": str}}
+        If answers_only=True: Dict with {"email": str or None, "answers": List of
+            {"question_number": str, "question_text": str | None, "student_answer": str, "question_images"?: [file_id]}}
         If answers_only=False: List of {"question": str, "answer": [{"type": ..., "content": ...}]}
     """
+    # Mettl "Question-Wise Details" reports have their own layout (sections, Response / Best answer blocks)
+    if pdf_path and answers_only and is_mettl_report(pages_content):
+        logger.info("Detected Mettl answer sheet format")
+        return parse_mettl_answer_sheet(pdf_path, upload_image=upload_image_to_openai)
+
     # 0) Extract email from PDF if path is provided
     extracted_email = None
     if pdf_path:
@@ -580,11 +626,14 @@ def split_into_qas(pages_content, pdf_path=None, answers_only=True):
                     # Multiple items or mixed types - preserve as JSON array
                     student_answer = json.dumps(answer_items)
 
-            # Store only answer with question number (NO question text)
             answer_only = {
                 "question_number": str(idx + 1),
+                # The question as printed on the answer sheet is what the model grades against
+                "question_text": _strip_question_label(qa.get("question")),
                 "student_answer": student_answer
             }
+            if qa.get("question_images"):
+                answer_only["question_images"] = qa["question_images"]
             answers_only_results.append(answer_only)
         
         logger.info(f"Converted to {len(answers_only_results)} answers-only entries")

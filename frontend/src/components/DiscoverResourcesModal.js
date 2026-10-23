@@ -4,6 +4,7 @@ import Modal from "./Modal";
 import { discoverResources } from "../services/resources";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { latexToText } from "../utils/latexToText";
 
 export default function DiscoverResourcesModal({ open, onClose, courseId }) {
     const [query, setQuery] = useState("");
@@ -291,7 +292,7 @@ export default function DiscoverResourcesModal({ open, onClose, courseId }) {
                                     ),
                                 }}
                             >
-                                {resources}
+                                {latexToText(resources)}
                             </ReactMarkdown>
                         </div>
                     </div>

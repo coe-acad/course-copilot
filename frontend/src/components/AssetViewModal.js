@@ -1,14 +1,87 @@
-import React, { useState } from "react";
-import { FiX, FiDownload, FiCopy } from "react-icons/fi";
+import React, { useEffect, useState } from "react";
+import { FiX, FiCopy } from "react-icons/fi";
 import Modal from "./Modal";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { assetService } from "../services/asset";
+import DownloadButton from "./DownloadButton";
+import { latexToText } from "../utils/latexToText";
+import { API_BASE } from "../utils/axiosConfig";
+import { isSprintStructure, sprintStructureComponents } from "../utils/sprintStructure";
+
+// Resolve internal /courses/.../images/... URLs to authenticated object URLs
+function useResolvedImageSrc(src) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+  useEffect(() => {
+    if (!src) return;
+    if (src.startsWith('/courses/') && src.includes('/images/')) {
+      const fullUrl = `${API_BASE}${src}`;
+      const token = (() => {
+        try { return JSON.parse(localStorage.getItem('user') || '{}').token || ''; } catch { return ''; }
+      })();
+      fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        .then(r => r.ok ? r.blob() : null)
+        .then(blob => { if (blob) setResolvedSrc(URL.createObjectURL(blob)); })
+        .catch(() => {});
+    } else {
+      setResolvedSrc(src);
+    }
+  }, [src]);
+  return resolvedSrc;
+}
+
+function ResolvedImage({ src, alt, style }) {
+  const resolved = useResolvedImageSrc(src);
+  return <img src={resolved} alt={alt || ''} loading="lazy" style={style} />;
+}
+
+// Helper to clean <br> tags and ensure sub-questions (a), (b), (c), (i), (ii) have 
+// a clean 1-line gap between them when rendered in table cells or paragraphs.
+function renderFormattedContent(nodes) {
+  if (nodes === null || nodes === undefined) return null;
+  if (typeof nodes === "string") {
+    // Convert all literal <br> variants to \n
+    let cleaned = nodes.replace(/&lt;br\s*\/?&gt;|<br\s*\/?>/gi, "\n");
+    
+    // Ensure sub-questions like (a), (b), (c), (i), (ii) have a line break before them if following text
+    cleaned = cleaned.replace(
+      /(?:\s+|\n|^)(\((?:[a-z]|\d+|[ivx]+)\)\s+)/gi,
+      (match, p1, offset) => (offset === 0 ? match : `\n\n${p1.trimStart()}`)
+    );
+
+    const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    if (lines.length <= 1) {
+      // Keep the edge spaces: markdown splits "to **bold** and" into separate text
+      // nodes around the bold, and trimming them glues the words together.
+      return cleaned.replace(/\n+/g, " ");
+    }
+    return lines.map((line, idx) => (
+      <div
+        key={idx}
+        style={{
+          marginTop: idx > 0 ? "10px" : "0",
+          lineHeight: "1.5"
+        }}
+      >
+        {line}
+      </div>
+    ));
+  }
+
+  if (Array.isArray(nodes)) {
+    return nodes.map((child, idx) => {
+      if (typeof child === "string") {
+        return <React.Fragment key={idx}>{renderFormattedContent(child)}</React.Fragment>;
+      }
+      return <React.Fragment key={idx}>{child}</React.Fragment>;
+    });
+  }
+
+  return nodes;
+}
 
 export default function AssetViewModal({ open, onClose, assetData, courseId }) {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
-  const [showDownloadMessage, setShowDownloadMessage] = useState(false);
 
   if (!open || !assetData) return null;
 
@@ -22,52 +95,42 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
     }
   };
 
-  const handleDownload = async () => {
-    try {
-      if (!courseId || !assetData?.asset_name) return;
-      
-      // Add Type and Category to content before downloading
-      let content = assetData.asset_content;
-      const assetType = assetData.asset_type || '';
-      const assetCategory = assetData.asset_category || '';
-      
-      if (assetType || assetCategory) {
-        const metadataLines = [];
-        if (assetType) {
-          metadataLines.push(`- **Type:** ${assetType}`);
-        }
-        if (assetCategory) {
-          metadataLines.push(`- **Category:** ${assetCategory}`);
-        }
-        
-        const metadataText = metadataLines.join('\n');
-        
-        // Find Duration line and insert after it
-        if (content.includes('Duration:')) {
-          const lines = content.split('\n');
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes('Duration:')) {
-              lines.splice(i + 1, 0, metadataText);
-              break;
-            }
-          }
-          content = lines.join('\n');
-        } else {
-          // If no Duration found, prepend to content
-          content = metadataText + '\n\n' + content;
-        }
-      }
-      
-      await assetService.downloadAsset(
-        courseId,
-        assetData.asset_name,
-        content
-      );
-      setShowDownloadMessage(true);
-      setTimeout(() => setShowDownloadMessage(false), 2000);
-    } catch (error) {
-      console.error('Failed to download file:', error);
-    }
+  // Build the content to download.
+  const buildDownloadContent = () => {
+    const content = assetData.asset_content;
+
+    // Type/Category metadata injection is disabled for now.
+    // const assetType = assetData.asset_type || '';
+    // const assetCategory = assetData.asset_category || '';
+    //
+    // if (assetType || assetCategory) {
+    //   const metadataLines = [];
+    //   if (assetType) {
+    //     metadataLines.push(`- **Type:** ${assetType}`);
+    //   }
+    //   if (assetCategory) {
+    //     metadataLines.push(`- **Category:** ${assetCategory}`);
+    //   }
+    //
+    //   const metadataText = metadataLines.join('\n');
+    //
+    //   // Find Duration line and insert after it
+    //   if (content.includes('Duration:')) {
+    //     const lines = content.split('\n');
+    //     for (let i = 0; i < lines.length; i++) {
+    //       if (lines[i].includes('Duration:')) {
+    //         lines.splice(i + 1, 0, metadataText);
+    //         break;
+    //       }
+    //     }
+    //     content = lines.join('\n');
+    //   } else {
+    //     // If no Duration found, prepend to content
+    //     content = metadataText + '\n\n' + content;
+    //   }
+    // }
+
+    return content;
   };
 
   return (
@@ -136,32 +199,11 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
               <FiCopy size={16} />
               Copy
             </button>
-            <button
-              onClick={handleDownload}
-              style={{
-                background: '#2563eb',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '14px',
-                color: 'white',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#1d4ed8';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#2563eb';
-              }}
-              title="Download as DOCX"
-            >
-              <FiDownload size={16} />
-              Download
-            </button>
+            <DownloadButton
+              courseId={courseId}
+              filename={assetData.asset_name}
+              content={buildDownloadContent}
+            />
             <button
               onClick={onClose}
               style={{
@@ -209,27 +251,6 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
                 ✓ Copied to clipboard!
               </div>
             )}
-
-            {/* Download confirmation message */}
-            {showDownloadMessage && (
-              <div style={{
-                position: 'absolute',
-                top: '-40px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: '#2563eb',
-                color: 'white',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-                zIndex: 1000,
-                animation: 'fadeInOut 2s ease-in-out'
-              }}>
-                ✓ Downloaded successfully!
-              </div>
-            )}
           </div>
         </div>
 
@@ -269,24 +290,29 @@ export default function AssetViewModal({ open, onClose, assetData, courseId }) {
                 }
                 return <h3 style={{fontSize: '16px', fontWeight: 'bold', margin: '12px 0 6px 0', color: '#1f2937'}} {...props}>{children}</h3>;
               },
-              p: (props) => <p style={{margin: '8px 0', color: '#374151'}} {...props} />,
+              p: ({children, ...props}) => <div style={{margin: '8px 0', color: '#374151', lineHeight: '1.6'}} {...props}>{renderFormattedContent(children)}</div>,
               strong: (props) => <strong style={{fontWeight: 'bold', color: '#1f2937'}} {...props} />,
               em: (props) => <em style={{fontStyle: 'italic', color: '#374151'}} {...props} />,
-              code: ({inline, ...props}) => 
-                inline ? 
-                  <code style={{background: '#f3f4f6', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace', fontSize: '13px'}} {...props} /> :
-                  <code style={{background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '13px', display: 'block', margin: '8px 0'}} {...props} />,
+              // react-markdown v10 has no `inline` prop: fenced blocks carry a
+              // language-* class or span multiple lines; anything else is inline.
+              code: ({node, className, children, ...props}) =>
+                !(/language-/.test(className || '') || String(children).includes('\n')) ?
+                  <code className={className} style={{background: '#f3f4f6', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace', fontSize: '13px'}} {...props}>{children}</code> :
+                  <code className={className} style={{background: '#f3f4f6', padding: '8px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '13px', display: 'block', margin: '8px 0', whiteSpace: 'pre', overflowX: 'auto'}} {...props}>{children}</code>,
               ul: (props) => <ul style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
               ol: (props) => <ol style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
-              li: (props) => <li style={{margin: '4px 0', color: '#374151'}} {...props} />,
+              li: ({ordered, ...props}) => <li style={{margin: ordered ? '12px 0' : '4px 0', color: '#374151'}} {...props} />,
               blockquote: (props) => <blockquote style={{borderLeft: '4px solid #2563eb', paddingLeft: '12px', margin: '8px 0', color: '#6b7280', fontStyle: 'italic'}} {...props} />,
               a: ({href, children, ...props}) => <a href={href} target="_blank" rel="noopener noreferrer" style={{color: '#2563eb', textDecoration: 'underline'}} {...props}>{children}</a>,
               table: (props) => <table style={{borderCollapse: 'collapse', width: '100%', margin: '8px 0'}} {...props} />,
-              th: (props) => <th style={{border: '1px solid #d1d5db', padding: '8px', background: '#f9fafb', fontWeight: 'bold'}} {...props} />,
-              td: (props) => <td style={{border: '1px solid #d1d5db', padding: '8px'}} {...props} />
+              th: ({children, ...props}) => <th style={{border: '1px solid #d1d5db', padding: '10px 8px', background: '#f9fafb', fontWeight: 'bold'}} {...props}>{renderFormattedContent(children)}</th>,
+              td: ({children, ...props}) => <td style={{border: '1px solid #d1d5db', padding: '10px 8px', verticalAlign: 'top', lineHeight: '1.5'}} {...props}>{renderFormattedContent(children)}</td>,
+              img: ({src, alt}) => <ResolvedImage src={src} alt={alt} style={{maxWidth: '100%', height: 'auto', display: 'block', margin: '8px auto', borderRadius: '8px', border: '1px solid #eee'}} />,
+              // Sprint Structure timetables keep their activity colour-coding here too.
+              ...(isSprintStructure(assetData.asset_type) ? sprintStructureComponents : {})
             }}
           >
-            {assetData.asset_content}
+            {latexToText(assetData.asset_content)}
           </ReactMarkdown>
         </div>
 

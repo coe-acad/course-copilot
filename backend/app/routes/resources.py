@@ -4,17 +4,26 @@ from typing import List
 import logging
 import os
 import io
-from pathlib import Path
+import base64
 from ..services import openai_service
-from ..services.mongo import get_course, get_resources_by_course_id, create_resource, get_resource_by_course_id_and_resource_name, delete_resource as delete_resource_in_db
-from ..services.openai_service import create_file, connect_file_to_vector_store, discover_resources
+from ..services.mongo import get_course, get_resources_by_course_id, create_resource, get_resource_by_course_id_and_resource_name, delete_resource as delete_resource_in_db, save_resource_image, get_resource_image_by_id, delete_resource_image, save_resource_pdf, get_resource_pdf, delete_resource_pdf
 from ..utils.course_pdf_utils import generate_course_pdf
+from ..utils.pdf_image_extractor import (
+    is_image_filename,
+    resource_image_id,
+)
+from ..utils.docx_text import extract_docx_text
 from ..utils.verify_token import verify_token
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from PyPDF2 import PdfReader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Max size for a PDF uploaded via the direct-to-Mongo button. 15 MB keeps the raw
+# bytes + metadata under MongoDB's 16 MB per-document limit.
+_MAX_PDF_MB = 15
+_MAX_PDF_BYTES = _MAX_PDF_MB * 1024 * 1024
 
 # Inline models
 class ResourceResponse(BaseModel):
@@ -44,6 +53,31 @@ class DiscoverResourcesResponse(BaseModel):
 class DiscoverResourcesRequest(BaseModel):
     query: str
 
+class PerResourceImages(BaseModel):
+    resource_name: str
+    image_count: int
+
+class ExtractImagesResponse(BaseModel):
+    message: str
+    resources_added: int
+    images_extracted: int
+    per_resource: List[PerResourceImages]
+
+def ensure_unique_name(filename: str, used: set) -> str:
+    """Return a resource name not already in ``used``, adding a ``(n)`` suffix on
+    collision. Mutates ``used`` to include the chosen name. Shared by the plain
+    upload and the extract-images endpoints."""
+    base, ext = os.path.splitext(filename or "")
+    if not base:
+        base = "resource"
+    candidate = f"{base}{ext}"
+    n = 1
+    while candidate in used:
+        candidate = f"{base} ({n}){ext}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
 def check_course_exists(course_id: str):
     # check if the course exists
     # if it exists, return True
@@ -53,9 +87,12 @@ def check_course_exists(course_id: str):
         raise HTTPException(status_code=404, detail="Course not found")
     return True
 
-def create_course_description_file(course_id: str, user_id: str = Depends(verify_token)):
-    """
-    Create a course description file using PDF utility and add it to vector store
+def create_course_description_file(course_id: str, user_id: str):
+    """Create the course-description resource, stored entirely in Mongo.
+
+    The description text is the resource content (used for prompt injection at
+    generation time) and the rendered PDF bytes are stored alongside it so the
+    resource can be viewed as a real PDF and sent directly to the model.
     """
     try:
         # Get course information from MongoDB
@@ -63,117 +100,257 @@ def create_course_description_file(course_id: str, user_id: str = Depends(verify
         if not course:
             logger.error(f"Course not found: {course_id}")
             return None
-        
-        # Generate PDF using the utility
+
+        # Generate the PDF using the utility, store its bytes in Mongo, and drop
+        # the local file — Mongo is the only storage.
         pdf_path = generate_course_pdf(course_id)
         if not pdf_path or not os.path.exists(pdf_path):
             logger.error(f"Failed to generate PDF for course {course_id}")
             return None
-        
-        # Get relative path starting from 'local_storage'
-        pdf_relative_path = Path(pdf_path).as_posix().split("local_storage", 1)[-1]
-        pdf_relative_path = "local_storage" + pdf_relative_path
-        
-        #name of the pdf should be the title
         resource_name = os.path.basename(pdf_path)
-
-        # Get course information to extract description text
-        course_name = course.get('name', 'Unknown Course')
-        course_description = course.get('description', 'No description available')
-        
-        # Store the course description text in database (not the PDF binary)
-        create_resource(course_id, resource_name, course_description)
-
-        # Upload the PDF to OpenAI (open as binary stream)
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
+        os.remove(pdf_path)
 
-        file_obj = io.BytesIO(pdf_bytes)
-        file_obj.name = resource_name
+        course_description = course.get('description', 'No description available')
+        create_resource(course_id, resource_name, course_description)
+        try:
+            pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        except Exception:
+            pages = 0
+        save_resource_pdf(course_id, resource_name, pdf_bytes, len(pdf_bytes), pages)
 
-        # file_obj = io.BytesIO(pdf_content)
-        file_obj.name = resource_name  # ✅ Required for OpenAI
-        openai_file_id = create_file(file_obj)
-        
-        # Check if vector store exists, if not create one
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            logger.error(f"No vector_store_id found for course {course_id}")
-            return None
-        
-        # Connect file to vector store
-        batch_id = connect_file_to_vector_store(vector_store_id, openai_file_id)
-        
-        logger.info(f"Created course description PDF for {course_id}: {openai_file_id}")
-        logger.info(f"Connected to vector store {vector_store_id}, batch: {batch_id}")
-        
-        return {
-            "file_id": openai_file_id,
-            "vector_store_id": vector_store_id,
-            "batch_id": batch_id,
-            "pdf_path": pdf_path
-        }
+        logger.info(f"Created course description resource '{resource_name}' for {course_id} in Mongo")
+        return {"resource_name": resource_name}
     except Exception as e:
         logger.error(f"Error creating course description file for {course_id}: {str(e)}")
         return None
 
-# Keep this route, we add the file to the vector store attached 
+# Everything uploaded here is stored in Mongo only — nothing goes to OpenAI.
 @router.post("/courses/{course_id}/resources", response_model=ResourceCreateResponse)
 def upload_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
-        # if course exists, get the vector store id from the course
-        course = get_course(course_id)
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            logger.error(f"No vector_store_id found for course {course_id}")
-            return None
 
         # Build a set of existing resource names for collision handling
         existing_resources = get_resources_by_course_id(course_id) or []
         existing_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
 
-        def ensure_unique_name(filename: str, used: set[str]) -> str:
-            base, ext = os.path.splitext(filename or "")
-            if not base:
-                base = "resource"
-            candidate = f"{base}{ext}"
-            n = 1
-            while candidate in used:
-                candidate = f"{base} ({n}){ext}"
-                n += 1
-            used.add(candidate)
-            return candidate
-
         # Rename duplicates in-place so downstream uses the new name
         for f in files:
             f.filename = ensure_unique_name(f.filename, existing_names)
 
-        # Upload files to vector store (this uses f.filename for the OpenAI file name)
-        openai_service.upload_resources(user_id, course_id, vector_store_id, files)
-
-        # Create resource records with the possibly renamed filenames
         for file in files:
-            # create_resource(course_id, file.filename)
             content = ""
 
-            if file.filename.endswith(".pdf"):
-                pdf_reader = PdfReader(file.file)
-                for page in pdf_reader.pages:
-                    content += page.extract_text() or ""
+            if is_image_filename(file.filename):
+                # Directly-uploaded png/jpeg -> store the bytes (base64) in Mongo so
+                # the image can be used as a figure and rendered later.
+                file.file.seek(0)
+                data = file.file.read()
+                ext = os.path.splitext(file.filename)[1].lower().lstrip(".")
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                create_resource(course_id, file.filename, "")
+                save_resource_image(
+                    course_id, file.filename, resource_image_id(file.filename),
+                    base64.b64encode(data).decode("ascii"), mime, ext,
+                )
+                continue
 
+            if file.filename.endswith(".pdf"):
+                # Store the raw bytes (<= 15 MB) so the real PDF can be viewed and
+                # sent directly to the model, plus the extracted text as a fallback
+                # for oversized files and for prompt injection.
+                file.file.seek(0)
+                data = file.file.read()
+                if data and len(data) <= _MAX_PDF_BYTES:
+                    try:
+                        pages = len(PdfReader(io.BytesIO(data)).pages)
+                    except Exception:
+                        pages = 0
+                    save_resource_pdf(course_id, file.filename, data, len(data), pages)
+                try:
+                    pdf_reader = PdfReader(io.BytesIO(data))
+                    for page in pdf_reader.pages:
+                        content += page.extract_text() or ""
+                except Exception as text_err:
+                    logger.warning(f"Text extraction failed for '{file.filename}': {text_err}")
+            elif file.filename.lower().endswith(".docx"):
+                file.file.seek(0)
+                try:
+                    content = extract_docx_text(file.file.read())
+                except Exception as text_err:
+                    logger.warning(f"Text extraction failed for '{file.filename}': {text_err}")
             else:
+                file.file.seek(0)
                 content = file.file.read().decode("utf-8", errors="ignore")
 
             create_resource(course_id, file.filename, content)
-
 
         return ResourceCreateResponse(message="Resources uploaded successfully")
     except Exception as e:
         logger.error(f"Error uploading resources: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/courses/{course_id}/resources", response_model=ResourceListResponse) 
+@router.post("/courses/{course_id}/resources/extract-images", response_model=ExtractImagesResponse)
+def upload_pdf_image_resources(course_id: str, files: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
+    """Upload PDF / Word / image resources whose bytes are stored in Mongo (not OpenAI).
+
+    - PDFs (<= 15 MB): the real file bytes are stored in Mongo so the document can
+      be viewed as-is and sent DIRECTLY to the model at generation time.
+    - Word (.docx): the extracted text is stored as the resource content.
+    - Images (png/jpeg): bytes stored in Mongo (used as figures and served for view).
+    Nothing here is uploaded to the OpenAI vector store — that stays on the plain
+    POST /resources upload path.
+    """
+    try:
+        check_course_exists(course_id)
+
+        existing_resources = get_resources_by_course_id(course_id) or []
+        used_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
+
+        resources_added = 0
+        total_images = 0
+        skipped: List[str] = []
+        per_resource: List[PerResourceImages] = []
+
+        for file in files:
+            try:
+                file.file.seek(0)
+                data = file.file.read()
+                if not data:
+                    logger.warning(f"[upload] empty file '{file.filename}', skipping")
+                    continue
+
+                name = ensure_unique_name(file.filename, used_names)
+                lower = name.lower()
+
+                if lower.endswith(".pdf"):
+                    # Reject oversized PDFs so the raw bytes fit a single Mongo document.
+                    if len(data) > _MAX_PDF_BYTES:
+                        used_names.discard(name)
+                        skipped.append(f"{name} (over {_MAX_PDF_MB} MB)")
+                        logger.warning(f"[upload] '{name}' exceeds {_MAX_PDF_MB} MB, skipping")
+                        continue
+                    try:
+                        pages = len(PdfReader(io.BytesIO(data)).pages)
+                    except Exception as pg_err:
+                        pages = 0
+                        logger.warning(f"[upload] page count failed for '{name}': {pg_err}")
+                    # Claim the name first (create_resource never overwrites), so the
+                    # upserted bytes can't clobber another resource's PDF. If storing
+                    # the bytes fails, roll the entry back so no byte-less resource is
+                    # left behind that the model can't see.
+                    if not create_resource(course_id, name, ""):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    try:
+                        save_resource_pdf(course_id, name, data, len(data), pages)
+                    except Exception:
+                        delete_resource_in_db(course_id, name)
+                        delete_resource_pdf(course_id, name)
+                        raise
+                    resources_added += 1
+                    per_resource.append(PerResourceImages(resource_name=name, image_count=0))
+                elif is_image_filename(name):
+                    ext = os.path.splitext(name)[1].lower().lstrip(".")
+                    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                    if not create_resource(course_id, name, ""):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    try:
+                        save_resource_image(
+                            course_id, name, resource_image_id(name),
+                            base64.b64encode(data).decode("ascii"), mime, ext,
+                        )
+                    except Exception:
+                        delete_resource_in_db(course_id, name)
+                        delete_resource_image(course_id, name)
+                        raise
+                    resources_added += 1
+                    total_images += 1
+                    per_resource.append(PerResourceImages(resource_name=name, image_count=1))
+                elif lower.endswith(".docx"):
+                    try:
+                        text = extract_docx_text(data)
+                    except Exception as docx_err:
+                        used_names.discard(name)
+                        skipped.append(f"{name} (could not read Word file)")
+                        logger.warning(f"[upload] docx extraction failed for '{name}': {docx_err}")
+                        continue
+                    if not text.strip():
+                        used_names.discard(name)
+                        skipped.append(f"{name} (no text found)")
+                        continue
+                    if not create_resource(course_id, name, text):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    resources_added += 1
+                    per_resource.append(PerResourceImages(resource_name=name, image_count=0))
+                else:
+                    # Unexpected type for this button — store as a plain text resource.
+                    if not create_resource(course_id, name, data.decode("utf-8", errors="ignore")):
+                        skipped.append(f"{name} (name already in use, please retry)")
+                        continue
+                    resources_added += 1
+                    per_resource.append(PerResourceImages(resource_name=name, image_count=0))
+
+            except Exception as file_err:
+                logger.error(f"[upload] failed for '{file.filename}': {file_err}")
+                skipped.append(f"{file.filename} (save failed)")
+                continue
+
+        message = f"Uploaded {resources_added} resource(s); {total_images} image(s)"
+        if skipped:
+            message += f"; skipped {len(skipped)}: " + ", ".join(skipped)
+        return ExtractImagesResponse(
+            message=message,
+            resources_added=resources_added,
+            images_extracted=total_images,
+            per_resource=per_resource,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading pdf/image resources: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/courses/{course_id}/resources/{resource_name}/pdf")
+def get_resource_pdf_file(course_id: str, resource_name: str):
+    """Serve a stored PDF resource's real bytes for in-browser viewing.
+
+    Public (no verify_token): an <iframe>/<embed> PDF viewer can't attach a bearer
+    token. Course ids are unguessable and these are course files, not secrets.
+    """
+    rec = get_resource_pdf(course_id, resource_name)
+    if not rec or not rec.get("pdf_bytes"):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    return Response(
+        content=bytes(rec["pdf_bytes"]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{resource_name}"'},
+    )
+
+@router.get("/courses/{course_id}/images/{image_id}")
+def get_course_image(course_id: str, image_id: str):
+    """Serve an extracted (or directly-uploaded) resource image by id.
+
+    Intentionally PUBLIC (no verify_token): browser <img> tags and the PDF/DOCX
+    exporters fetch this URL with no bearer token. Course ids are unguessable
+    Mongo ids and these are course figures, not secrets.
+    """
+    # 1) Directly-uploaded image stored in Mongo (png/jpeg resources).
+    mongo_img = get_resource_image_by_id(course_id, image_id)
+    if mongo_img and mongo_img.get("image_base64"):
+        try:
+            data = base64.b64decode(mongo_img["image_base64"])
+        except Exception:
+            raise HTTPException(status_code=500, detail="Corrupt image data")
+        return Response(content=data, media_type=mongo_img.get("image_mime") or "image/png")
+
+    raise HTTPException(status_code=404, detail="Image not found")
+
+@router.get("/courses/{course_id}/resources", response_model=ResourceListResponse)
 def list_resources(course_id: str, user_id: str = Depends(verify_token)):
     try:
         check_course_exists(course_id)
@@ -192,6 +369,8 @@ def delete_resource(course_id: str, resource_name: str, user_id: str = Depends(v
     try:    
         check_course_exists(course_id)
         delete_resource_in_db(course_id, resource_name)
+        delete_resource_image(course_id, resource_name)
+        delete_resource_pdf(course_id, resource_name)
         return DeleteResponse(message="Resource deleted successfully")
     except Exception as e:
         logger.error(f"Error deleting resource: {str(e)}")
@@ -248,20 +427,14 @@ def add_discovered_resources(
 ):
     """
     Add selected discovered resources to the knowledge base.
-    Creates a text file for each resource containing the URL and adds it to the vector store.
+    Stores each resource's title, URL and description as Mongo resource content.
     """
     try:
         check_course_exists(course_id)
-        
+
         if not request.resources or len(request.resources) == 0:
             raise HTTPException(status_code=400, detail="No resources provided")
-        
-        # Get course and vector store
-        course = get_course(course_id)
-        vector_store_id = course.get('vector_store_id')
-        if not vector_store_id:
-            raise HTTPException(status_code=404, detail="Vector store not found for this course")
-        
+
         # Get existing resources to avoid duplicates
         existing_resources = get_resources_by_course_id(course_id) or []
         existing_names = set([r.get("resource_name") for r in existing_resources if r.get("resource_name")])
@@ -283,22 +456,11 @@ def add_discovered_resources(
                 
                 existing_names.add(resource_name)
                 
-                # Create text content with URL and description
+                # Store the link's text as the resource content in Mongo so
+                # generation can inject it like any other knowledge-base entry.
                 content = f"{resource.title}\n\n{resource.url}\n\n{resource.description}"
-                
-                # Create a text file in memory
-                file_obj = io.BytesIO(content.encode('utf-8'))
-                file_obj.name = f"{resource_name}.txt"
-                
-                # Upload to OpenAI
-                openai_file_id = create_file(file_obj)
-                
-                # Connect to vector store
-                connect_file_to_vector_store(vector_store_id, openai_file_id)
-                
-                # Create resource record in database
-                create_resource(course_id, resource_name)
-                
+                create_resource(course_id, resource_name, content)
+
                 added_count += 1
                 logger.info(f"Added discovered resource: {resource_name}")
                 

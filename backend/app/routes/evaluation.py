@@ -4,15 +4,17 @@ from fastapi import Form, File, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
 import logging
-import json
 from uuid import uuid4
 import shutil
 import asyncio
+import threading
+import time
 from datetime import datetime
 from flask import request
 import os
 from pathlib import Path
 import csv
+import re
 import io
 from ..utils.verify_token import verify_token
 from app.services.mongo import (
@@ -30,14 +32,24 @@ from app.services.mongo import (
     update_ai_feedback,
     get_user_display_name,
     get_asset_by_course_id_and_asset_name,
+    get_asset_by_evaluation_id,
+    get_course,
 )
 from app.services.openai_service import evaluate_files_all_in_one
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.eval_mail import send_eval_completion_email, send_eval_error_email
 from app.utils.extraction_answersheet import extract_text_tables, split_into_qas
+from app.utils.extraction_answersheet_mettl import (
+    attach_mark_scheme_numbers, to_mark_scheme_numbering, restore_answer_sheet_order
+)
 from app.utils.extraction_markscheme import extract_text_from_mark_scheme
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Grading batches: how many OpenAI calls run at once, and how often a failed batch is retried
+MAX_PARALLEL_BATCHES = 5
+BATCH_MAX_ATTEMPTS = 2           # first try + one retry
+BATCH_RETRY_DELAYS = [15]        # seconds to wait before the retry
 
 class UploadFilesRequest(BaseModel):
     user_id: str
@@ -193,18 +205,36 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         # Extract answer sheets
         logger.info(f"Extracting {len(answer_sheet_paths)} answer sheets")
         extracted_answer_sheets = []
+        skipped_sheets = []  # sheets that could not be read, reported with the result
         for i, answer_sheet_path in enumerate(answer_sheet_paths):
             try:
                 pages = await asyncio.to_thread(extract_text_tables, answer_sheet_path)
+
+                # [EXTRACTION CHECK] Log the raw extracted text per page. Uses the uncropped line text:
+                # page 'text' has table regions cut out, and Mettl reports draw every card as a table.
+                raw_text_parts = []
+                for p_idx, p in enumerate(pages):
+                    page_text = "\n".join(ln.get("text", "") for ln in p.get("lines", []))
+                    raw_text_parts.append(f"--- Page {p_idx + 1} ---\n{page_text}")
+                logger.info(
+                    f"\n{'=' * 60}\n[EXTRACTION CHECK] Answer sheet {i+1} RAW TEXT ({answer_sheet_path}):\n"
+                    + "\n".join(raw_text_parts)
+                    + f"\n{'=' * 60}"
+                )
+
                 extraction_result = await asyncio.to_thread(split_into_qas, pages, pdf_path=answer_sheet_path)
                 
                 extracted_email = extraction_result.get("email", None)
                 qas_list = extraction_result.get("answers", [])
+                # Find each question's mark scheme number by question text (question order can differ
+                # from the mark scheme); falls back to sheet numbering when the match isn't confident.
+                if any("question_text" in a for a in qas_list):
+                    qas_list = attach_mark_scheme_numbers(qas_list, extracted_mark_scheme.get("mark_scheme", []))
                 
                 answer_sheet_data = {
                     "file_id": f"answer_sheet_{i+1}",
                     "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
-                    "student_name": answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}",
+                    "student_name": extraction_result.get("student_name") or (answer_sheet_filenames[i].replace('.pdf', '').replace('_', ' ') if i < len(answer_sheet_filenames) else f"Student {i+1}"),
                     "email": extracted_email,
                     "answers": qas_list
                 }
@@ -212,9 +242,31 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
                 logger.info(f"Answer sheet {i+1} extracted: {answer_sheet_data}")
             except Exception as extraction_error:
                 logger.error(f"Failed to extract answer sheet {i+1}: {str(extraction_error)}")
+                skipped_sheets.append({
+                    "file_id": f"answer_sheet_{i+1}",
+                    "filename": answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf",
+                    "error": str(extraction_error),
+                })
                 continue
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
+
+        # A question the extractor missed is never sent for grading, so flag sheets whose question
+        # count differs from the mark scheme (kept apart from the sheet data sent to the model)
+        sheet_warnings = {}
+        for sheet in extracted_answer_sheets:
+            found = len(sheet.get("answers", []))
+            if found == question_count:
+                continue
+            if found < question_count:
+                numbers = {int(a["question_number"]) for a in sheet["answers"] if str(a.get("question_number")).isdigit()}
+                gaps = [n for n in range(1, max(numbers, default=0) + 1) if n not in numbers]
+                missing = f" (Q{', Q'.join(map(str, gaps))} missing)" if gaps else ""
+                message = f"{found} of {question_count} questions found{missing}; please verify"
+            else:
+                message = f"{found} questions found but the mark scheme has {question_count}; please verify"
+            logger.warning(f"{sheet.get('filename')}: {message}")
+            sheet_warnings.setdefault(sheet["file_id"], []).append(message)
 
         # ERROR CHECK: Stop if no answer sheets were successfully extracted
         if not extracted_answer_sheets:
@@ -225,6 +277,10 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             logger.error(error_msg)
             raise Exception(error_msg)
 
+        # Evaluation request uses mark scheme numbering so each answer is graded against the right
+        # question; results are put back into answer sheet order afterwards.
+        eval_answer_sheets = [to_mark_scheme_numbering(sheet) for sheet in extracted_answer_sheets]
+
         # Determine batch size based on question count
         total_sheets = len(extracted_answer_sheets)
         BATCH_SIZE = 5 if question_count < 15 else 3
@@ -232,19 +288,52 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         
         logger.info(f"Starting evaluation: {total_sheets} answer sheets, {total_batches} batches (size: {BATCH_SIZE})")
         
+        # Limit simultaneous OpenAI calls so large uploads don't hit rate limits all at once
+        batch_slots = threading.BoundedSemaphore(MAX_PARALLEL_BATCHES)
+
         # Helper function to process a single batch
         def process_batch(batch_num: int, batch_sheets: list):
-            """Process a single batch and return results"""
+            """Process a single batch and return results, retrying failed or incomplete responses"""
             filenames = [sheet.get('filename', 'Unknown') for sheet in batch_sheets]
-            logger.info(f"→ Batch {batch_num} of {total_batches} started: {filenames}")
-            
+            expected_ids = sorted(sheet.get("file_id") for sheet in batch_sheets)
+            # Every question sent for a sheet must come back graded exactly once, otherwise a dropped
+            # question would quietly shrink both the score and the maximum
+            expected_questions = {
+                sheet.get("file_id"): sorted(str(a.get("question_number")).strip() for a in sheet.get("answers", []))
+                for sheet in batch_sheets
+            }
             batch_data = {"answer_sheets": batch_sheets}
-            # Note: evaluate_files_all_in_one is synchronous, so it fits in this threaded function
-            batch_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, batch_data)
-            
-            logger.info(f"✓ Batch {batch_num} of {total_batches} completed")
-            
-            return batch_num, batch_result.get("students", [])
+
+            with batch_slots:
+                for attempt in range(1, BATCH_MAX_ATTEMPTS + 1):
+                    logger.info(f"→ Batch {batch_num} of {total_batches} started (attempt {attempt}): {filenames}")
+                    try:
+                        # Note: evaluate_files_all_in_one is synchronous, so it fits in this threaded function
+                        batch_result = evaluate_files_all_in_one(evaluation_id, user_id, extracted_mark_scheme, batch_data)
+                        students = batch_result.get("students", [])
+                        returned_ids = sorted(s.get("file_id") for s in students)
+                        if returned_ids != expected_ids:
+                            raise ValueError(f"expected students {expected_ids}, got {returned_ids}")
+                        for s in students:
+                            returned_questions = sorted(str(a.get("question_number")).strip() for a in s.get("answers", []))
+                            expected = expected_questions[s.get("file_id")]
+                            if returned_questions != expected:
+                                missing = sorted(set(expected) - set(returned_questions))
+                                extra = sorted(set(returned_questions) - set(expected))
+                                raise ValueError(
+                                    f"{s.get('file_id')}: graded questions don't match the answer sheet "
+                                    f"(missing {missing}, unexpected {extra}, got {len(returned_questions)} of {len(expected)})"
+                                )
+                        logger.info(f"✓ Batch {batch_num} of {total_batches} completed")
+                        return batch_num, students
+                    except Exception as batch_error:
+                        detail = getattr(batch_error, "detail", None) or str(batch_error)
+                        if attempt == BATCH_MAX_ATTEMPTS:
+                            logger.error(f"✗ Batch {batch_num} failed after {attempt} attempts: {detail}")
+                            raise
+                        wait = BATCH_RETRY_DELAYS[attempt - 1]
+                        logger.warning(f"Batch {batch_num} attempt {attempt} failed ({detail}); retrying in {wait}s")
+                        time.sleep(wait)
         
         # Process batches asynchronously using asyncio.gather + to_thread
         # This replaces the ThreadPoolExecutor while still running purely synchronous separate tasks in threads
@@ -255,7 +344,7 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info("BATCH ASSIGNMENT:")
         for batch_start in range(0, total_sheets, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, total_sheets)
-            batch_sheets = extracted_answer_sheets[batch_start:batch_end]
+            batch_sheets = eval_answer_sheets[batch_start:batch_end]
             batch_num = (batch_start // BATCH_SIZE) + 1
             
             filenames = [sheet.get('filename', 'Unknown') for sheet in batch_sheets]
@@ -268,21 +357,30 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             batch_tasks.append(task)
             
         logger.info("=" * 60)
-        logger.info(f"Launching {len(batch_tasks)} parallel batch tasks")
-        
+        logger.info(f"Launching {len(batch_tasks)} batch tasks ({MAX_PARALLEL_BATCHES} at a time)")
+
         # Wait for all batches to complete
         batch_results_list = await asyncio.gather(*batch_tasks, return_exceptions=True)
-        
-        # Process results
+
+        # Process results. A batch that still fails after its retries doesn't throw away the other
+        # batches: its students are reported as skipped and the rest are saved.
         batch_results = {}
-        for result in batch_results_list:
+        for b_idx, result in enumerate(batch_results_list):
             if isinstance(result, Exception):
-                logger.error(f"Batch execution failed with error: {str(result)}")
-                # We can choose to raise or continue. Raising seems safer to flag failure.
-                raise result
+                error_text = getattr(result, "detail", None) or str(result)
+                logger.error(f"Batch {b_idx + 1} execution failed with error: {error_text}")
+                for sheet in eval_answer_sheets[b_idx * BATCH_SIZE:(b_idx + 1) * BATCH_SIZE]:
+                    skipped_sheets.append({
+                        "file_id": sheet.get("file_id"),
+                        "filename": sheet.get("filename"),
+                        "error": f"Grading failed: {error_text}",
+                    })
             else:
                 b_num, b_students = result
                 batch_results[b_num] = b_students
+
+        if not batch_results:
+            raise Exception(f"All {len(batch_tasks)} grading batches failed. Last error: {skipped_sheets[-1]['error']}")
         
         # Reconstruct students in correct order by batch number
         all_students = []
@@ -293,17 +391,77 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         logger.info(f"ALL BATCHES COMPLETED: {sorted(batch_results.keys())} | Total students: {len(all_students)}")
         logger.info("=" * 60)
         
-        # Verify all students were evaluated
-        if len(all_students) != len(extracted_answer_sheets):
-            logger.error(f"Student count mismatch: expected {len(extracted_answer_sheets)}, got {len(all_students)}")
-            raise HTTPException(status_code=500, detail="Evaluation incomplete: student count mismatch")
-        
-        logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
-        
+        if skipped_sheets:
+            logger.warning(
+                f"{len(all_students)} students evaluated, {len(skipped_sheets)} answer sheet(s) skipped: "
+                + ", ".join(s.get("filename") or s.get("file_id") for s in skipped_sheets)
+            )
+        else:
+            logger.info(f"All batches completed: {len(all_students)} students evaluated successfully")
+
+        # Put each student's results back into their answer sheet's numbering and order, whatever order
+        # the mark scheme uses, with the sheet's section labels, question text and question images.
+        sheets_by_file_id = {sheet.get("file_id"): sheet for sheet in extracted_answer_sheets}
+        for idx, student in enumerate(all_students):
+            sheet = sheets_by_file_id.get(student.get("file_id"))
+            if sheet:
+                all_students[idx] = restore_answer_sheet_order(student, sheet)
+                all_students[idx]["filename"] = sheet.get("filename")
+                unmapped = all_students[idx].pop("unmapped_answers", 0)
+                if unmapped:
+                    sheet_warnings.setdefault(student.get("file_id"), []).append(
+                        f"{unmapped} graded answer(s) could not be matched to a question on the sheet; please verify"
+                    )
+
+        # The model no longer echoes question text: answers whose sheet had none (image-only sheets, or an
+        # answer that couldn't be mapped back to its sheet question) get the mark scheme's question text
+        ms_question_text = {
+            str(q.get("questionnumber")): re.sub(r"^\s*Q\s*\d+\s*[.:)]\s*", "", q.get("question-text") or "").strip()
+            for q in extracted_mark_scheme.get("mark_scheme", [])
+        }
+        for student in all_students:
+            for answer in student.get("answers", []):
+                if not answer.get("question_text"):
+                    ms_number = answer.get("mark_scheme_question_number") or answer.get("question_number")
+                    answer["question_text"] = ms_question_text.get(str(ms_number)) or None
+                answer.setdefault("student_answer", None)
+
+        # One entry per uploaded sheet, in upload order: the UI, reports and CSV pair students with
+        # answer_sheet_filenames by position, so a skipped sheet keeps its slot as a placeholder.
+        students_by_file_id = {s.get("file_id"): s for s in all_students}
+        skipped_by_file_id = {s["file_id"]: s for s in skipped_sheets}
+        ordered_students = []
+        for i in range(len(answer_sheet_paths)):
+            file_id = f"answer_sheet_{i+1}"
+            if file_id in students_by_file_id:
+                ordered_students.append(students_by_file_id[file_id])
+                continue
+            skipped = skipped_by_file_id.get(file_id, {})
+            ordered_students.append({
+                "file_id": file_id,
+                "filename": skipped.get("filename") or (answer_sheet_filenames[i] if i < len(answer_sheet_filenames) else f"answer_sheet_{i+1}.pdf"),
+                "skipped": True,
+                "error": skipped.get("error", "Answer sheet was not evaluated"),
+                "answers": [],
+                "total_score": 0,
+                "max_total_score": 0,
+            })
+        all_students = ordered_students
+
+        # Graded sheets that may be incomplete: shown in the UI banner and on the student's row
+        warnings = []
+        for student in all_students:
+            messages = sheet_warnings.get(student["file_id"])
+            if messages:
+                student["warnings"] = messages
+                warnings.extend({"file_id": student["file_id"], "filename": student.get("filename"), "message": m} for m in messages)
+
         # Create final evaluation result
         evaluation_result = {
             "evaluation_id": evaluation_id,
-            "students": all_students
+            "students": all_students,
+            "skipped_sheets": skipped_sheets,
+            "warnings": warnings
         }
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
@@ -394,9 +552,10 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         except Exception as email_error:
             logger.error(f"Failed to send error email: {str(email_error)}")
 
-        # Update evaluation status to failed
+        # Update evaluation status to failed, keeping the error so the frontend
+        # can tell the user why the process stopped.
         try:
-            await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed"})
+            await asyncio.to_thread(update_evaluation, evaluation_id, {"status": "failed", "error_message": str(e)})
         except Exception as status_error:
             logger.error(f"Failed to update evaluation status: {str(status_error)}")
 
@@ -514,6 +673,7 @@ def check_evaluation(evaluation_id: str, user_id: str = Depends(verify_token)):
             return {
                 "status": "failed",
                 "message": "Evaluation processing failed. Please try again or contact support.",
+                "error": evaluation.get("error_message") or "",
                 "answer_sheet_filenames": evaluation.get("answer_sheet_filenames", [])
             }
         
@@ -587,6 +747,9 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
         logger.error(f"Error saving evaluation {evaluation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error saving evaluation: {str(e)}")
 
+def _has_section(answer):
+    return answer.get("section") is not None and answer.get("section_question_number") is not None
+
 def format_student_report(evaluation, student_index: int):
     """Format evaluation data into a readable report for a single student"""
     result = evaluation["evaluation_result"]
@@ -615,8 +778,15 @@ def format_student_report(evaluation, student_index: int):
     report += f"**Evaluation Date:** {datetime.now().strftime('%d %B %Y')}\n\n"
     
     answers = student.get('answers', [])
+    current_section = None
     for j, answer in enumerate(answers, 1):
-        report += f"## Question {j}\n"
+        if _has_section(answer):
+            if answer["section"] != current_section:
+                current_section = answer["section"]
+                report += f"# Section {current_section}\n\n"
+            report += f"## Question {answer['section_question_number']}\n"
+        else:
+            report += f"## Question {j}\n"
         report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
         report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
         report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
@@ -632,15 +802,19 @@ def format_evaluation_csv(evaluation):
     
     # Determine the maximum number of questions across all students
     max_questions = 0
+    longest_answers = []
     for student in students:
         answers = student.get('answers', [])
         if len(answers) > max_questions:
             max_questions = len(answers)
+            longest_answers = answers
     
-    # Build CSV header
+    # Build CSV header (section-wise labels like "S2_Q1" for Mettl sheets)
     header = ["email"]
     for i in range(1, max_questions + 1):
-        header.extend([f"Q{i}_score", f"Q{i}_feedback"])
+        answer = longest_answers[i - 1]
+        label = f"S{answer['section']}_Q{answer['section_question_number']}" if _has_section(answer) else f"Q{i}"
+        header.extend([f"{label}_score", f"{label}_feedback"])
     header.extend(["total_marks", "max_score", "overall_feedback"])
     
     # Build CSV rows
@@ -724,6 +898,10 @@ def get_student_report(evaluation_id: str, student_index: int, user_id: str = De
         logger.error(f"Error getting student report for {evaluation_id}, student {student_index}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting student report: {str(e)}")
 
+def _filename_part(value) -> str:
+    """Make a name safe for a download filename: letters, digits, '-' kept; everything else becomes '_'."""
+    return re.sub(r"[^A-Za-z0-9-]+", "_", str(value or "")).strip("_")
+
 @router.get("/evaluation/report/{evaluation_id}/csv")
 def download_evaluation_csv(evaluation_id: str, user_id: str = Depends(verify_token)):
     """Download evaluation report as CSV file"""
@@ -740,10 +918,13 @@ def download_evaluation_csv(evaluation_id: str, user_id: str = Depends(verify_to
         # Create a streaming response with CSV content
         output = io.BytesIO(csv_content.encode('utf-8'))
         
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"evaluation_report_{evaluation_id[:8]}_{timestamp}.csv"
-        
+        # Filename: evaluation_results_<course name>_<evaluation card name>.csv
+        course = get_course(evaluation.get("course_id")) or {}
+        asset = get_asset_by_evaluation_id(evaluation_id) or {}
+        course_part = _filename_part(course.get("name")) or "course"
+        card_part = _filename_part(asset.get("asset_name")) or evaluation_id[:8]
+        filename = f"evaluation_results_{course_part}_{card_part}.csv"
+
         return StreamingResponse(
             io.BytesIO(csv_content.encode('utf-8')),
             media_type="text/csv",

@@ -150,7 +150,7 @@ export default function CourseModal({
           {error && <div style={{ color: "#e11d48", marginBottom: 10, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
             <button onClick={onClose} style={{ padding: "9px 22px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 15, color: '#222', fontWeight: 500, transition: 'border 0.18s, background 0.18s', cursor: 'pointer' }}>Close</button>
-            <button onClick={() => { if (!loading && !clicked) { setClicked(true); onSubmit(); } }} disabled={!courseName.trim() || !courseDesc.trim() || loading || clicked}
+            <button onClick={async () => { if (!loading && !clicked) { setClicked(true); try { await onSubmit(); } finally { setClicked(false); } } }} disabled={!courseName.trim() || !courseDesc.trim() || loading || clicked}
               style={{
                 padding: "9px 22px",
                 borderRadius: 8,

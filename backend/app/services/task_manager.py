@@ -24,6 +24,9 @@ class Task:
         self.status = TaskStatus.PENDING
         self.result = None
         self.error = None
+        # Text accumulated so far while the model is still streaming. Clients can
+        # poll it to render the answer as it is produced; `result` is authoritative.
+        self.partial = None
         self.metadata = metadata or {}
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
@@ -36,6 +39,7 @@ class Task:
             "task_type": self.task_type,
             "status": self.status.value,
             "result": self.result,
+            "partial": self.partial,
             "error": self.error,
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -108,6 +112,15 @@ class TaskManager:
             
             logger.info(f"Task {task_id} status updated to {status.value}")
     
+    def set_partial(self, task_id: str, text: str):
+        """Store the text streamed so far for a running task (no status change, no log spam)."""
+        with self._lock:
+            task = self.tasks.get(task_id)
+            if not task or task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                return
+            task.partial = text
+            task.updated_at = datetime.now()
+
     def mark_processing(self, task_id: str):
         """Mark task as processing"""
         self.update_task_status(task_id, TaskStatus.PROCESSING)
