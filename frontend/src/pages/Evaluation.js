@@ -1310,17 +1310,33 @@ export default function Evaluation() {
             </div>
           )}
 
-          {/* Sheets that were uploaded but could not be read or graded */}
-          {evaluationResult?.evaluation_result?.skipped_sheets?.length > 0 && (
+          {/* Sheets that could not be read or graded, and graded sheets that may be incomplete */}
+          {(evaluationResult?.evaluation_result?.skipped_sheets?.length > 0 || evaluationResult?.evaluation_result?.warnings?.length > 0) && (
             <div style={{ marginBottom: 20, padding: '14px 18px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a' }}>
-              <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 6 }}>
-                {evaluationResult.evaluation_result.skipped_sheets.length} answer sheet(s) were not evaluated
-              </div>
-              {evaluationResult.evaluation_result.skipped_sheets.map(s => (
-                <div key={s.file_id} style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6 }}>
-                  <strong>{s.filename || s.file_id}</strong>: {s.error}
-                </div>
-              ))}
+              {evaluationResult.evaluation_result.skipped_sheets?.length > 0 && (
+                <>
+                  <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 6 }}>
+                    {evaluationResult.evaluation_result.skipped_sheets.length} answer sheet(s) were not evaluated
+                  </div>
+                  {evaluationResult.evaluation_result.skipped_sheets.map(s => (
+                    <div key={s.file_id} style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6 }}>
+                      <strong>{s.filename || s.file_id}</strong>: {s.error}
+                    </div>
+                  ))}
+                </>
+              )}
+              {evaluationResult.evaluation_result.warnings?.length > 0 && (
+                <>
+                  <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 6, marginTop: evaluationResult.evaluation_result.skipped_sheets?.length > 0 ? 12 : 0 }}>
+                    {new Set(evaluationResult.evaluation_result.warnings.map(w => w.file_id)).size} answer sheet(s) were graded but may be incomplete
+                  </div>
+                  {evaluationResult.evaluation_result.warnings.map((w, i) => (
+                    <div key={`${w.file_id}-${i}`} style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6 }}>
+                      <strong>{w.filename || w.file_id}</strong>: {w.message}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
@@ -1372,6 +1388,7 @@ export default function Evaluation() {
               const pct = student && student.max_total_score ? student.total_score / student.max_total_score : null;
               const passed = pct !== null && pct >= PASS_MARK;
               const isModified = student?.status === 'modified';
+              const warning = !isSkipped && student?.warnings?.length ? student.warnings.join('; ') : null;
               return (
                 <div
                   key={index}
@@ -1402,10 +1419,10 @@ export default function Evaluation() {
                         {file.name}
                       </div>
                       <div
-                        style={{ fontSize: 12, marginTop: 2, color: evaluationError || isSkipped ? '#dc2626' : evaluationResult ? '#2563eb' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={isSkipped ? student.error : undefined}
+                        style={{ fontSize: 12, marginTop: 2, color: evaluationError || isSkipped ? '#dc2626' : warning ? '#b45309' : evaluationResult ? '#2563eb' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={isSkipped ? student.error : warning || undefined}
                       >
-                        {evaluationError ? 'Not evaluated' : isSkipped ? `Not evaluated: ${student.error || 'could not be read'}` : evaluationResult ? 'Click to review' : 'Evaluating...'}
+                        {evaluationError ? 'Not evaluated' : isSkipped ? `Not evaluated: ${student.error || 'could not be read'}` : warning ? `⚠ ${warning} · Click to review` : evaluationResult ? 'Click to review' : 'Evaluating...'}
                       </div>
                     </div>
                   </div>

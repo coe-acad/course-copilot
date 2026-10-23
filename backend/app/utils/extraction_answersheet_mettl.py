@@ -709,17 +709,13 @@ def restore_answer_sheet_order(student, sheet):
             new_ans["section_question_number"] = src.get("section_question_number")
         if src.get(MS_NUMBER_KEY):
             new_ans[MS_NUMBER_KEY] = src.get(MS_NUMBER_KEY)
+        # The model returns only marks and feedback; question and answer come from the sheet itself
+        # (sheets without question text get the mark scheme's in the evaluation route)
         if src.get("question_text"):
-            # Show the question exactly as the student saw it, not the model's echo of it
             new_ans["question_text"] = src["question_text"]
-        elif src.get(MS_NUMBER_KEY) and isinstance(new_ans.get("question_text"), str):
-            # Model echoed the mark scheme text ("Q5. ..."); drop that number so it doesn't clash with the sheet's
-            new_ans["question_text"] = re.sub(r"^\s*Q\s*\d+\s*[.:)]\s*", "", new_ans["question_text"])
         if src.get("question_images"):
             new_ans["question_images"] = src["question_images"]
-        if "student_answer" in src:
-            # The extracted answer, not the model's echo of it (keeps code blocks and spacing intact)
-            new_ans["student_answer"] = src["student_answer"]
+        new_ans["student_answer"] = src.get("student_answer")
         restored.append(new_ans)
 
     if unmatched:
@@ -728,4 +724,7 @@ def restore_answer_sheet_order(student, sheet):
             "back to the answer sheet; appended at the end"
         )
     restored.sort(key=lambda a: int(a["question_number"]) if str(a.get("question_number")).isdigit() else 0)
-    return {**student, "answers": restored + unmatched}
+    result = {**student, "answers": restored + unmatched}
+    if unmatched:
+        result["unmapped_answers"] = len(unmatched)
+    return result

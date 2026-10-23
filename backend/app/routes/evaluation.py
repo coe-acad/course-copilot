@@ -252,6 +252,23 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
         
         logger.info(f"Successfully extracted {len(extracted_answer_sheets)}/{len(answer_sheet_paths)} answer sheets")
 
+        # A question the extractor missed is never sent for grading, so flag sheets whose question
+        # count differs from the mark scheme (kept apart from the sheet data sent to the model)
+        sheet_warnings = {}
+        for sheet in extracted_answer_sheets:
+            found = len(sheet.get("answers", []))
+            if found == question_count:
+                continue
+            if found < question_count:
+                numbers = {int(a["question_number"]) for a in sheet["answers"] if str(a.get("question_number")).isdigit()}
+                gaps = [n for n in range(1, max(numbers, default=0) + 1) if n not in numbers]
+                missing = f" (Q{', Q'.join(map(str, gaps))} missing)" if gaps else ""
+                message = f"{found} of {question_count} questions found{missing}; please verify"
+            else:
+                message = f"{found} questions found but the mark scheme has {question_count}; please verify"
+            logger.warning(f"{sheet.get('filename')}: {message}")
+            sheet_warnings.setdefault(sheet["file_id"], []).append(message)
+
         # ERROR CHECK: Stop if no answer sheets were successfully extracted
         if not extracted_answer_sheets:
             error_msg = (
@@ -398,6 +415,24 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             if sheet:
                 all_students[idx] = restore_answer_sheet_order(student, sheet)
                 all_students[idx]["filename"] = sheet.get("filename")
+                unmapped = all_students[idx].pop("unmapped_answers", 0)
+                if unmapped:
+                    sheet_warnings.setdefault(student.get("file_id"), []).append(
+                        f"{unmapped} graded answer(s) could not be matched to a question on the sheet; please verify"
+                    )
+
+        # The model no longer echoes question text: answers whose sheet had none (image-only sheets, or an
+        # answer that couldn't be mapped back to its sheet question) get the mark scheme's question text
+        ms_question_text = {
+            str(q.get("questionnumber")): re.sub(r"^\s*Q\s*\d+\s*[.:)]\s*", "", q.get("question-text") or "").strip()
+            for q in extracted_mark_scheme.get("mark_scheme", [])
+        }
+        for student in all_students:
+            for answer in student.get("answers", []):
+                if not answer.get("question_text"):
+                    ms_number = answer.get("mark_scheme_question_number") or answer.get("question_number")
+                    answer["question_text"] = ms_question_text.get(str(ms_number)) or None
+                answer.setdefault("student_answer", None)
 
         # One entry per uploaded sheet, in upload order: the UI, reports and CSV pair students with
         # answer_sheet_filenames by position, so a skipped sheet keeps its slot as a placeholder.
@@ -421,11 +456,20 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             })
         all_students = ordered_students
 
+        # Graded sheets that may be incomplete: shown in the UI banner and on the student's row
+        warnings = []
+        for student in all_students:
+            messages = sheet_warnings.get(student["file_id"])
+            if messages:
+                student["warnings"] = messages
+                warnings.extend({"file_id": student["file_id"], "filename": student.get("filename"), "message": m} for m in messages)
+
         # Create final evaluation result
         evaluation_result = {
             "evaluation_id": evaluation_id,
             "students": all_students,
-            "skipped_sheets": skipped_sheets
+            "skipped_sheets": skipped_sheets,
+            "warnings": warnings
         }
         # Verify and recalculate scores for each student
         for student in evaluation_result.get("students", []):
