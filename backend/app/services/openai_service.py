@@ -180,9 +180,17 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
 
     # Validate question numbers consistency
     _validate_question_numbers(extracted_mark_scheme, answer_sheets_list)
-    # Prepare evaluation payload
+    # Prepare evaluation payload. Mark schemes without an answer template section put the expected
+    # answer in the marking scheme, so the empty answertemplate field is left out.
+    mark_scheme_for_model = {
+        **extracted_mark_scheme,
+        "mark_scheme": [
+            {k: v for k, v in q.items() if not (k == "answertemplate" and not v)}
+            for q in extracted_mark_scheme.get("mark_scheme", [])
+        ],
+    }
     payload = {
-        "mark_scheme": json.dumps(extracted_mark_scheme),
+        "mark_scheme": json.dumps(mark_scheme_for_model),
         "answer_sheets": json.dumps({"answer_sheets": answer_sheets_list}),
         "evaluation_id": evaluation_id
     }

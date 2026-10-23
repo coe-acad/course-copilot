@@ -4,7 +4,6 @@ from fastapi import Form, File, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
 import logging
-import json
 from uuid import uuid4
 import shutil
 import asyncio
@@ -277,13 +276,6 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             )
             logger.error(error_msg)
             raise Exception(error_msg)
-
-        # [EXTRACTION CHECK] Log the final JSON built from each answer sheet
-        for sheet in extracted_answer_sheets:
-            logger.info(
-                f"\n{'=' * 60}\n[EXTRACTION CHECK] {sheet.get('file_id')} JSON:\n"
-                f"{json.dumps(sheet, indent=2, ensure_ascii=False, default=str)}\n{'=' * 60}"
-            )
 
         # Evaluation request uses mark scheme numbering so each answer is graded against the right
         # question; results are put back into answer sheet order afterwards.
