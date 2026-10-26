@@ -28,6 +28,14 @@ const PILL = {
   neutral: { bg: [241, 245, 249], fg: [100, 116, 139] },
 };
 
+// Question number to show: the section's number on Mettl sheets; on other sheets the mark scheme
+// question the answer was matched to (a student may skip questions), else its position
+export const questionLabel = (answer, position) => {
+  if (answer?.section != null && answer?.section_question_number != null) return answer.section_question_number;
+  if (answer?.section_question_number == null && answer?.mark_scheme_question_number) return answer.mark_scheme_question_number;
+  return position;
+};
+
 const scoreTone = (score, max) => {
   if (!max) return PILL.neutral;
   if (score >= max) return PILL.success;
@@ -290,9 +298,10 @@ export function buildStudentReportPdf(JsPDF, { student, name, passMark = PASS_MA
     doc.setLineWidth(0.2);
     doc.roundedRect(left, y, width, headerH, 1.6, 1.6, "FD");
     font(10.5, "bold", COLORS.text);
-    doc.text(`Question ${hasSection ? answer.section_question_number : index + 1}`, left + 4, y + 6);
+    doc.text(`Question ${questionLabel(answer, index + 1)}`, left + 4, y + 6);
     const score = answer.score ?? 0;
-    pill(`${score}/${answer.max_score ?? "?"}`, scoreTone(score, answer.max_score), right - 3, y + 2);
+    const scoreW = pill(`${score}/${answer.max_score ?? "?"}`, scoreTone(score, answer.max_score), right - 3, y + 2);
+    if (answer.counted === false) pill("Not counted (choice)", PILL.neutral, right - 3 - scoreW - 2, y + 2);
     y += headerH + 4;
 
     // Question

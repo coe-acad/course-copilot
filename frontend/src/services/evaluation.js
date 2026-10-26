@@ -212,7 +212,7 @@ export const evaluationService = {
         feedback: feedback
       });
       
-      return res.data; // { message: "Results updated" }
+      return res.data; // { message: "Results updated", student: { total_score, max_total_score, not_counted } }
     } catch (error) {
       console.error('Edit question result error:', error);
       if (error.response?.status === 401) {

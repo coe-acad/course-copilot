@@ -16,6 +16,7 @@ from pathlib import Path
 import csv
 import re
 import io
+from collections import Counter
 from ..utils.verify_token import verify_token
 from app.services.mongo import (
     create_evaluation,
@@ -66,6 +67,73 @@ class EditresultRequest(BaseModel):
     question_number: str
     score: float
     feedback: str
+
+
+def _paper_total(mark_scheme_questions):
+    """Maximum marks for a paper with "answer any N of ..." choice groups: the compulsory questions
+    plus the N highest totals of each group. None when the paper has no choice groups or a question
+    has no stated total."""
+    if not any(q.get("choice") for q in mark_scheme_questions):
+        return None
+    total, groups = 0, {}
+    for q in mark_scheme_questions:
+        if q.get("max_score") is None:
+            return None
+        if q.get("choice"):
+            groups.setdefault(q["choice"]["group"], (q["choice"]["pick"], []))[1].append(q["max_score"])
+        else:
+            total += q["max_score"]
+    return total + sum(sum(sorted(maxes, reverse=True)[:pick]) for pick, maxes in groups.values())
+
+
+def _add_skipped_questions(student, mark_scheme_questions):
+    """List every mark scheme question for a sheet matched to the mark scheme: questions the student
+    skipped are added as not attempted (0 marks), in paper order. Mettl sheets list unattempted
+    questions themselves and are left as they are."""
+    answers = student.get("answers", [])
+    if not answers or any(a.get("section_question_number") is not None or not a.get("mark_scheme_question_number") for a in answers):
+        return
+    by_number = {str(a["mark_scheme_question_number"]): a for a in answers}
+    ms_numbers = [str(q.get("questionnumber")) for q in mark_scheme_questions]
+    if len(by_number) != len(answers) or not set(by_number) < set(ms_numbers):
+        return  # nothing skipped, or answers that aren't one-to-one with mark scheme questions
+    complete = [
+        by_number.get(number) or {
+            "mark_scheme_question_number": number,
+            "question_text": None,
+            "student_answer": None,
+            "score": 0,
+            "max_score": q.get("max_score"),
+            "feedback": "Not attempted",
+        }
+        for number, q in zip(ms_numbers, mark_scheme_questions)
+    ]
+    # Positions are how answers are addressed when a teacher edits a score
+    for position, a in enumerate(complete, 1):
+        a["question_number"] = str(position)
+    student["answers"] = complete
+
+
+def _apply_totals(student, paper_total=None):
+    """Set the student's total and max total. For an "answer any N of ..." choice group only the
+    N best-scored answers count; the others are kept but marked counted=False. When given,
+    paper_total is the max total, so every student of a choice paper is marked out of the same."""
+    answers = student.get("answers", [])
+    groups = {}
+    for a in answers:
+        a.pop("counted", None)
+        if a.get("choice"):
+            groups.setdefault(a["choice"]["group"], []).append(a)
+    for group in groups.values():
+        best_first = sorted(group, key=lambda a: a.get("score") or 0, reverse=True)
+        for a in best_first[group[0]["choice"]["pick"]:]:
+            a["counted"] = False
+    counted = [a for a in answers if a.get("counted", True)]
+    student["total_score"] = sum((a.get("score") or 0) for a in counted)
+    student["max_total_score"] = (
+        paper_total if paper_total is not None else sum((a.get("max_score") or 0) for a in counted)
+    )
+
 
 @router.post("/evaluation/upload-mark-scheme")
 def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify_token), mark_scheme: UploadFile = File(...)):
@@ -259,8 +327,24 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             if found == question_count:
                 continue
             if found < question_count:
-                numbers = {int(a["question_number"]) for a in sheet["answers"] if str(a.get("question_number")).isdigit()}
-                gaps = [n for n in range(1, max(numbers, default=0) + 1) if n not in numbers]
+                matched = {str(a.get("mark_scheme_question_number")) for a in sheet["answers"] if a.get("mark_scheme_question_number")}
+                if len(matched) == found:
+                    # Matched to the mark scheme: name the mark scheme questions the sheet doesn't have,
+                    # except choice questions left out of a group the student answered enough of
+                    ms_questions = extracted_mark_scheme.get("mark_scheme", [])
+                    answered_in_group = Counter(
+                        q["choice"]["group"] for q in ms_questions if q.get("choice") and str(q.get("questionnumber")) in matched
+                    )
+                    gaps = [
+                        q.get("questionnumber") for q in ms_questions
+                        if str(q.get("questionnumber")) not in matched
+                        and not (q.get("choice") and answered_in_group[q["choice"]["group"]] >= q["choice"]["pick"])
+                    ]
+                    if not gaps:
+                        continue
+                else:
+                    numbers = {int(a["question_number"]) for a in sheet["answers"] if str(a.get("question_number")).isdigit()}
+                    gaps = [n for n in range(1, max(numbers, default=0) + 1) if n not in numbers]
                 missing = f" (Q{', Q'.join(map(str, gaps))} missing)" if gaps else ""
                 message = f"{found} of {question_count} questions found{missing}; please verify"
             else:
@@ -315,8 +399,16 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
                         if returned_ids != expected_ids:
                             raise ValueError(f"expected students {expected_ids}, got {returned_ids}")
                         for s in students:
-                            returned_questions = sorted(str(a.get("question_number")).strip() for a in s.get("answers", []))
                             expected = expected_questions[s.get("file_id")]
+                            # A grade for a question that isn't on the sheet (e.g. one the student skipped) is dropped
+                            extra = [a for a in s.get("answers", []) if str(a.get("question_number")).strip() not in expected]
+                            if extra:
+                                logger.warning(
+                                    f"{s.get('file_id')}: dropped grades for questions not on the sheet: "
+                                    f"{[a.get('question_number') for a in extra]}"
+                                )
+                                s["answers"] = [a for a in s["answers"] if a not in extra]
+                            returned_questions = sorted(str(a.get("question_number")).strip() for a in s.get("answers", []))
                             if returned_questions != expected:
                                 missing = sorted(set(expected) - set(returned_questions))
                                 extra = sorted(set(returned_questions) - set(expected))
@@ -412,6 +504,7 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
                     sheet_warnings.setdefault(student.get("file_id"), []).append(
                         f"{unmapped} graded answer(s) could not be matched to a question on the sheet; please verify"
                     )
+            _add_skipped_questions(all_students[idx], extracted_mark_scheme.get("mark_scheme", []))
 
         # The model no longer echoes question text: answers whose sheet had none (image-only sheets, or an
         # answer that couldn't be mapped back to its sheet question) get the mark scheme's question text
@@ -419,12 +512,39 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             str(q.get("questionnumber")): re.sub(r"^\s*Q\s*\d+\s*[.:)]\s*", "", q.get("question-text") or "").strip()
             for q in extracted_mark_scheme.get("mark_scheme", [])
         }
+        # "Answer any N of ..." groups from the mark scheme, applied to the totals below
+        ms_choice = {
+            str(q.get("questionnumber")): q["choice"]
+            for q in extracted_mark_scheme.get("mark_scheme", []) if q.get("choice")
+        }
+        # A question's maximum is the total stated in the mark scheme, not the model's own figure,
+        # so every student is marked out of the same maximum
+        ms_max = {
+            str(q.get("questionnumber")): q["max_score"]
+            for q in extracted_mark_scheme.get("mark_scheme", []) if q.get("max_score") is not None
+        }
         for student in all_students:
             for answer in student.get("answers", []):
+                ms_number = answer.get("mark_scheme_question_number") or answer.get("question_number")
                 if not answer.get("question_text"):
-                    ms_number = answer.get("mark_scheme_question_number") or answer.get("question_number")
                     answer["question_text"] = ms_question_text.get(str(ms_number)) or None
                 answer.setdefault("student_answer", None)
+                if str(ms_number) in ms_choice:
+                    answer["choice"] = ms_choice[str(ms_number)]
+                max_score = ms_max.get(str(ms_number))
+                model_max = answer.get("max_score")
+                if max_score is not None and model_max != max_score:
+                    # The model marked out of the wrong maximum: keep its score (capped at the maximum)
+                    # and flag the answer for the teacher to review
+                    answer["max_score"] = max_score
+                    if (answer.get("score") or 0) > max_score:
+                        answer["score"] = max_score
+                    message = (
+                        f"Question {answer.get('question_number')} was marked out of {model_max} instead of "
+                        f"{max_score} (score {answer.get('score') or 0}/{max_score}); please verify this answer"
+                    )
+                    logger.warning(f"{student.get('file_id')}: {message}")
+                    sheet_warnings.setdefault(student.get("file_id"), []).append(message)
 
         # One entry per uploaded sheet, in upload order: the UI, reports and CSV pair students with
         # answer_sheet_filenames by position, so a skipped sheet keeps its slot as a placeholder.
@@ -463,13 +583,13 @@ async def _process_evaluation(evaluation_id: str, user_id: str):
             "skipped_sheets": skipped_sheets,
             "warnings": warnings
         }
-        # Verify and recalculate scores for each student
+        # Same max total for every student of a choice paper; kept for recalculating after edits
+        paper_total = _paper_total(extracted_mark_scheme.get("mark_scheme", []))
+        if paper_total is not None:
+            evaluation_result["paper_total"] = paper_total
+        # Verify and recalculate scores for each student (skipped sheets have no answers and stay 0/0)
         for student in evaluation_result.get("students", []):
-            answers = student.get("answers", [])
-            calculated_total = sum((a.get("score") or 0) for a in answers if a.get("score") is not None)
-            calculated_max = sum((a.get("max_score") or 0) for a in answers)
-            student["total_score"] = calculated_total
-            student["max_total_score"] = calculated_max
+            _apply_totals(student, None if student.get("skipped") else paper_total)
 
         # Calculate aggregate totals
         overall_total = sum(s.get("total_score", 0) for s in evaluation_result.get("students", []))
@@ -624,34 +744,38 @@ def edit_results(request: EditresultRequest, user_id: str = Depends(verify_token
         update_question_score_feedback(request.evaluation_id, request.file_id, request.question_number, request.score, request.feedback)
 
         # Get current evaluation to calculate new total score
+        updated_student = None
         evaluation = get_evaluation_by_evaluation_id(request.evaluation_id)
         if evaluation and "evaluation_result" in evaluation:
             for student in evaluation["evaluation_result"].get("students", []):
                 if student.get("file_id") == request.file_id:
-                    # Calculate new total score
-                    total_score = sum(
-                        answer.get("score", 0) 
-                        for answer in student.get("answers", [])
-                        if answer.get("score") is not None
-                    )
+                    # A new score can change which answers of a choice group count
+                    _apply_totals(student, evaluation["evaluation_result"].get("paper_total"))
 
-                    # Update the total score and mark this student as modified
+                    # Update the totals and mark this student as modified
                     # using MongoDB directly with proper positional operator
                     db["evaluations"].update_one(
                         {"evaluation_id": request.evaluation_id, "evaluation_result.students.file_id": request.file_id},
                         {
                             "$set": {
-                                "evaluation_result.students.$.total_score": total_score,
+                                "evaluation_result.students.$.answers": student.get("answers", []),
+                                "evaluation_result.students.$.total_score": student["total_score"],
+                                "evaluation_result.students.$.max_total_score": student["max_total_score"],
                                 "evaluation_result.students.$.status": "modified",
                             }
                         },
                     )
+                    updated_student = {
+                        "total_score": student["total_score"],
+                        "max_total_score": student["max_total_score"],
+                        "not_counted": [a.get("question_number") for a in student.get("answers", []) if a.get("counted") is False],
+                    }
                     break
         
         # Update evaluation status
         update_evaluation(request.evaluation_id, {"status": "updated"})
         
-        return {"message": "Results updated"}
+        return {"message": "Results updated", "student": updated_student}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -750,6 +874,15 @@ def save_evaluation(evaluation_id: str, asset_name: str = Form(...), user_id: st
 def _has_section(answer):
     return answer.get("section") is not None and answer.get("section_question_number") is not None
 
+def _question_label(answer, position):
+    """Question number to show: the section's number on Mettl sheets; on other sheets the mark scheme
+    question the answer was matched to (a student may skip questions), else its position."""
+    if _has_section(answer):
+        return answer["section_question_number"]
+    if answer.get("section_question_number") is None and answer.get("mark_scheme_question_number"):
+        return answer["mark_scheme_question_number"]
+    return position
+
 def format_student_report(evaluation, student_index: int):
     """Format evaluation data into a readable report for a single student"""
     result = evaluation["evaluation_result"]
@@ -780,13 +913,10 @@ def format_student_report(evaluation, student_index: int):
     answers = student.get('answers', [])
     current_section = None
     for j, answer in enumerate(answers, 1):
-        if _has_section(answer):
-            if answer["section"] != current_section:
-                current_section = answer["section"]
-                report += f"# Section {current_section}\n\n"
-            report += f"## Question {answer['section_question_number']}\n"
-        else:
-            report += f"## Question {j}\n"
+        if _has_section(answer) and answer["section"] != current_section:
+            current_section = answer["section"]
+            report += f"# Section {current_section}\n\n"
+        report += f"## Question {_question_label(answer, j)}\n"
         report += f"**Question:** {answer.get('question_text', 'N/A')}\n"
         report += f"**Student Answer:** {answer.get('student_answer', 'N/A')}\n"
         report += f"**Score:** {answer.get('score', 0)}/{answer.get('max_score', 0)}\n"
@@ -800,20 +930,23 @@ def format_evaluation_csv(evaluation):
     students = result.get("students", [])
     stored_filenames = evaluation.get("answer_sheet_filenames", [])
     
-    # Determine the maximum number of questions across all students
-    max_questions = 0
-    longest_answers = []
+    # One column pair per question across all students, by question label (section-wise like "S2_Q1"
+    # for Mettl sheets), so a student who skipped a question leaves that column empty
+    def column(answer, position):
+        number = _question_label(answer, position)
+        if _has_section(answer):
+            return f"S{answer['section']}_Q{number}", (answer["section"], int(number))
+        return f"Q{number}", (0, int(number))
+
+    columns = {}
     for student in students:
-        answers = student.get('answers', [])
-        if len(answers) > max_questions:
-            max_questions = len(answers)
-            longest_answers = answers
-    
-    # Build CSV header (section-wise labels like "S2_Q1" for Mettl sheets)
+        for position, answer in enumerate(student.get('answers', []), 1):
+            label, order = column(answer, position)
+            columns.setdefault(label, order)
+    labels = sorted(columns, key=columns.get)
+
     header = ["email"]
-    for i in range(1, max_questions + 1):
-        answer = longest_answers[i - 1]
-        label = f"S{answer['section']}_Q{answer['section_question_number']}" if _has_section(answer) else f"Q{i}"
+    for label in labels:
         header.extend([f"{label}_score", f"{label}_feedback"])
     header.extend(["total_marks", "max_score", "overall_feedback"])
     
@@ -835,10 +968,10 @@ def format_evaluation_csv(evaluation):
         row = [email]
         
         # Add question scores and feedback
-        answers = student.get('answers', [])
-        for i in range(max_questions):
-            if i < len(answers):
-                answer = answers[i]
+        by_label = {column(answer, position)[0]: answer for position, answer in enumerate(student.get('answers', []), 1)}
+        for label in labels:
+            answer = by_label.get(label)
+            if answer:
                 score = answer.get('score', '')
                 feedback = answer.get('feedback', '')
                 # Clean feedback text - remove newlines and quotes

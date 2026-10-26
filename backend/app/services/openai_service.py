@@ -181,11 +181,12 @@ def evaluate_files_all_in_one(evaluation_id: str, user_id: str, extracted_mark_s
     # Validate question numbers consistency
     _validate_question_numbers(extracted_mark_scheme, answer_sheets_list)
     # Prepare evaluation payload. Mark schemes without an answer template section put the expected
-    # answer in the marking scheme, so the empty answertemplate field is left out.
+    # answer in the marking scheme, so the empty answertemplate field is left out. Choice groups are
+    # applied to the totals after grading, so the model grades every answer on its own.
     mark_scheme_for_model = {
         **extracted_mark_scheme,
         "mark_scheme": [
-            {k: v for k, v in q.items() if not (k == "answertemplate" and not v)}
+            {k: v for k, v in q.items() if not (k == "answertemplate" and not v) and k != "choice"}
             for q in extracted_mark_scheme.get("mark_scheme", [])
         ],
     }
