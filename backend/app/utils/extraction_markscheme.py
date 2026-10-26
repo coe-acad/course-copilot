@@ -7,6 +7,11 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# Text allowed between "Question number:" and the number, e.g. "Q", "Set A – Q", "Section B, ".
+_QNUM_PREFIX = r'[^\n\d]{0,30}?'
+# A "Question number:" line whose number is preceded by a set/section label.
+_LABELLED_QNUM_LINE = re.compile(r'question\s*number\s*[:=]\s*(?!Q?\d)[^\n\d]*[A-Za-z][^\n\d]*\d', re.IGNORECASE)
+
 
 def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
     """
@@ -34,12 +39,12 @@ def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
         text_questions = _extract_structured_text_format(full_text)
         if text_questions:
             logger.info(f"Extracted {len(text_questions)} questions using structured text format")
-            return text_questions
+            return _renumber_set_questions(text_questions, full_text)
         else:
             logger.debug("Structured text format found 0 questions, trying basic format...")
-        
+
         # Fallback: Try to parse as basic question format
-        basic_questions = _extract_basic_question_format(full_text)
+        basic_questions = _renumber_set_questions(_extract_basic_question_format(full_text), full_text)
         logger.info(f"Extracted {len(basic_questions)} questions using basic format")
         
         # Log preview of text if no questions found (for debugging)
@@ -51,6 +56,20 @@ def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error extracting mark scheme from {pdf_path}: {str(e)}")
         raise
+
+
+def _renumber_set_questions(questions: List[Dict[str, Any]], text: str) -> List[Dict[str, Any]]:
+    """
+    Number questions 1..N in paper order when set/section labels ("Set A – Q1",
+    "Set B – Q1") make question numbers repeat; answer sheets number them the same way.
+    """
+    numbers = [q.get("questionnumber") for q in questions]
+    if len(set(numbers)) == len(numbers) or not _LABELLED_QNUM_LINE.search(text):
+        return questions
+    logger.warning(f"Repeated question numbers {numbers} with set/section labels; renumbering 1..{len(questions)}")
+    for i, q in enumerate(questions, start=1):
+        q["questionnumber"] = i
+    return questions
 
 
 def _extract_full_text_from_pdf(pdf_path: str) -> str:
@@ -214,7 +233,7 @@ def _extract_structured_text_format(text: str) -> List[Dict[str, Any]]:
     # Split by question blocks - look for various question number patterns
     # Supports: "question number: 1", "Question number: Q1", "questionnumber: 1"
     question_blocks = re.split(
-        r'\n(?=(?:question\s*number|"question\s*number")\s*[:=]\s*Q?\d+)',
+        r'\n(?=(?:question\s*number|"question\s*number")\s*[:=]' + _QNUM_PREFIX + r'\d+)',
         text,
         flags=re.IGNORECASE
     )
@@ -246,7 +265,7 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     
     # Extract question number (allow space between "question" and "number")
     # Supports: "Question number: 1" or "Question number: Q1"
-    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*[:=]\s*Q?(\d+)', block, re.IGNORECASE)
+    qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*[:=]' + _QNUM_PREFIX + r'(\d+)', block, re.IGNORECASE)
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
     
@@ -309,7 +328,7 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
     # - "Question number: 1" or "Question number: Q1"
     # - "questionnumber: 1"
     question_pattern = re.compile(
-        r'(?:Question\s+number\s*[:=]\s*Q?(\d+)|Question\s+Q?(\d+)[.:,]?|question\s*number\s*[:=]?\s*Q?(\d+))(.*?)(?=(?:Question\s+number\s*[:=]\s*Q?\d+|Question\s+Q?\d+[.:,]?|question\s*number\s*[:=]?\s*Q?\d+|$))',
+        r'(?:Question\s*number\s*[:=]' + _QNUM_PREFIX + r'(\d+)|Question\s+Q?(\d+)[.:,]?|question\s*number\s*[:=]?\s*Q?(\d+))(.*?)(?=(?:Question\s*number\s*[:=]' + _QNUM_PREFIX + r'\d+|Question\s+Q?\d+[.:,]?|question\s*number\s*[:=]?\s*Q?\d+|$))',
         re.DOTALL | re.IGNORECASE
     )
     
