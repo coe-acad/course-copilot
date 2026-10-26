@@ -633,7 +633,8 @@ def attach_mark_scheme_numbers(answers, mark_scheme_questions):
         return answers
 
     ms = [(str(q.get("questionnumber")), _question_tokens(q.get("question-text"))) for q in mark_scheme_questions or []]
-    if len(ms) != len(answers):
+    # A sheet may have fewer questions (skipped or choice questions left out), but not more
+    if len(answers) > len(ms):
         logger.warning(
             f"[Mettl] Mark scheme has {len(ms)} questions but the sheet has {len(answers)}; "
             "cannot match questions, using answer sheet numbering"

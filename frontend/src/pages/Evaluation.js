@@ -5,13 +5,15 @@ import SettingsModal from "../components/SettingsModal";
 import Modal from "../components/Modal";
 import { evaluationService } from "../services/evaluation";
 import { trackPendingEvaluation } from "../components/EvaluationCompletionWatcher";
-import { buildStudentReportPdf, studentReportFileName, PASS_MARK } from "../utils/studentReportPdf";
+import { buildStudentReportPdf, studentReportFileName, PASS_MARK, questionLabel } from "../utils/studentReportPdf";
 import { FiEye, FiEdit2, FiMail, FiX, FiChevronLeft, FiChevronRight, FiDownload, FiAlertTriangle, FiUploadCloud, FiFileText, FiCheck, FiCheckCircle, FiLock, FiInfo, FiArrowRight } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { latexToText } from "../utils/latexToText";
 import { jsPDF } from "jspdf";
+
+const NOT_COUNTED_HINT = "Choice question: only the best-scored answers of this group count toward the total";
 
 export default function Evaluation() {
   const navigate = useNavigate();
@@ -453,8 +455,6 @@ export default function Evaluation() {
         return numScore;
       });
 
-      const totalScore = validScores.reduce((sum, score) => sum + score, 0);
-
       // Validate and clean the feedback for each question
       const cleanFeedbackArray = [];
       if (Array.isArray(editedFeedback)) {
@@ -474,7 +474,9 @@ export default function Evaluation() {
         throw new Error('Student file ID not found. Cannot update results.');
       }
 
-      // Update each question score and feedback
+      // Update each question score and feedback; the backend returns the recalculated totals
+      // (choice groups count only their best answers)
+      let savedTotals = null;
       for (let i = 0; i < validScores.length; i++) {
         const questionFeedback = cleanFeedbackArray[i] || '';
 
@@ -482,13 +484,14 @@ export default function Evaluation() {
           // Ensure feedback is not undefined or null
           const feedbackToSend = questionFeedback || '';
 
-          await evaluationService.editQuestionResult({
+          const res = await evaluationService.editQuestionResult({
             evaluationId,
             fileId,
             questionNumber: (i + 1).toString(),
             score: parseFloat(validScores[i]), // Convert to float as backend expects
             feedback: feedbackToSend
           });
+          savedTotals = res?.student || savedTotals;
         } catch (error) {
           console.error(`Failed to update question ${i + 1}:`, error);
           throw error; // Re-throw to stop the process
@@ -501,11 +504,13 @@ export default function Evaluation() {
       const studentIndex = selectedStudentIndex;
 
       // Update the answers array with new scores and feedback
+      const notCounted = (savedTotals?.not_counted || []).map(String);
       updatedEvaluationResult.evaluation_result.students[studentIndex].answers =
         updatedEvaluationResult.evaluation_result.students[studentIndex].answers.map((answer, index) => ({
           ...answer,
           score: validScores[index], // Use the validated scores directly
-          feedback: cleanFeedbackArray[index] || answer.feedback
+          feedback: cleanFeedbackArray[index] || answer.feedback,
+          counted: notCounted.includes(String(answer.question_number)) ? false : undefined
         }));
 
       // Also update question_scores if it exists for backward compatibility
@@ -516,7 +521,7 @@ export default function Evaluation() {
       // Update the student object
       updatedEvaluationResult.evaluation_result.students[studentIndex] = {
         ...updatedEvaluationResult.evaluation_result.students[studentIndex],
-        total_score: totalScore,
+        ...(savedTotals ? { total_score: savedTotals.total_score, max_total_score: savedTotals.max_total_score } : {}),
         status: "modified"
       };
 
@@ -861,6 +866,7 @@ export default function Evaluation() {
     const currentScore = questionScores[selectedQuestionIndex] || 0;
     const currentMax = maxScores[selectedQuestionIndex];
     const currentSectionInfo = getQuestionSection(student?.answers?.[selectedQuestionIndex]);
+    const currentLabel = questionLabel(student?.answers?.[selectedQuestionIndex], selectedQuestionIndex + 1);
     const totalPct = student.max_total_score ? student.total_score / student.max_total_score : null;
     // Colour a question's score: full marks green, partial amber, zero red
     const scoreTone = (score, max) => {
@@ -880,9 +886,13 @@ export default function Evaluation() {
         questionGroups.push(group);
       }
       const max = maxScores[index];
-      group.score += Number(score) || 0;
-      group.max += Number(max) || 0;
-      group.items.push({ index, score, max, number: sectionInfo ? sectionInfo.number : index + 1 });
+      // Extra answers of an "answer any N" choice group don't count toward the totals
+      const counted = student?.answers?.[index]?.counted !== false;
+      if (counted) {
+        group.score += Number(score) || 0;
+        group.max += Number(max) || 0;
+      }
+      group.items.push({ index, score, max, counted, number: questionLabel(student?.answers?.[index], index + 1) });
     });
     questionGroups.forEach(group => {
       group.score = Math.round(group.score * 100) / 100;
@@ -1002,7 +1012,7 @@ export default function Evaluation() {
                         </div>
                       )}
                       <div style={{ padding: 4 }}>
-                        {group.items.map(({ index, score, max, number }) => {
+                        {group.items.map(({ index, score, max, counted, number }) => {
                           const isActive = selectedQuestionIndex === index;
                           const tone = scoreTone(score, max);
                           return (
@@ -1025,6 +1035,7 @@ export default function Evaluation() {
                               <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: isActive ? 600 : 500, color: isActive ? '#1d4ed8' : '#374151' }}>
                                 Question {number}
                               </span>
+                              {!counted && <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted</span>}
                               <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '2px 8px', ...tone }}>
                                 {score}/{max || (score > 0 ? score : '?')}
                               </span>
@@ -1049,10 +1060,10 @@ export default function Evaluation() {
               <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827' }}>
                 {currentSectionInfo
                   ? `Section ${currentSectionInfo.section} · Question ${currentSectionInfo.number}`
-                  : `Question ${selectedQuestionIndex + 1}`}
+                  : `Question ${currentLabel}`}
                 {questionCount > 0 && (
                   <span style={{ fontSize: 14, fontWeight: 500, color: '#94a3b8' }}>
-                    {currentSectionInfo ? ` (${selectedQuestionIndex + 1} of ${questionCount})` : ` of ${questionCount}`}
+                    {currentSectionInfo || String(currentLabel) !== String(selectedQuestionIndex + 1) ? ` (${selectedQuestionIndex + 1} of ${questionCount})` : ` of ${questionCount}`}
                   </span>
                 )}
               </h3>
@@ -1089,7 +1100,7 @@ export default function Evaluation() {
               <h4 style={sectionLabelStyle}>Student Answer</h4>
               <div style={{ padding: '14px 16px', background: '#f5f8ff', borderRadius: 10, border: '1px solid #dbe5fb', fontSize: 15, color: '#1f2937' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={reviewMdComponents('#dbeafe')}>
-                  {latexToText(formatStudentAnswer(student?.answers?.[selectedQuestionIndex]?.student_answer) || 'Student answer not available')}
+                  {latexToText(formatStudentAnswer(student?.answers?.[selectedQuestionIndex]?.student_answer) || 'Not attempted')}
                 </ReactMarkdown>
               </div>
             </div>
@@ -1191,6 +1202,11 @@ export default function Evaluation() {
                   {currentMax > 0 && (
                     <div style={{ marginTop: 10, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${Math.min(100, Math.round((currentScore / currentMax) * 100))}%`, background: scoreTone(currentScore, currentMax).color, borderRadius: 999, transition: 'width 0.2s ease' }} />
+                    </div>
+                  )}
+                  {student?.answers?.[selectedQuestionIndex]?.counted === false && (
+                    <div style={{ marginTop: 10 }}>
+                      <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted (choice)</span>
                     </div>
                   )}
                 </>
@@ -1339,7 +1355,7 @@ export default function Evaluation() {
               {evaluationResult.evaluation_result.warnings?.length > 0 && (
                 <>
                   <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 6, marginTop: evaluationResult.evaluation_result.skipped_sheets?.length > 0 ? 12 : 0 }}>
-                    {new Set(evaluationResult.evaluation_result.warnings.map(w => w.file_id)).size} answer sheet(s) were graded but may be incomplete
+                    {new Set(evaluationResult.evaluation_result.warnings.map(w => w.file_id)).size} answer sheet(s) were graded but need to be verified
                   </div>
                   {evaluationResult.evaluation_result.warnings.map((w, i) => (
                     <div key={`${w.file_id}-${i}`} style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6 }}>
@@ -1714,10 +1730,13 @@ export default function Evaluation() {
                             <div style={{ background: '#fff', border: '1px solid #e8ecf2', borderRadius: 14, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)', marginBottom: 12, overflow: 'hidden' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 18px', borderBottom: '1px solid #f1f5f9' }}>
                                 <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
-                                  Question {hasSection ? answer.section_question_number : index + 1}
+                                  Question {questionLabel(answer, index + 1)}
                                 </span>
-                                <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', ...scoreToneStyle(score, answer.max_score) }}>
-                                  {score}/{answer.max_score ?? '?'}
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {answer.counted === false && <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted (choice)</span>}
+                                  <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', ...scoreToneStyle(score, answer.max_score) }}>
+                                    {score}/{answer.max_score ?? '?'}
+                                  </span>
                                 </span>
                               </div>
                               <div style={{ padding: '14px 18px', display: 'grid', gap: 14 }}>

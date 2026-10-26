@@ -11,6 +11,34 @@ logger = logging.getLogger(__name__)
 _QNUM_PREFIX = r'[^\n\d]{0,30}?'
 # A "Question number:" line whose number is preceded by a set/section label.
 _LABELLED_QNUM_LINE = re.compile(r'question\s*number\s*[:=]\s*(?!Q?\d)[^\n\d]*[A-Za-z][^\n\d]*\d', re.IGNORECASE)
+# A question's total, e.g. "Marking scheme (Total = 5) —" (or a JSON key "Marking scheme (Total = 5)").
+_TOTAL_MARKS = re.compile(r'marking\s*scheme\s*\(\s*total\s*=\s*(\d+(?:\.\d+)?)', re.IGNORECASE)
+
+
+def _total_marks(text: str) -> Optional[float]:
+    """The question's total marks as stated in the mark scheme, or None when not stated."""
+    m = _TOTAL_MARKS.search(text or "")
+    if not m:
+        return None
+    total = float(m.group(1))
+    return int(total) if total.is_integer() else total
+
+
+# Choice label after the question number, e.g. "Question number: 5 (Any 2 of Q5–Q7)".
+_CHOICE_LABEL = re.compile(r'\(\s*any\s+(\d+)\s+(?:out\s+)?of\b([^)]*)\)', re.IGNORECASE)
+
+
+def _choice_from_label(number_line_rest: str) -> Optional[Dict[str, Any]]:
+    """{"group", "pick"} for a question in an "any N of ..." group. The group is named by N and
+    the questions it covers ("Q5–Q7" and "Q5, Q6, Q7" are the same group)."""
+    m = _CHOICE_LABEL.search(number_line_rest)
+    if not m:
+        return None
+    members = set()
+    for start, end in re.findall(r'(\d+)(?:\s*(?:[–—-]|to)\s*Q?(\d+))?', m.group(2), re.IGNORECASE):
+        members.update(range(int(start), int(end or start) + 1))
+    pick = int(m.group(1))
+    return {"group": f"any {pick} of " + ",".join(map(str, sorted(members))), "pick": pick}
 
 
 def extract_mark_scheme_from_pdf(pdf_path: str) -> List[Dict[str, Any]]:
@@ -268,7 +296,10 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
     qnum_match = re.search(r'(?:question\s*number|"question\s*number")\s*[:=]' + _QNUM_PREFIX + r'(\d+)', block, re.IGNORECASE)
     if qnum_match:
         question_data["questionnumber"] = int(qnum_match.group(1))
-    
+        choice = _choice_from_label(block[qnum_match.end():].split('\n', 1)[0])
+        if choice:
+            question_data["choice"] = choice
+
     # Extract question text - support multiple formats:
     # - "question-text:", "Question text:", "question:"
     # Look ahead for answertemplate, markingscheme, or marking scheme
@@ -310,7 +341,11 @@ def _parse_question_block(block: str) -> Dict[str, Any]:
             marking_text = marking_match.group(1).strip()
             if marking_text:
                 question_data["markingscheme"] = _extract_bullet_points(marking_text)
-    
+
+    total = _total_marks(block)
+    if total is not None:
+        question_data["max_score"] = total
+
     return question_data
 
 
@@ -345,7 +380,10 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
             "answertemplate": "",
             "markingscheme": []
         }
-        
+        choice = _choice_from_label(content.split('\n', 1)[0])
+        if choice:
+            question_data["choice"] = choice
+
         # Extract question text - handle "Question text:" format
         qtext_match = re.search(
             r'(?:Question\s*text\s*[:=]\s*)?(.*?)(?=(?:answer\s*template|answer\s*:|correct\s*answer|marking\s*scheme|mark\s+scheme|$))',
@@ -377,9 +415,9 @@ def _extract_basic_question_format(text: str) -> List[Dict[str, Any]]:
             marking_text = marking_match.group(1)
             question_data["markingscheme"] = _extract_bullet_points(marking_text)
 
-        # Extract max_score from marking scheme
-        max_score = _extract_max_score_from_markingscheme(question_data["markingscheme"])
-        question_data["max_score"] = max_score
+        total = _total_marks(content)
+        if total is not None:
+            question_data["max_score"] = total
 
         questions.append(question_data)
     
@@ -513,42 +551,6 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def _extract_max_score_from_markingscheme(marking_scheme: List[str]) -> int:
-    """
-    Extract the maximum score from a marking scheme list.
-    Looks for patterns like [2], (2 marks), etc.
-    Returns the highest score found, or 1 as fallback.
-    """
-    if not marking_scheme or not isinstance(marking_scheme, list):
-        return 1
-
-    scores = []
-    for item in marking_scheme:
-        if not isinstance(item, str):
-            continue
-
-        # Pattern 1: [N] or [N marks] at end of string
-        match = re.search(r'\[(\d+)\s*(?:marks?)?\]\s*$', item, re.IGNORECASE)
-        if match:
-            scores.append(int(match.group(1)))
-            continue
-
-        # Pattern 2: (N marks) or (N) at end of string
-        match = re.search(r'\((\d+)\s*(?:marks?)?\)\s*$', item, re.IGNORECASE)
-        if match:
-            scores.append(int(match.group(1)))
-            continue
-
-        # Pattern 3: N marks at end
-        match = re.search(r'(\d+)\s+marks?\s*$', item, re.IGNORECASE)
-        if match:
-            scores.append(int(match.group(1)))
-
-    if scores:
-        return max(scores)
-    return 1
-
-
 def _normalize_question_format(item: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize question format to ensure consistent structure.
@@ -676,7 +678,12 @@ def _normalize_question_format(item: Dict[str, Any]) -> Dict[str, Any]:
         normalized["markingscheme"] = [marking.strip()] if marking.strip() else []
     else:
         normalized["markingscheme"] = []
-    
+
+    # The total is in the marking scheme key, e.g. "Marking scheme (Total = 5)"
+    total = next((t for t in map(_total_marks, item.keys()) if t is not None), None)
+    if total is not None:
+        normalized["max_score"] = total
+
     # Log the normalized result for debugging
     logger.debug(f"Normalized question {normalized.get('questionnumber')}: "
                 f"has {len(normalized.get('markingscheme', []))} marking scheme items")
