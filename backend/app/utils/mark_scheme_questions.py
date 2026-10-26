@@ -93,6 +93,10 @@ def parse_extracted_questions(text: str) -> dict:
         number = next((v for k, v in item.items() if re.sub(r"[\s_]", "", k).lower() == "questionnumber"), None)
         body = next((v for k, v in item.items() if re.sub(r"[\s_]", "", k).lower() == "questiontext"), None)
         key = _question_key(number)
+        if key in questions:
+            # Numbering restarts per set/section, so a number can't identify the question.
+            logger.warning(f"[mark-scheme] question number {key} repeats in the paper; not restoring question texts")
+            return {}
         if key and isinstance(body, str) and body.strip():
             questions[key] = fence_unfenced_code(body.strip())
     return questions

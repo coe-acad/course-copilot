@@ -76,14 +76,18 @@ export default function Evaluation() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const evalId = params.get('evaluation_id');
+    let cancelled = false;
+    let pollTimer = null;
     if (evalId) {
       openedFromCardRef.current = true;
       setEvaluationId(evalId);
       setShowResults(true);
-      // Fetch status and populate results
-      (async () => {
+      // Fetch status and populate results; while still processing, check again so the
+      // results appear without reopening the card
+      const loadStatus = async () => {
         try {
           const status = await evaluationService.checkEvaluationStatus(evalId);
+          if (cancelled) return;
           // If filenames are available, populate the table's file list to render rows
           if (Array.isArray(status.answer_sheet_filenames) && status.answer_sheet_filenames.length > 0) {
             const files = status.answer_sheet_filenames.map(name => ({ name }));
@@ -98,13 +102,20 @@ export default function Evaluation() {
             setIsEvaluating(false);
           } else {
             setIsEvaluating(true);
+            pollTimer = setTimeout(loadStatus, 10000);
           }
         } catch (e) {
+          if (cancelled) return;
           console.warn('Failed to load saved evaluation:', e.message);
           setIsEvaluating(false);
         }
-      })();
+      };
+      loadStatus();
     }
+    return () => {
+      cancelled = true;
+      clearTimeout(pollTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 

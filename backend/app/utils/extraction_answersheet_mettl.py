@@ -297,6 +297,27 @@ def _render_response(lines, paragraphs=False):
     return "\n".join(out)
 
 
+def _icon_boxes(page):
+    """Small filled shapes: the tick icons Mettl draws (as vector graphics, not text) in
+    the RESPONSE / ANSWER columns of an options table."""
+    return [
+        (c["x0"], c["top"], c["x1"], c["bottom"]) for c in page.curves
+        if c.get("fill") and 6 <= c["x1"] - c["x0"] <= 20 and 6 <= c["bottom"] - c["top"] <= 20
+    ]
+
+
+def _mark_icon_cells(table, icons):
+    """Table data with "✓" added to every cell that has a tick icon drawn in it."""
+    data = table.extract()
+    for r, row in enumerate(table.rows):
+        for c, cell in enumerate(row.cells):
+            if cell is None or r >= len(data) or c >= len(data[r]):
+                continue
+            if any(cell[0] <= (i[0] + i[2]) / 2 <= cell[2] and cell[1] <= (i[1] + i[3]) / 2 <= cell[3] for i in icons):
+                data[r][c] = ((data[r][c] or "") + " ✓").strip()
+    return data
+
+
 def read_layout_lines(pdf_path):
     """Return (lines, tables, images, page_sizes) for the whole document."""
     lines, tables, images, page_sizes = [], [], [], []
@@ -305,8 +326,9 @@ def read_layout_lines(pdf_path):
             page_sizes.append((page.width, page.height))
             lines.extend(_page_lines(page, pi))
 
+            icons = _icon_boxes(page)
             for t in page.find_tables(table_settings={"vertical_strategy": "lines", "horizontal_strategy": "lines"}):
-                tables.append({"page": pi, "bbox": t.bbox, "data": t.extract()})
+                tables.append({"page": pi, "bbox": t.bbox, "data": _mark_icon_cells(t, icons)})
 
             for img in page.images:
                 images.append({"page": pi, "bbox": (img["x0"], img["top"], img["x1"], img["bottom"])})
