@@ -181,7 +181,7 @@ def upload_mark_scheme(course_id: str = Form(...), user_id: str = Depends(verify
         raise HTTPException(status_code=500, detail=f"Error uploading mark scheme: {str(e)}")
 
 @router.post("/evaluation/upload-answer-sheets")
-def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), user_id: str = Depends(verify_token)):
+def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[UploadFile] = File(...), append: bool = Form(False), user_id: str = Depends(verify_token)):
     try:
         # Validate inputs
         if not answer_sheets:
@@ -202,16 +202,21 @@ def upload_answer_sheets(evaluation_id: str = Form(...), answer_sheets: List[Upl
         eval_dir = Path(f"local_storage/temp_evaluations/{evaluation_id}")
         eval_dir.mkdir(parents=True, exist_ok=True)
         
-        answer_sheet_paths = []
-        answer_sheet_filenames = []
-        
+        # Large uploads arrive in batches; append=True adds to the sheets already saved
+        if append:
+            answer_sheet_paths = list(evaluation.get("answer_sheet_paths") or [])
+            answer_sheet_filenames = list(evaluation.get("answer_sheet_filenames") or [])
+        else:
+            answer_sheet_paths = []
+            answer_sheet_filenames = []
+        offset = len(answer_sheet_paths)
+
         for i, answer_sheet in enumerate(answer_sheets):
-            filename = f"answer_sheet_{i+1}_{answer_sheet.filename}"
+            filename = f"answer_sheet_{offset + i + 1}_{answer_sheet.filename}"
             file_path = eval_dir / filename
-            
+
             with open(file_path, "wb") as f:
-                content = answer_sheet.file.read()
-                f.write(content)
+                shutil.copyfileobj(answer_sheet.file, f)
             
             answer_sheet_paths.append(str(file_path))
             answer_sheet_filenames.append(answer_sheet.filename)

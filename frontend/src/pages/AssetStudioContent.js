@@ -333,10 +333,10 @@ export default function AssetStudioContent() {
   const title = optionTitles[option] || option;
   const botComponents = isSprintStructure(option) ? sprintMarkdownComponents : markdownComponents;
 
-  // ✅ Pre-select only those passed from Dashboard
+  // Sources are chosen on the Dashboard and fixed for the chat: only the first
+  // generation sends them, so they can't be changed mid-chat
   const selectedFiles = location.state?.selectedFiles || [];
-  const initialSelectedIds = selectedFiles.map(file => file.id || file.fileName || file.name);
-  const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
+  const [selectedIds] = useState(() => selectedFiles.map(file => file.id || file.fileName || file.name));
 
   const [chatMessages, setChatMessages] = useState([]);
   const [streamingText, setStreamingText] = useState("");
@@ -516,12 +516,6 @@ export default function AssetStudioContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourcesLoading, option]);
-
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
-    );
-  };
 
   const handleSend = async () => {
     if (!inputMessage.trim()) return;
@@ -732,10 +726,7 @@ export default function AssetStudioContent() {
       rightPanel={
         <KnowledgeBase
           resources={resources}
-          showCheckboxes
           selected={selectedIds}
-          onSelect={toggleSelect}
-          onSelectAll={(ids) => setSelectedIds(ids)}
           fileInputRef={{ current: null }}
           onFileChange={handleFileUpload}
           onAddResource={() => setShowAddResourceModal(true)}
@@ -760,7 +751,7 @@ export default function AssetStudioContent() {
       >
         <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", color: "#111827" }}>{title}</div>
         <div style={{ fontSize: 13, color: "#94a3b8" }}>
-          {selectedIds.length} {selectedIds.length === 1 ? "source" : "sources"} selected
+          {selectedIds.length} {selectedIds.length === 1 ? "source" : "sources"} in use
         </div>
       </div>
 
@@ -808,7 +799,7 @@ export default function AssetStudioContent() {
 
         {chatMessages.length === 0 && !isBusy && (
           <div style={{ margin: "auto", textAlign: "center", color: "#94a3b8", fontSize: 15, maxWidth: 380, lineHeight: 1.7 }}>
-            Select resources in the Knowledge Base and ask below to generate your {title.toLowerCase()}.
+            No resources were selected. Go back to the dashboard and select resources to generate your {title.toLowerCase()}.
           </div>
         )}
 

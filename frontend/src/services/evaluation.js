@@ -37,9 +37,10 @@ export const evaluationService = {
     }
   },
 
-  async uploadAnswerSheets({ evaluationId, answerSheetFiles }) {
+  async uploadAnswerSheets({ evaluationId, answerSheetFiles, append = false }) {
     const formData = new FormData();
     formData.append('evaluation_id', evaluationId);
+    formData.append('append', append ? 'true' : 'false');
     if (Array.isArray(answerSheetFiles)) {
       answerSheetFiles.forEach(f => formData.append('answer_sheets', f));
     } else if (answerSheetFiles) {

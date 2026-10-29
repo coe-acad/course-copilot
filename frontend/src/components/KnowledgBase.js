@@ -389,6 +389,10 @@ export default function KnowledgeBase({
                     )}
                     <span>📄</span>
                     <span style={{ flex: 1, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{res.resourceName || res.fileName || res.title}</span>
+                    {/* Read-only list (asset chat): mark the sources the chat was generated from */}
+                    {!showCheckboxes && selected.includes(id) && (
+                      <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "#2563eb", background: "#dbeafe", borderRadius: 999, padding: "2px 8px" }}>In use</span>
+                    )}
                   </label>
 
                   {/* Three-dot menu */}
