@@ -13,7 +13,68 @@ import remarkBreaks from "remark-breaks";
 import { latexToText } from "../utils/latexToText";
 import { jsPDF } from "jspdf";
 
-const NOT_COUNTED_HINT = "Choice question: only the best-scored answers of this group count toward the total";
+// Why an answer of an "answer any N of ..." choice group is left out of the total, naming the group
+// and the answers that did count
+const notCountedReason = (answers = [], index) => {
+  const choice = answers[index]?.choice;
+  if (!choice) {
+    return "This is a choice question: the student only had to answer some questions of this group, and only their best-scored answers count toward the total.";
+  }
+  const group = answers
+    .map((a, i) => ({ a, label: `Q${questionLabel(a, i + 1)}` }))
+    .filter(({ a }) => a?.choice?.group === choice.group);
+  const counted = group.filter(({ a }) => a.counted !== false).map(({ label }) => label);
+  const best = choice.pick === 1 ? "best-scored answer counts" : `${choice.pick} best-scored answers count`;
+  return `Choice question: students answer any ${choice.pick} of ${group.map(({ label }) => label).join(", ")}. `
+    + `Only the ${best} toward the total${counted.length ? ` (${counted.join(", ")})` : ""}, `
+    + "so this answer's marks are shown but not added.";
+};
+
+// Grey "Not counted" pill that explains on hover (or keyboard focus) why the marks don't count
+function NotCountedPill({ answers, index, label = "Not counted", style }) {
+  const [anchor, setAnchor] = useState(null);
+  const show = (e) => setAnchor(e.currentTarget.getBoundingClientRect());
+  const hide = () => setAnchor(null);
+  return (
+    <span
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      style={{ ...style, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help', flexShrink: 0 }}
+    >
+      {label}
+      <FiInfo size={12} />
+      {anchor && (
+        // Fixed so the card isn't clipped by scrolling panels; flips below when there's no room above
+        <span
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            left: Math.min(Math.max(12, anchor.left + anchor.width / 2 - 140), window.innerWidth - 292),
+            ...(anchor.top > 140 ? { bottom: window.innerHeight - anchor.top + 8 } : { top: anchor.bottom + 8 }),
+            width: 280,
+            zIndex: 9999,
+            background: '#1f2937',
+            color: '#fff',
+            borderRadius: 8,
+            padding: '8px 12px',
+            fontSize: 12,
+            fontWeight: 500,
+            lineHeight: 1.5,
+            whiteSpace: 'normal',
+            textAlign: 'left',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            pointerEvents: 'none'
+          }}
+        >
+          {notCountedReason(answers, index)}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function Evaluation() {
   const navigate = useNavigate();
@@ -24,6 +85,7 @@ export default function Evaluation() {
   const [answerSheetFiles, setAnswerSheetFiles] = useState([]);
   const [isUploadingMarkScheme, setIsUploadingMarkScheme] = useState(false);
   const [isUploadingAnswerSheets, setIsUploadingAnswerSheets] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [markSchemeUploaded, setMarkSchemeUploaded] = useState(false);
   const [answerSheetsUploaded, setAnswerSheetsUploaded] = useState(false);
@@ -202,10 +264,24 @@ export default function Evaluation() {
     try {
       setIsUploadingAnswerSheets(true);
 
-      await evaluationService.uploadAnswerSheets({
-        evaluationId,
-        answerSheetFiles: filesToUpload
-      });
+      // Upload in small batches so one huge request can't hit proxy size limits or drop mid-way
+      const BATCH_SIZE = 10;
+      const allFiles = Array.from(filesToUpload);
+      setUploadProgress({ done: 0, total: allFiles.length });
+      for (let start = 0; start < allFiles.length; start += BATCH_SIZE) {
+        const batch = allFiles.slice(start, start + BATCH_SIZE);
+        const upload = () => evaluationService.uploadAnswerSheets({
+          evaluationId,
+          answerSheetFiles: batch,
+          append: start > 0
+        });
+        try {
+          await upload();
+        } catch (batchErr) {
+          await upload(); // one retry per batch
+        }
+        setUploadProgress({ done: start + batch.length, total: allFiles.length });
+      }
 
       setAnswerSheetsUploaded(true);
       // No success popup - just proceed silently
@@ -1035,7 +1111,7 @@ export default function Evaluation() {
                               <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: isActive ? 600 : 500, color: isActive ? '#1d4ed8' : '#374151' }}>
                                 Question {number}
                               </span>
-                              {!counted && <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted</span>}
+                              {!counted && <NotCountedPill answers={student?.answers} index={index} style={pillStyle('neutral')} />}
                               <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '2px 8px', ...tone }}>
                                 {score}/{max || (score > 0 ? score : '?')}
                               </span>
@@ -1206,7 +1282,7 @@ export default function Evaluation() {
                   )}
                   {student?.answers?.[selectedQuestionIndex]?.counted === false && (
                     <div style={{ marginTop: 10 }}>
-                      <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted (choice)</span>
+                      <NotCountedPill answers={student?.answers} index={selectedQuestionIndex} label="Not counted (choice)" style={pillStyle('neutral')} />
                     </div>
                   )}
                 </>
@@ -1733,7 +1809,7 @@ export default function Evaluation() {
                                   Question {questionLabel(answer, index + 1)}
                                 </span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  {answer.counted === false && <span style={pillStyle('neutral')} title={NOT_COUNTED_HINT}>Not counted (choice)</span>}
+                                  {answer.counted === false && <NotCountedPill answers={reportAnswers} index={index} label="Not counted (choice)" style={pillStyle('neutral')} />}
                                   <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', ...scoreToneStyle(score, answer.max_score) }}>
                                     {score}/{answer.max_score ?? '?'}
                                   </span>
@@ -1951,7 +2027,7 @@ export default function Evaluation() {
                 {isUploadingAnswerSheets && (
                   <div style={statusStyle('info')}>
                     <span style={evalSpinnerStyle} />
-                    Uploading answer sheets...
+                    Uploading answer sheets... {uploadProgress.total > 0 && `${uploadProgress.done}/${uploadProgress.total}`}
                   </div>
                 )}
 
